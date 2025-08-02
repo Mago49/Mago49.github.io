@@ -127,8 +127,4 @@
          <p class="text-lg">Queremos construir a melhor solução de automação para o seu negócio e a sua participação é essencial nesse processo.</p>
          <p class="text-lg">Suas experiências e desafios nos ajudarão a criar algo realmente útil e alinhado com as suas necessidades diárias.</p>
          <p class="mt-8 mb-8 text-xl font-semibold">Para compartilhar suas ideias e nos ajudar a moldar o futuro da nossa solução, clique no botão abaixo:</p>
-         <a href="https://forms.gle/PCSt1SDPBA7DuQK57" class="cta-button">Compartilhe sua Opinião</a>
-         <p class="footer mt-8 text-sm">Agradecemos imensamente sua colaboração!</p>
-     </div>
- </body>
- </html>
+         <a href="https://forms.gle/PCSt1SDPBA7DuQ
