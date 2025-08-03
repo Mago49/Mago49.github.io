@@ -110,21 +110,45 @@
 </head>
 <body class="p-4 sm:p-5">
     <svg class="background-svg" viewBox="0 0 1440 800" xmlns="http://www.w3.org/2000/svg">
-        <rect width="1440" height="800" fill="white"/>
+  <style>
+    .pulse {
+      animation: pulseMove 6s ease-in-out infinite alternate;
+    }
 
-        <!-- Azul: canto superior esquerdo -->
-        <path d="M 0 0 A 400 400 0 0 1 400 400 L 0 400 Z" fill="#1e3a8a"/>
+    .pulse-delay {
+      animation-delay: 3s;
+    }
 
-        <!-- Vermelho: canto superior direito -->
-        <path d="M 1440 0 A 400 400 0 0 0 1040 400 L 1440 400 Z" fill="#ef4444"/>
+    @keyframes pulseMove {
+      0% {
+        transform: scale(1) translate(0, 0);
+        opacity: 0.95;
+      }
+      50% {
+        transform: scale(1.05) translate(10px, -10px);
+        opacity: 1;
+      }
+      100% {
+        transform: scale(1) translate(0, 0);
+        opacity: 0.95;
+      }
+    }
+  </style>
 
-        <!-- Amarelo: canto inferior esquerdo -->
-        <path d="M 0 800 A 400 400 0 0 0 400 400 L 0 400 Z" fill="#facc15"/>
+  <rect width="1440" height="800" fill="white"/>
 
-        <!-- Verde: canto inferior direito -->
-        <path d="M 1440 800 A 400 400 0 0 1 1040 400 L 1440 400 Z" fill="#15803d"/>
-    </svg>
-    
+  <!-- Azul: canto superior esquerdo -->
+  <circle cx="0" cy="0" r="280" fill="#1e3a8a" class="pulse"/>
+
+  <!-- Vermelho: canto superior direito -->
+  <circle cx="1440" cy="0" r="280" fill="#ef4444" class="pulse pulse-delay"/>
+
+  <!-- Amarelo: canto inferior esquerdo -->
+  <circle cx="0" cy="800" r="280" fill="#facc15" class="pulse pulse-delay"/>
+
+  <!-- Verde: canto inferior direito -->
+  <circle cx="1440" cy="800" r="280" fill="#15803d" class="pulse"/>
+</svg>    
     <div class="container mx-auto relative z-10">
         <div class="logo-container">
             <img src="Logo.jpeg" alt="Logo PAFCS Data Solutions" class="logo">
