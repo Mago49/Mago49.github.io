@@ -127,7 +127,7 @@
     
     <div class="container mx-auto relative z-10">
         <div class="logo-container">
-            <img src="1000000209.jpg" alt="Logo PAFCS Data Solutions" class="logo">
+            <img src="Logo.jpeg" alt="Logo PAFCS Data Solutions" class="logo">
         </div>
         <h1 class="text-3xl sm:text-4xl">Sua Opinião é Fundamental!</h1>
         <p class="mt-4 text-lg">Olá, lojista!</p>
