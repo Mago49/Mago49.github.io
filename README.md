@@ -21,7 +21,7 @@
             color: #333;
             position: relative;
             overflow: hidden;
-            background-color: #f5f5dc; /* Tom de bege claro para o fundo */
+            background-color: white; /* remoção do bege, fundo branco */
         }
         
         .background-svg {
@@ -52,11 +52,10 @@
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
         }
         
-        /* Cores do botão inspiradas na logo (azul e verde) */
         .cta-button {
             display: inline-block;
             padding: 1rem 2.5rem;
-            background-image: linear-gradient(45deg, #1e3a8a, #15803d); /* Azul e verde escuros */
+            background-image: linear-gradient(45deg, #1e3a8a, #15803d);
             color: #fff;
             text-decoration: none;
             border-radius: 9999px;
@@ -66,12 +65,12 @@
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.15);
         }
         .cta-button:hover {
-            background-image: linear-gradient(45deg, #172e71, #116930); /* Tons mais escuros no hover */
+            background-image: linear-gradient(45deg, #172e71, #116930);
             box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
         }
         
         h1 {
-            color: #1e3a8a; /* Azul escuro para o título */
+            color: #1e3a8a;
             margin-bottom: 0.5rem;
             font-weight: 700;
             font-size: 2.2rem;
@@ -111,16 +110,24 @@
 </head>
 <body class="p-4 sm:p-5">
     <svg class="background-svg" viewBox="0 0 1440 800" xmlns="http://www.w3.org/2000/svg">
-        <rect x="0" y="0" width="1440" height="800" fill="#f5f5dc"/>
-        <path d="M 0, 800 L 0, 600 C 180, 560 360, 620 540, 600 C 720, 580 900, 520 1080, 500 C 1260, 480 1440, 520 1440, 500 L 1440, 800 Z" fill="#e0e0e0" />
-        <path d="M 0, 800 L 0, 450 C 180, 480 360, 500 540, 450 C 720, 400 900, 300 1080, 350 C 1260, 400 1440, 450 1440, 450 L 1440, 800 Z" fill="#d0d0d0" />
-        <path d="M 0, 800 L 0, 300 C 180, 340 360, 400 540, 350 C 720, 300 900, 200 1080, 250 C 1260, 300 1440, 340 1440, 300 L 1440, 800 Z" fill="#c0c0c0" />
-        <path d="M 0, 800 L 0, 150 C 180, 200 360, 300 540, 250 C 720, 200 900, 100 1080, 150 C 1260, 200 1440, 250 1440, 200 L 1440, 800 Z" fill="#b0b0b0" />
+        <rect width="1440" height="800" fill="white"/>
+
+        <!-- Azul: canto superior esquerdo -->
+        <path d="M 0 0 A 400 400 0 0 1 400 400 L 0 400 Z" fill="#1e3a8a"/>
+
+        <!-- Vermelho: canto superior direito -->
+        <path d="M 1440 0 A 400 400 0 0 0 1040 400 L 1440 400 Z" fill="#ef4444"/>
+
+        <!-- Amarelo: canto inferior esquerdo -->
+        <path d="M 0 800 A 400 400 0 0 0 400 400 L 0 400 Z" fill="#facc15"/>
+
+        <!-- Verde: canto inferior direito -->
+        <path d="M 1440 800 A 400 400 0 0 1 1040 400 L 1440 400 Z" fill="#15803d"/>
     </svg>
     
     <div class="container mx-auto relative z-10">
         <div class="logo-container">
-            <img src="Logo.jpeg" alt="Logo da sua empresa" class="logo">
+            <img src="1000000209.jpg" alt="Logo PAFCS Data Solutions" class="logo">
         </div>
         <h1 class="text-3xl sm:text-4xl">Sua Opinião é Fundamental!</h1>
         <p class="mt-4 text-lg">Olá, lojista!</p>
