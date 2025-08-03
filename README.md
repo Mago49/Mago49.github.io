@@ -169,7 +169,7 @@
       <div class="flex flex-col sm:flex-row justify-center items-center gap-4">
         <a href="https://www.instagram.com/pafcsdatasolutions" target="_blank"
            class="cta-button bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700">
-          Instagram: @pafcs_data_solutions
+          Instagram: @pafcsdatasolutions
         </a>
         <a href="https://wa.me/message/Q6WEGQK3HVJ7N1" target="_blank"
            class="cta-button bg-gradient-to-r from-green-500 to-teal-600 hover:from-green-600 hover:to-teal-700">
