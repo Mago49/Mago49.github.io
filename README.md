@@ -1,12 +1,12 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sua Opinião é Fundamental!</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet" />
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     html, body {
@@ -17,17 +17,11 @@
       font-family: 'Poppins', sans-serif;
       margin: 0;
       padding: 0;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      color: #333;
-      position: relative;
       background-color: white;
     }
 
     .background-svg {
-      position: absolute;
+      position: fixed;
       top: 0;
       left: 0;
       width: 100%;
@@ -42,15 +36,15 @@
       box-shadow: 0 15px 30px rgba(0, 0, 0, 0.1);
       text-align: center;
       max-width: 600px;
-      width: 100%;
+      margin: 4rem auto 2rem auto;
       box-sizing: border-box;
-      transform: scale(1);
       transition: all 0.3s ease;
-      color: #333;
+      position: relative;
+      z-index: 10;
     }
 
     .container:hover {
-      transform: translateY(-5px) scale(1.01);
+      transform: translateY(-3px) scale(1.01);
       box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
     }
 
@@ -94,9 +88,7 @@
       align-items: center;
       justify-content: center;
       gap: 1rem;
-      flex-wrap: nowrap;
       margin-bottom: 1.5rem;
-      flex-direction: row;
     }
 
     .logo {
@@ -112,18 +104,6 @@
       -webkit-text-fill-color: transparent;
       white-space: nowrap;
       text-shadow: 0px 0px 4px rgba(255,255,255,0.8);
-      transition: transform 0.3s ease, box-shadow 0.3s ease;
-    }
-
-    .gradient-title:hover {
-      transform: scale(1.05);
-      box-shadow: 0px 4px 8px rgba(0,0,0,0.2);
-    }
-
-    .titulo-principal {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
     }
 
     .pulse-icon {
@@ -158,11 +138,10 @@
     @media (max-width: 640px) {
       .gradient-title { font-size: 1rem; }
       .logo { max-width: 120px; }
-      .logo-container { gap: 0.5rem; flex-direction: row; }
     }
   </style>
 </head>
-<body class="p-4 sm:p-5">
+<body class="relative">
   <svg class="background-svg" viewBox="0 0 1440 800" xmlns="http://www.w3.org/2000/svg">
     <rect width="1440" height="800" fill="white"/>
     <circle cx="0" cy="0" r="280" fill="#1e3a8a" class="pulse"/>
@@ -171,10 +150,10 @@
     <circle cx="1440" cy="800" r="280" fill="#15803d" class="pulse"/>
   </svg>
 
-  <div class="container mx-auto relative z-10">
+  <div class="container">
     <div class="logo-container">
-      <img src="Logo.jpeg" alt="Logo PAFCS Data Solutions" class="logo">
-      <div class="titulo-principal">
+      <img src="Logo.jpeg" alt="Logo PAFCS Data Solutions" class="logo" />
+      <div class="flex items-center gap-2">
         <span class="gradient-title">IA para Todos!</span>
         <svg class="pulse-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="32" height="32">
           <circle cx="24" cy="24" r="10" fill="#1e3a8a"/>
@@ -185,7 +164,7 @@
       </div>
     </div>
 
-    <h1 class="text-3xl sm:text-4xl">Sua Opinião é Fundamental!</h1>
+    <h1>Sua Opinião é Fundamental!</h1>
     <p class="mt-4 text-lg">Olá, lojista!</p>
     <p class="text-lg">Queremos construir a melhor solução de automação para o seu negócio e a sua participação é essencial nesse processo.</p>
     <p class="text-lg">Suas experiências e desafios nos ajudarão a criar algo realmente útil e alinhado com as suas necessidades diárias.</p>
@@ -193,7 +172,20 @@
     <a href="https://forms.gle/PCSt1SDPBA7DuQK57" class="cta-button">Compartilhe sua Opinião</a>
     <p class="footer mt-8 text-sm">Agradecemos imensamente sua colaboração!</p>
 
-    <!-- Seção de redes sociais -->
-    <section class="mt-10 text-center">
-      <h2 class="text-xl font-semibold mb-6 text-gray-700">Vamos continuar conectados</h2>
-      <div class="flex flex-col sm:flex[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/lgfranco22/blog/tree/2ff765f5547038ea91aa40671858d9fd9d5ffb28/entrar.php?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "1")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/VictorMOPSena/senasoft-repositorio/tree/28ec22b0e9513981352093cd9011f7353aaabca8/actualizar_personal.php?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "2")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/moeclay/pdw24jam_entry/tree/9606afcd7eba27990562194ec25565c642e33eab/application%2Fviews%2Fdashboard%2Fpersonal_point.php?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "3")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/ramsweb/Accept-new/tree/5684fccfda717b0388ec2134a489eb20719b6915/web-development.php?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "4")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/MariaB-20/jimmys/tree/1cf59957409d14623a7d69f3129b40d04d497190/partials%2Fhead.php?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "5")
+    <!-- Redes sociais -->
+    <div class="mt-10 text-center">
+      <h2 class="text-lg font-semibold mb-4 text-gray-700">Vamos continuar conectados</h2>
+      <div class="flex flex-col sm:flex-row justify-center items-center gap-4">
+        <a href="https://www.instagram.com/pafcsdatasolutions" target="_blank"
+           class="cta-button bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700">
+          Instagram: @pafcsdatasolutions
+        </a>
+        <a href="https://wa.me/message/Q6WEGQK3HVJ7N1" target="_blank"
+           class="cta-button bg-gradient-to-r from-green-500 to-teal-600 hover:from-green-600 hover:to-teal-700">
+          WhatsApp: (31) 99596-1304
+        </a>
+      </div>
+    </div>
+  </div>
+</body>
+</html
