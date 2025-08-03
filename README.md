@@ -9,7 +9,11 @@
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    body {
+    html, body {
+      height: auto;
+      min-height: 100vh;
+      overflow-x: hidden;
+      overflow-y: auto;
       font-family: 'Poppins', sans-serif;
       margin: 0;
       padding: 0;
@@ -17,10 +21,8 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      min-height: 100vh;
       color: #333;
       position: relative;
-      overflow: hidden;
       background-color: white;
     }
 
@@ -135,18 +137,9 @@
     }
 
     @keyframes pulseSVG {
-      0% {
-        transform: scale(1) translate(0, 0);
-        opacity: 0.95;
-      }
-      50% {
-        transform: scale(1.05) translate(10px, -10px);
-        opacity: 1;
-      }
-      100% {
-        transform: scale(1) translate(0, 0);
-        opacity: 0.95;
-      }
+      0% { transform: scale(1) translate(0, 0); opacity: 0.95; }
+      50% { transform: scale(1.05) translate(10px, -10px); opacity: 1; }
+      100% { transform: scale(1) translate(0, 0); opacity: 0.95; }
     }
 
     .pulse {
@@ -199,6 +192,8 @@
     <p class="mt-8 mb-8 text-xl font-semibold">Para compartilhar suas ideias e nos ajudar a moldar o futuro da nossa solução, clique no botão abaixo:</p>
     <a href="https://forms.gle/PCSt1SDPBA7DuQK57" class="cta-button">Compartilhe sua Opinião</a>
     <p class="footer mt-8 text-sm">Agradecemos imensamente sua colaboração!</p>
-  </div>
-</body>
-</html>
+
+    <!-- Seção de redes sociais -->
+    <section class="mt-10 text-center">
+      <h2 class="text-xl font-semibold mb-6 text-gray-700">Vamos continuar conectados</h2>
+      <div class="flex flex-col sm:flex[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/lgfranco22/blog/tree/2ff765f5547038ea91aa40671858d9fd9d5ffb28/entrar.php?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "1")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/VictorMOPSena/senasoft-repositorio/tree/28ec22b0e9513981352093cd9011f7353aaabca8/actualizar_personal.php?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "2")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/moeclay/pdw24jam_entry/tree/9606afcd7eba27990562194ec25565c642e33eab/application%2Fviews%2Fdashboard%2Fpersonal_point.php?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "3")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/ramsweb/Accept-new/tree/5684fccfda717b0388ec2134a489eb20719b6915/web-development.php?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "4")[43dcd9a7-70db-4a1f-b0ae-981daa162054](https://github.com/MariaB-20/jimmys/tree/1cf59957409d14623a7d69f3129b40d04d497190/partials%2Fhead.php?citationMarker=43dcd9a7-70db-4a1f-b0ae-981daa162054 "5")
