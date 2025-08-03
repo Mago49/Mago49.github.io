@@ -1,4 +1,4 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
@@ -120,7 +120,7 @@
     
     <div class="container mx-auto relative z-10">
         <div class="logo-container">
-            <img src="logo.jpeg" alt="Logo da sua empresa" class="logo">
+            <img src="Logo.jpeg" alt="Logo da sua empresa" class="logo">
         </div>
         <h1 class="text-3xl sm:text-4xl">Sua Opinião é Fundamental!</h1>
         <p class="mt-4 text-lg">Olá, lojista!</p>
