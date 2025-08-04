@@ -34,7 +34,7 @@
     }
 
     .background-svg {
-      position: absolute;    / ocupa toda a área do documento /
+      position: absolute;    / ocupa toda a altura do documento /
       top: 0;
       left: 0;
       width: 100%;
@@ -177,6 +177,7 @@
           <circle cx="24" cy="24" r="3" fill="#ef4444" />
         </svg>
       </div>
+    </div>
 
     <h1>Sua Opinião é Fundamental!</h1>
     <p>Olá, lojista!</p>
@@ -245,13 +246,22 @@
   <!-- Script de animação das bolhas -->
   <script>
     document.addEventListener('DOMContentLoaded', () => {
-      const svg      = document.querySelector('svg.background-svg');
-      const vb       = svg.viewBox.baseVal;
-      const vbWidth  = vb.width;
-      const vbHeight = vb.height;
-      const circles  = Array.from(svg.querySelectorAll('circle'));
+      const svg     = document.querySelector('svg.background-svg');
+      const circles = Array.from(svg.querySelectorAll('circle'));
 
-      const data = circles.map(c => {
+      // limites baseados no tamanho real do documento
+      let vw = document.documentElement.scrollWidth;
+      let vh = document.documentElement.scrollHeight;
+
+      // atualiza limites ao redimensionar ou rolar
+      function updateBounds() {
+        vw = document.documentElement.scrollWidth;
+        vh = document.documentElement.scrollHeight;
+      }
+      window.addEventListener('resize', updateBounds);
+      window.addEventListener('scroll', updateBounds);
+
+      const data = circles.map((c) => {
         const initR = parseFloat(c.getAttribute('r'));
         return {
           el: c,
@@ -267,43 +277,23 @@
       });
 
       function animate() {
-        data.forEach(d => {
+        data.forEach((d) => {
           d.x += d.vx;
           d.y += d.vy;
           d.r += d.vr;
 
-          // colisões com as bordas do viewBox
-          if (d.x - d.r < 0) {
-            d.vx *= -1;
-            d.x = d.r;
-          } else if (d.x + d.r > vbWidth) {
-            d.vx *= -1;
-            d.x = vbWidth - d.r;
-          }
-
-          if (d.y - d.r < 0) {
-            d.vy *= -1;
-            d.y = d.r;
-          } else if (d.y + d.r > vbHeight) {
-            d.vy *= -1;
-            d.y = vbHeight - d.r;
-          }
-
-          if (d.r < d.rMin || d.r > d.rMax) {
-            d.vr *= -1;
-          }
+          if (d.x - d.r < 0 || d.x + d.r > vw) d.vx *= -1;
+          if (d.y - d.r < 0 || d.y + d.r > vh) d.vy *= -1;
+          if (d.r < d.rMin   || d.r > d.rMax) d.vr *= -1;
 
           d.el.setAttribute('cx', d.x);
           d.el.setAttribute('cy', d.y);
-          d.el.setAttribute('r', d.r);
+          d.el.setAttribute('r',  d.r);
         });
-
         requestAnimationFrame(animate);
       }
-
       animate();
     });
   </script>
 </body>
 </html>
-`
