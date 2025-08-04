@@ -20,14 +20,14 @@
       overflow-x: hidden;
     }
 
-    /* Fundo gradiente animado */
+    / Fundo gradiente animado com as 4 cores do projeto /
     body::before {
       content: "";
       position: fixed;
       top: 0; left: 0;
       width: 100%; height: 100%;
       z-index: -1;
-      background: linear-gradient(-45deg, #1e3a8a, #15803d, #facc15, #ef4444);
+      background: linear-gradient(-45deg, #facc15, #ef4444, #1e3a8a, #15803d);
       background-size: 400% 400%;
       animation: gradientFlow 15s ease infinite;
     }
@@ -51,22 +51,48 @@
       transition: .3s ease;
     }
 
-    h1 {
+    / Header flex para logo + título alinhados /
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .logo {
+      max-width: 120px;
+      height: auto;
+    }
+
+    / Título com gradiente de texto nas 4 cores /
+    .gradient-title {
       font-size: 2.2rem;
       font-weight: 700;
+      background: linear-gradient(90deg, #facc15, #ef4444, #1e3a8a, #15803d);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      text-shadow: 0 0 4px rgba(255,255,255,0.8);
+      white-space: nowrap;
+    }
+
+    h2 {
+      font-size: 1.5rem;
+      font-weight: 600;
       color: #1e3a8a;
-      margin-bottom: .5rem;
+      margin-bottom: .75rem;
     }
 
     p {
       color: #555;
       font-size: 1rem;
+      margin-bottom: .5rem;
     }
 
     .cta-button {
       display: inline-block;
       padding: 1rem 2.5rem;
-      background-image: linear-gradient(45deg,#1e3a8a,#15803d);
+      background-image: linear-gradient(45deg, #1e3a8a, #15803d);
       color: #fff;
       text-decoration: none;
       border-radius: 9999px;
@@ -77,41 +103,29 @@
     }
 
     .cta-button:hover {
-      background-image: linear-gradient(45deg,#172e71,#116930);
-    }
-
-    .gradient-title {
-      font-size: 1.5rem;
-      font-weight: 700;
-      background: linear-gradient(90deg,#1e3a8a,#15803d,#facc15,#ef4444);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      text-shadow: 0 0 4px rgba(255,255,255,0.8);
-      white-space: nowrap;
-    }
-
-    .logo {
-      max-width: 150px;
-      height: auto;
-      margin-bottom: 1rem;
+      background-image: linear-gradient(45deg, #172e71, #116930);
     }
 
     @media (min-width: 640px) {
-      h1 { font-size: 3rem; }
-      p  { font-size: 1.125rem; }
+      .gradient-title { font-size: 3rem; }
+      h2             { font-size: 1.75rem; }
+      p              { font-size: 1.125rem; }
+      .logo          { max-width: 150px; }
     }
 
     @media (max-width: 640px) {
-      .gradient-title { font-size: 1rem; }
-      .logo           { max-width: 120px; }
+      .gradient-title { font-size: 1.5rem; }
+      .logo           { max-width: 100px; }
     }
   </style>
 </head>
 
 <body>
   <div class="container">
-    <img src="Logo.jpeg" alt="Logo PAFCS Data Solutions" class="logo" />
-    <h1 class="gradient-title">IA para Todos!</h1>
+    <div class="header">
+      <img src="Logo.jpeg" alt="Logo PAFCS Data Solutions" class="logo" />
+      <h1 class="gradient-title">IA para Todos!</h1>
+    </div>
     <h2>Sua Opinião é Fundamental!</h2>
     <p>Olá, lojista!</p>
     <p>Queremos construir a melhor solução de automação para o seu negócio e a sua participação é essencial nesse processo.</p>
