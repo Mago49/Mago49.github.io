@@ -119,13 +119,7 @@
       100% { transform: scale(1);   opacity: .9; }
     }
 
-    @keyframes pulseSVG {
-      0%   { transform: scale(1) translate(0, 0);     opacity: .9; }
-      50%  { transform: scale(1.1) translate(20px,-20px); opacity: 1; }
-      100% { transform: scale(1) translate(0, 0);     opacity: .9; }
-    }
-    .pulse          { animation: pulseSVG 6s ease-in-out infinite alternate; }
-    .pulse-delay    { animation-delay: 3s; }
+    /* Removido: pulseSVG, .pulse e .pulse-delay */
 
     @media (min-width: 640px) {
       h1 { font-size: 3rem; }
@@ -145,16 +139,16 @@
     viewBox="0 0 1440 800"
     xmlns="http://www.w3.org/2000/svg"
   >
-    <circle cx="280"  cy="280" r="280" fill="#1e3a8a" class="pulse"/>
-    <circle cx="1160" cy="280" r="280" fill="#ef4444" class="pulse pulse-delay"/>
-    <circle cx="280"  cy="520" r="280" fill="#facc15" class="pulse pulse-delay"/>
-    <circle cx="1160" cy="520" r="280" fill="#15803d" class="pulse"/>
+    <circle cx="280"  cy="280" r="280" fill="#1e3a8a" />
+    <circle cx="1160" cy="280" r="280" fill="#ef4444" />
+    <circle cx="280"  cy="520" r="280" fill="#facc15" />
+    <circle cx="1160" cy="520" r="280" fill="#15803d" />
   </svg>
 
   <!-- Conteúdo principal -->
   <div class="container">
     <div class="logo-container">
-      <img src="Logo.jpeg" alt="Logo PAFCS Data Solutions" class="logo"/>
+      <img src="Logo.jpeg" alt="Logo PAFCS Data Solutions" class="logo" />
       <div class="flex items-center gap-2">
         <span class="gradient-title">IA para Todos!</span>
         <svg
@@ -164,20 +158,37 @@
           height="32"
           xmlns="http://www.w3.org/2000/svg"
         >
-          <circle cx="24" cy="24" r="10" fill="#1e3a8a"/>
-          <path d="M12 12 C18 18, 30 18, 36 12" stroke="#15803d" stroke-width="2" fill="none"/>
-          <path d="M12 36 C18 30, 30 30, 36 36" stroke="#facc15" stroke-width="2" fill="none"/>
-          <circle cx="24" cy="24" r="3" fill="#ef4444"/>
+          <circle cx="24" cy="24" r="10" fill="#1e3a8a" />
+          <path
+            d="M12 12 C18 18, 30 18, 36 12"
+            stroke="#15803d"
+            stroke-width="2"
+            fill="none"
+          />
+          <path
+            d="M12 36 C18 30, 30 30, 36 36"
+            stroke="#facc15"
+            stroke-width="2"
+            fill="none"
+          />
+          <circle cx="24" cy="24" r="3" fill="#ef4444" />
         </svg>
       </div>
     </div>
 
     <h1>Sua Opinião é Fundamental!</h1>
     <p>Olá, lojista!</p>
-    <p>Queremos construir a melhor solução de automação para o seu negócio e a sua participação é essencial nesse processo.</p>
-    <p>Suas experiências e desafios nos ajudarão a criar algo realmente útil e alinhado com as suas necessidades diárias.</p>
+    <p>
+      Queremos construir a melhor solução de automação para o seu negócio e a sua
+      participação é essencial nesse processo.
+    </p>
+    <p>
+      Suas experiências e desafios nos ajudarão a criar algo realmente útil e
+      alinhado com as suas necessidades diárias.
+    </p>
     <p class="mt-8 mb-8 text-xl font-semibold">
-      Para compartilhar suas ideias e nos ajudar a moldar o futuro da nossa solução, clique no botão abaixo:
+      Para compartilhar suas ideias e nos ajudar a moldar o futuro da nossa
+      solução, clique no botão abaixo:
     </p>
 
     <a
@@ -195,7 +206,9 @@
     <p class="footer mt-8">Agradecemos imensamente sua colaboração!</p>
 
     <div class="mt-10 text-center">
-      <h2 class="text-lg font-semibold mb-4 text-gray-700">Vamos continuar conectados</h2>
+      <h2 class="text-lg font-semibold mb-4 text-gray-700">
+        Vamos continuar conectados
+      </h2>
       <div class="flex flex-col sm:flex-row justify-center items-center gap-4">
         <a
           href="https://www.instagram.com/pafcsdatasolutions"
@@ -226,6 +239,49 @@
       </div>
     </div>
   </div>
+
+  <!-- Script de animação das bolhas -->
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const svg = document.querySelector('svg.background-svg');
+      const circles = Array.from(svg.querySelectorAll('circle'));
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const data = circles.map((c) => {
+        const initR = parseFloat(c.getAttribute('r'));
+        return {
+          el: c,
+          x: +c.getAttribute('cx'),
+          y: +c.getAttribute('cy'),
+          r: initR,
+          vx: (Math.random() * 0.6 + 0.4) * (Math.random() < 0.5 ? -1 : 1),
+          vy: (Math.random() * 0.6 + 0.4) * (Math.random() < 0.5 ? -1 : 1),
+          vr: Math.random() * 0.1 + 0.05,
+          rMin: initR * 0.8,
+          rMax: initR * 1.2
+        };
+      });
+
+      function animate() {
+        data.forEach((d) => {
+          d.x += d.vx;
+          d.y += d.vy;
+          d.r += d.vr;
+
+          if (d.x - d.r < 0 || d.x + d.r > vw) d.vx *= -1;
+          if (d.y - d.r < 0 || d.y + d.r > vh) d.vy *= -1;
+          if (d.r < d.rMin || d.r > d.rMax) d.vr *= -1;
+
+          d.el.setAttribute('cx', d.x);
+          d.el.setAttribute('cy', d.y);
+          d.el.setAttribute('r', d.r);
+        });
+
+        requestAnimationFrame(animate);
+      }
+
+      animate();
+    });
+  </script>
 </body>
 </html>
-`
