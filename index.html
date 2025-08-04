@@ -4,41 +4,46 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>IA para Todos!</title>
+
+  <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
     href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap"
     rel="stylesheet"
   />
+
+  <!-- Tailwind CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
 
   <style>
     html, body {
       min-height: 100vh;
-      overflow-x: hidden;
       margin: 0;
       padding: 0;
       background-color: #fff;
       font-family: 'Poppins', sans-serif;
+      overflow-x: hidden;
     }
 
+    / Coloque o SVG acima do background da página, mas atrás do conteúdo /
     .background-svg {
       position: fixed;
       top: 0; left: 0;
       width: 100%; height: 100%;
-      z-index: -1;
+      z-index: 0;          / alterado de -1 para  0 /
     }
 
     .container {
-      background: rgba(255,255,255,0.95);
+      position: relative;
+      z-index: 10;
       max-width: 600px;
       margin: 4rem auto 2rem;
       padding: 2rem 1.5rem;
+      background: rgba(255,255,255,0.95);
       border-radius: 1.5rem;
       box-shadow: 0 15px 30px rgba(0,0,0,0.1);
       text-align: center;
-      position: relative;
-      z-index: 10;
       transition: .3s ease;
     }
     .container:hover {
@@ -90,6 +95,7 @@
       max-width: 150px;
       height: auto;
     }
+
     .gradient-title {
       font-size: 1.5rem;
       font-weight: 700;
@@ -129,21 +135,35 @@
 </head>
 
 <body>
-  <svg class="background-svg" viewBox="0 0 1440 800" xmlns="http://www.w3.org/2000/svg">
-    <rect width="1440" height="800" fill="#fff"/>
+  <!-- Fundo animado -->
+  <svg
+    class="background-svg"
+    viewBox="0 0 1440 800"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <!-- Remova ou deixe o retângulo branco – ele serve só como fundo interno do SVG -->
+    <!-- <rect width="1440" height="800" fill="#fff"/> -->
+
+    <!-- Círculos animados -->
     <circle cx="280"  cy="280" r="280" fill="#1e3a8a" class="pulse"/>
     <circle cx="1160" cy="280" r="280" fill="#ef4444" class="pulse pulse-delay"/>
     <circle cx="280"  cy="520" r="280" fill="#facc15" class="pulse pulse-delay"/>
     <circle cx="1160" cy="520" r="280" fill="#15803d" class="pulse"/>
   </svg>
 
+  <!-- Conteúdo principal -->
   <div class="container">
     <div class="logo-container">
       <img src="Logo.jpeg" alt="Logo PAFCS Data Solutions" class="logo"/>
       <div class="flex items-center gap-2">
         <span class="gradient-title">IA para Todos!</span>
-        <svg class="pulse-icon" viewBox="0 0 48 48" width="32" height="32"
-             xmlns="http://www.w3.org/2000/svg">
+        <svg
+          class="pulse-icon"
+          viewBox="0 0 48 48"
+          width="32"
+          height="32"
+          xmlns="http://www.w3.org/2000/svg"
+        >
           <circle cx="24" cy="24" r="10" fill="#1e3a8a"/>
           <path d="M12 12 C18 18, 30 18, 36 12" stroke="#15803d" stroke-width="2" fill="none"/>
           <path d="M12 36 C18 30, 30 30, 36 36" stroke="#facc15" stroke-width="2" fill="none"/>
