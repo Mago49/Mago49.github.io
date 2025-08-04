@@ -5,6 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>IA para Todos!</title>
 
+  <!-- Font Awesome -->
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+  />
+
   <!-- Google Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -31,7 +37,7 @@
       position: fixed;
       top: 0; left: 0;
       width: 100%; height: 100%;
-      z-index: 0;          /* alterado de -1 para  0 */
+      z-index: 0;
     }
 
     .container {
@@ -141,10 +147,6 @@
     viewBox="0 0 1440 800"
     xmlns="http://www.w3.org/2000/svg"
   >
-    <!-- Remova ou deixe o retângulo branco – ele serve só como fundo interno do SVG -->
-    <!-- <rect width="1440" height="800" fill="#fff"/> -->
-
-    <!-- Círculos animados -->
     <circle cx="280"  cy="280" r="280" fill="#1e3a8a" class="pulse"/>
     <circle cx="1160" cy="280" r="280" fill="#ef4444" class="pulse pulse-delay"/>
     <circle cx="280"  cy="520" r="280" fill="#facc15" class="pulse pulse-delay"/>
@@ -187,13 +189,21 @@
     <div class="mt-10 text-center">
       <h2 class="text-lg font-semibold mb-4 text-gray-700">Vamos continuar conectados</h2>
       <div class="flex flex-col sm:flex-row justify-center items-center gap-4">
-        <a href="https://www.instagram.com/pafcsdatasolutions" target="_blank"
-           class="cta-button bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700">
+        <a
+          href="https://www.instagram.com/pafcsdatasolutions"
+          target="_blank"
+          class="cta-button bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-600 hover:to-purple-700"
+        >
+          <i class="fab fa-instagram mr-2"></i>
           Instagram: @PAFCS Data Solutions
         </a>
-        <a href="https://wa.me/message/Q6WEGQK3HVJ7N1" target="_blank"
-           class="cta-button bg-gradient-to-r from-green-500 to-teal-600 hover:from-green-600 hover:to-teal-700">
-          WhatsApp: (31)99596-1304
+        <a
+          href="https://wa.me/message/Q6WEGQK3HVJ7N1"
+          target="_blank"
+          class="cta-button bg-gradient-to-r from-green-500 to-teal-600 hover:from-green-600 hover:to-teal-700"
+        >
+          <i class="fab fa-whatsapp mr-2"></i>
+          WhatsApp: (31) 99596-1304
         </a>
       </div>
     </div>
