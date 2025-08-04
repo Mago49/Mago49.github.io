@@ -24,6 +24,7 @@
 
   <style>
     html, body {
+      position: relative;    /* necessário para o SVG absoluto */
       min-height: 100vh;
       margin: 0;
       padding: 0;
@@ -33,10 +34,14 @@
     }
 
     .background-svg {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
+      position: absolute;    /* ocupa toda a altura do documento */
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      min-height: 100vh;
       z-index: 0;
+      pointer-events: none;
     }
 
     .container {
@@ -118,8 +123,6 @@
       50%  { transform: scale(1.1); opacity: 1;  }
       100% { transform: scale(1);   opacity: .9; }
     }
-
-    /* Removido: pulseSVG, .pulse e .pulse-delay */
 
     @media (min-width: 640px) {
       h1 { font-size: 3rem; }
@@ -243,10 +246,21 @@
   <!-- Script de animação das bolhas -->
   <script>
     document.addEventListener('DOMContentLoaded', () => {
-      const svg = document.querySelector('svg.background-svg');
+      const svg     = document.querySelector('svg.background-svg');
       const circles = Array.from(svg.querySelectorAll('circle'));
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
+
+      // limites baseados no tamanho real do documento
+      let vw = document.documentElement.scrollWidth;
+      let vh = document.documentElement.scrollHeight;
+
+      // atualiza limites ao redimensionar ou rolar
+      function updateBounds() {
+        vw = document.documentElement.scrollWidth;
+        vh = document.documentElement.scrollHeight;
+      }
+      window.addEventListener('resize', updateBounds);
+      window.addEventListener('scroll', updateBounds);
+
       const data = circles.map((c) => {
         const initR = parseFloat(c.getAttribute('r'));
         return {
@@ -270,16 +284,14 @@
 
           if (d.x - d.r < 0 || d.x + d.r > vw) d.vx *= -1;
           if (d.y - d.r < 0 || d.y + d.r > vh) d.vy *= -1;
-          if (d.r < d.rMin || d.r > d.rMax) d.vr *= -1;
+          if (d.r < d.rMin   || d.r > d.rMax) d.vr *= -1;
 
           d.el.setAttribute('cx', d.x);
           d.el.setAttribute('cy', d.y);
-          d.el.setAttribute('r', d.r);
+          d.el.setAttribute('r',  d.r);
         });
-
         requestAnimationFrame(animate);
       }
-
       animate();
     });
   </script>
