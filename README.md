@@ -91,10 +91,10 @@
     
     // --- MODIFICADO ---
     // Os caminhos dos arquivos de áudio foram atualizados para os nomes que você forneceu.
-    // Certifique-se de que os arquivos fa.mp3, do.mp3, la.mp3, e mi.mp3
+    // Certifique-se de que os arquivos re.mp3, do.mp3, la.mp3, e mi.mp3
     // estejam na mesma pasta que este arquivo HTML.
     const colorAndSoundData = [
-      { color: '#1e3a8a', sound: new Audio('fa.mp3') },
+      { color: '#1e3a8a', sound: new Audio('re.mp3') },
       { color: '#ef4444', sound: new Audio('do.mp3') },
       { color: '#facc15', sound: new Audio('la.mp3') },
       { color: '#15803d', sound: new Audio('mi.mp3') }
