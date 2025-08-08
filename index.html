@@ -36,10 +36,9 @@
       z-index: 0;
     }
 
-    /* NOVO: Adicionado cursor de ponteiro para indicar que os círculos são clicáveis */
     .background-svg circle {
       cursor: pointer;
-      transition: fill 0.5s ease; /* Adiciona uma transição suave de cor */
+      transition: fill 0.5s ease;
     }
 
     .container {
@@ -158,14 +157,10 @@
   document.addEventListener('DOMContentLoaded', () => {
     const svg = document.querySelector('svg.background-svg');
     const circles = Array.from(svg.querySelectorAll('circle'));
-
-    // NOVO: Armazena as 4 cores originais em um array.
     const originalColors = ['#1e3a8a', '#ef4444', '#facc15', '#15803d'];
     
-    // NOVO: Função para embaralhar um array (algoritmo Fisher-Yates).
-    // Ela cria uma cópia embaralhada para não modificar o array original.
     function shuffle(array) {
-      const shuffledArray = [...array]; // Cria uma cópia
+      const shuffledArray = [...array];
       for (let i = shuffledArray.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [shuffledArray[i], shuffledArray[j]] = [shuffledArray[j], shuffledArray[i]];
@@ -173,15 +168,30 @@
       return shuffledArray;
     }
 
-    // NOVO: Função que será chamada no clique.
-    function shuffleAndApplyColors() {
-      // 1. Pega as cores originais e as embaralha.
+    // MODIFICADO: A função agora aceita o parâmetro 'event' para saber qual elemento foi clicado.
+    function handleInteraction(event) {
+      // --- Lógica de mudança de cor (para todos os círculos) ---
       const newColors = shuffle(originalColors);
-      
-      // 2. Aplica as novas cores a cada círculo.
       circles.forEach((circle, index) => {
         circle.setAttribute('fill', newColors[index]);
       });
+      
+      // --- Lógica de mudança de tamanho (apenas para o círculo clicado) ---
+      
+      // NOVO: Pega o elemento exato que foi clicado.
+      const clickedCircleElement = event.target;
+      
+      // NOVO: Encontra o objeto de dados correspondente a esse elemento no nosso array 'data'.
+      const clickedCircleData = data.find(d => d.el === clickedCircleElement);
+      
+      // NOVO: Se encontramos os dados (o que deve sempre acontecer), calculamos um novo tamanho.
+      if (clickedCircleData) {
+        // Gera um novo raio aleatório entre o mínimo (rmin) e o máximo (rmax) definidos para este círculo.
+        const newRandomRadius = Math.random() * (clickedCircleData.rmax - clickedCircleData.rmin) + clickedCircleData.rmin;
+        
+        // Atualiza o raio no nosso objeto de dados. A função 'animate' vai usar este novo valor no próximo frame.
+        clickedCircleData.r = newRandomRadius;
+      }
     }
     
     const viewbox = svg.viewBox.baseVal;
@@ -194,15 +204,15 @@
     ];
     const initialRadii = [280, 280, 280, 280];
 
+    // Esta variável precisa estar acessível para a função handleInteraction
     let data = [];
 
     function setupAnimation() {
       data = circles.map((c, i) => {
-        const initR = initialRadii[i] * 0.6; 
+        // MODIFICADO: O nome da função foi alterado para refletir as duas ações.
+        c.addEventListener('click', handleInteraction);
 
-        // NOVO: Adiciona o "ouvinte" de clique a cada círculo.
-        // Quando qualquer círculo for clicado, a função shuffleAndApplyColors será executada.
-        c.addEventListener('click', shuffleAndApplyColors);
+        const initR = initialRadii[i] * 0.6; 
 
         return {
           el: c,
