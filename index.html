@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>IA para Todos - Estúdio Musical</title>
+  <title>PAFCS DATA SOLUTIONS - Estúdio Musical Interativo</title>
   <style>
     /* Estilos básicos para deixar a página funcional e organizada */
     body { font-family: sans-serif; background-color: #f0f0f0; color: #333; margin: 0; padding-bottom: 60px; /* Espaço para o rodapé */ overflow-x: hidden; }
-    .background-svg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; }
+    .background-svg { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; opacity: 0.8; }
     .background-svg circle { cursor: pointer; transition: all 0.1s ease; }
     .background-svg circle:active { transform: scale(1.05); }
     .main-container {
@@ -20,7 +20,7 @@
 
     .panel {
         background: rgba(255, 255, 255, 0.95); border-radius: 12px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.1); padding: 20px; margin-bottom: 20px;
+        box-shadow: 0 4px S15px rgba(0,0,0,0.1); padding: 20px; margin-bottom: 20px;
         width: 100%; max-width: 600px; box-sizing: border-box;
     }
     .panel h1, .panel h2 { margin-top: 0; border-bottom: 1px solid #ddd; padding-bottom: 10px; }
@@ -29,10 +29,11 @@
     .control-group select { padding: 8px; border-radius: 6px; border: 1px solid #ccc; width: 60%; }
     .color-indicator { width: 24px; height: 24px; border-radius: 50%; display: inline-block; vertical-align: middle; margin-right: 10px; border: 1px solid #888; }
     button {
-        background-color: #1e3a8a; color: white; border: none; padding: 12px 20px;
+        background-color: #00529B; /* Tom de azul da logo */
+        color: white; border: none; padding: 12px 20px;
         border-radius: 8px; cursor: pointer; font-size: 16px; transition: background-color 0.3s;
     }
-    button:hover:not(:disabled) { background-color: #172e71; }
+    button:hover:not(:disabled) { background-color: #003B6F; }
     button:disabled { background-color: #999; cursor: not-allowed; }
     #recorder-status { margin-top: 10px; font-style: italic; color: #555; height: 20px; }
 
@@ -42,22 +43,17 @@
         background-color: #333; color: white; text-align: center;
         padding: 10px 0; font-size: 0.8em; z-index: 20;
     }
-    footer a { color: #8cb4ff; text-decoration: none; }
   </style>
 </head>
 <body>
 
   <svg class="background-svg" viewbox="0 0 1440 800" preserveAspectRatio="xMidYMid slice">
-    <circle data-color-id="0" cx="280" cy="280" r="280" fill="#1e3a8a" />
-    <circle data-color-id="1" cx="1160" cy="280" r="280" fill="#ef4444" />
-    <circle data-color-id="2" cx="280" cy="520" r="280" fill="#facc15" />
-    <circle data-color-id="3" cx="1160" cy="520" r="280" fill="#15803d" />
-  </svg>
+    <circle data-color-id="0" cx="280" cy="280" r="280" fill="#00529B" /> <circle data-color-id="1" cx="1160" cy="280" r="280" fill="#D42A2F" /> <circle data-color-id="2" cx="280" cy="520" r="280" fill="#FDB913" /> <circle data-color-id="3" cx="1160" cy="520" r="280" fill="#009A44" /> </svg>
 
   <div class="main-container">
     
     <header class="header">
-        <img src="Logo.jpeg" alt="Logo do Projeto" class="logo">
+        <img src="Logo.jpeg" alt="Logo PAFCS DATA SOLUTIONS" class="logo">
     </header>
 
     <div class="panel">
@@ -82,20 +78,19 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     // --- SETUP INICIAL ---
-    // MODIFICADO: Ajustado para o número de arquivos que você forneceu.
     const NUM_SOUNDS = 20;
     const RECORD_DURATION = 60; 
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
+    // MODIFICADO: Cores ajustadas para combinar com a sua logo
     const colors = [
-        { id: 0, name: "Azul", color: "#1e3a8a" },
-        { id: 1, name: "Vermelho", color: "#ef4444" },
-        { id: 2, name: "Amarelo", color: "#facc15" },
-        { id: 3, name: "Verde", color: "#15803d" },
+        { id: 0, name: "Azul", color: "#00529B" },
+        { id: 1, name: "Vermelho", color: "#D42A2F" },
+        { id: 2, name: "Amarelo", color: "#FDB913" },
+        { id: 3, name: "Verde", color: "#009A44" },
     ];
 
-    // MODIFICADO: Lista atualizada com os seus 20 nomes de arquivo personalizados.
-    // (O nome 'Re.mp3' foi convertido para minúsculas 're.mp3').
+    // Lista atualizada com os seus 20 nomes de arquivo personalizados.
     let soundFiles = [
         'sounds/re.mp3',
         'sounds/f.mp3',
