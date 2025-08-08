@@ -5,148 +5,69 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>IA para Todos!</title>
 
-  <link
-    rel="stylesheet"
-    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
-  />
-
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=poppins:wght@400;600;700&display=swap"
-    rel="stylesheet"
-  />
-
+  <link href="https://fonts.googleapis.com/css2?family=poppins:wght@400;600;700&display=swap" rel="stylesheet" />
   <script src="https://cdn.tailwindcss.com"></script>
 
   <style>
+    /* Estilos CSS (sem alterações) */
     html, body {
-      min-height: 100vh;
-      margin: 0;
-      padding: 0;
-      background-color: #f5f5dc;
-      font-family: 'poppins', sans-serif;
-      overflow-x: hidden;
+      min-height: 100vh; margin: 0; padding: 0;
+      background-color: #f5f5dc; font-family: 'poppins', sans-serif; overflow-x: hidden;
     }
-
     .background-svg {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      z-index: 0;
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;
     }
-
     .background-svg circle {
-      cursor: pointer;
-      transition: fill 0.5s ease;
+      cursor: pointer; transition: fill 0.5s ease;
     }
-
     .container {
-      position: relative;
-      z-index: 10;
-      max-width: 600px;
-      margin: 4rem auto 2rem;
-      padding: 2rem 1.5rem;
-      background: rgba(255,255,255,0.95);
-      border-radius: 1.5rem;
-      box-shadow: 0 15px 30px rgba(0,0,0,0.1);
-      text-align: center;
-      transition: .3s ease;
+      position: relative; z-index: 10; max-width: 600px; margin: 4rem auto 2rem;
+      padding: 2rem 1.5rem; background: rgba(255,255,255,0.95); border-radius: 1.5rem;
+      box-shadow: 0 15px 30px rgba(0,0,0,0.1); text-align: center; transition: .3s ease;
     }
     .container:hover {
-      transform: translatey(-3px) scale(1.01);
-      box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+      transform: translatey(-3px) scale(1.01); box-shadow: 0 20px 40px rgba(0,0,0,0.2);
     }
-
     h1 {
-      color: #1e3a8a;
-      font-size: 2.2rem;
-      font-weight: 700;
-      margin-bottom: .5rem;
+      color: #1e3a8a; font-size: 2.2rem; font-weight: 700; margin-bottom: .5rem;
     }
-    p {
-      color: #555;
-      font-size: 1rem;
-      margin-bottom: .5rem;
-    }
-    .footer {
-      color: #777;
-      font-size: .875rem;
-    }
-
+    p { color: #555; font-size: 1rem; margin-bottom: .5rem; }
+    .footer { color: #777; font-size: .875rem; }
     .cta-button {
-      display: inline-block;
-      background-image: linear-gradient(45deg,#1e3a8a,#15803d);
-      color: #fff;
-      text-decoration: none;
-      border-radius: 9999px;
-      font-weight: 700;
-      font-size: 1.2rem;
-      box-shadow: 0 5px 15px rgba(0,0,0,0.15);
-      transition: .3s ease;
+      display: inline-block; background-image: linear-gradient(45deg,#1e3a8a,#15803d);
+      color: #fff; text-decoration: none; border-radius: 9999px; font-weight: 700;
+      font-size: 1.2rem; box-shadow: 0 5px 15px rgba(0,0,0,0.15); transition: .3s ease;
     }
     .cta-button:hover {
-      background-image: linear-gradient(45deg,#172e71,#116930);
-      box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+      background-image: linear-gradient(45deg,#172e71,#116930); box-shadow: 0 8px 20px rgba(0,0,0,0.2);
     }
-
-    .contact-button {
-      transition: all 0.3s ease-in-out;
-    }
-    .contact-button:hover {
-       transform: translatey(-2px);
-       box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
-    }
-
+    .contact-button { transition: all 0.3s ease-in-out; }
+    .contact-button:hover { transform: translatey(-2px); box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2); }
     .logo-container {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 1rem;
-      margin-bottom: 1.5rem;
+      display: flex; align-items: center; justify-content: center; gap: 1rem; margin-bottom: 1.5rem;
     }
-    .logo {
-      max-width: 150px;
-      height: auto;
-    }
-
+    .logo { max-width: 150px; height: auto; }
     .gradient-title {
-      font-size: 1.5rem;
-      font-weight: 700;
-      background: linear-gradient(90deg,#1e3a8a,#15803d,#facc15,#ef4444);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      text-shadow: 0 0 4px rgba(255,255,255,0.8);
-      white-space: nowrap;
+      font-size: 1.5rem; font-weight: 700; background: linear-gradient(90deg,#1e3a8a,#15803d,#facc15,#ef4444);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      text-shadow: 0 0 4px rgba(255,255,255,0.8); white-space: nowrap;
     }
-
-    .pulse-icon {
-      animation: pulsemove 3s ease-in-out infinite;
-    }
+    .pulse-icon { animation: pulsemove 3s ease-in-out infinite; }
     @keyframes pulsemove {
       0%   { transform: scale(1);   opacity: .9; }
       50%  { transform: scale(1.1); opacity: 1;  }
       100% { transform: scale(1);   opacity: .9; }
     }
-
-    @media (min-width: 640px) {
-      h1 { font-size: 3rem; }
-      p  { font-size: 1.125rem; }
-    }
-    @media (max-width: 640px) {
-      .gradient-title { font-size: 1rem; }
-      .logo           { max-width: 120px; }
-    }
+    @media (min-width: 640px) { h1 { font-size: 3rem; } p  { font-size: 1.125rem; } }
+    @media (max-width: 640px) { .gradient-title { font-size: 1rem; } .logo { max-width: 120px; } }
   </style>
 </head>
 
 <body>
-  <svg
-    class="background-svg"
-    viewbox="0 0 1440 800"
-    preserveAspectRatio="xMidYMid slice"
-    xmlns="http://www.w3.org/2000/svg"
-  >
+  <svg class="background-svg" viewbox="0 0 1440 800" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg">
     <circle cx="280" cy="280" r="280" fill="#1e3a8a" />
     <circle cx="1160" cy="280" r="280" fill="#ef4444" />
     <circle cx="280" cy="520" r="280" fill="#facc15" />
@@ -157,7 +78,15 @@
   document.addEventListener('DOMContentLoaded', () => {
     const svg = document.querySelector('svg.background-svg');
     const circles = Array.from(svg.querySelectorAll('circle'));
-    const originalColors = ['#1e3a8a', '#ef4444', '#facc15', '#15803d'];
+    
+    // MODIFICADO: Os caminhos dos arquivos de áudio foram atualizados
+    // para corresponder aos nomes que você forneceu.
+    const colorAndSoundData = [
+      { color: '#1e3a8a', sound: new Audio('sounds/fa-note-sound.mp3') },
+      { color: '#ef4444', sound: new Audio('sounds/note-c-is-stretched.mp3') },
+      { color: '#facc15', sound: new Audio('sounds/note-d-is-stretched.mp3') },
+      { color: '#15803d', sound: new Audio('sounds/sol-extended.mp3') }
+    ];
     
     function shuffle(array) {
       const shuffledArray = [...array];
@@ -168,62 +97,45 @@
       return shuffledArray;
     }
 
-    // MODIFICADO: A função agora aceita o parâmetro 'event' para saber qual elemento foi clicado.
     function handleInteraction(event) {
-      // --- Lógica de mudança de cor (para todos os círculos) ---
-      const newColors = shuffle(originalColors);
+      const clickedCircleElement = event.target;
+
+      // --- LÓGICA DE SOM DA COR ATUAL ---
+      const currentColor = clickedCircleElement.getAttribute('fill');
+      const currentSoundData = colorAndSoundData.find(data => data.color === currentColor);
+      if (currentSoundData) {
+        currentSoundData.sound.currentTime = 0;
+        currentSoundData.sound.play().catch(e => console.error("Erro ao tocar áudio:", e));
+      }
+
+      // --- LÓGICA VISUAL (COR E TAMANHO) ---
+      const newColorOrder = shuffle(colorAndSoundData);
       circles.forEach((circle, index) => {
-        circle.setAttribute('fill', newColors[index]);
+        circle.setAttribute('fill', newColorOrder[index].color);
       });
       
-      // --- Lógica de mudança de tamanho (apenas para o círculo clicado) ---
-      
-      // NOVO: Pega o elemento exato que foi clicado.
-      const clickedCircleElement = event.target;
-      
-      // NOVO: Encontra o objeto de dados correspondente a esse elemento no nosso array 'data'.
       const clickedCircleData = data.find(d => d.el === clickedCircleElement);
-      
-      // NOVO: Se encontramos os dados (o que deve sempre acontecer), calculamos um novo tamanho.
       if (clickedCircleData) {
-        // Gera um novo raio aleatório entre o mínimo (rmin) e o máximo (rmax) definidos para este círculo.
         const newRandomRadius = Math.random() * (clickedCircleData.rmax - clickedCircleData.rmin) + clickedCircleData.rmin;
-        
-        // Atualiza o raio no nosso objeto de dados. A função 'animate' vai usar este novo valor no próximo frame.
         clickedCircleData.r = newRandomRadius;
       }
     }
     
     const viewbox = svg.viewBox.baseVal;
-    
-    const initialPositions = [
-      { x: 280,  y: 280 },
-      { x: 1160, y: 280 },
-      { x: 280,  y: 520 },
-      { x: 1160, y: 520 }
-    ];
+    const initialPositions = [ { x: 280, y: 280 }, { x: 1160, y: 280 }, { x: 280, y: 520 }, { x: 1160, y: 520 }];
     const initialRadii = [280, 280, 280, 280];
-
-    // Esta variável precisa estar acessível para a função handleInteraction
     let data = [];
 
     function setupAnimation() {
       data = circles.map((c, i) => {
-        // MODIFICADO: O nome da função foi alterado para refletir as duas ações.
         c.addEventListener('click', handleInteraction);
-
         const initR = initialRadii[i] * 0.6; 
-
         return {
-          el: c,
-          x: initialPositions[i].x,
-          y: initialPositions[i].y,
-          r: initR,
+          el: c, x: initialPositions[i].x, y: initialPositions[i].y, r: initR,
           vx: (Math.random() * 0.5 + 0.2) * (Math.random() < 0.5 ? -1 : 1),
           vy: (Math.random() * 0.5 + 0.2) * (Math.random() < 0.5 ? -1 : 1),
           vr: (Math.random() * 0.03 + 0.015) * (Math.random() < 0.5 ? -1 : 1),
-          rmin: initR * 0.40,
-          rmax: initR * 1.30
+          rmin: initR * 0.40, rmax: initR * 1.30
         };
       });
     }
@@ -232,28 +144,14 @@
 
     function animate() {
       data.forEach((d) => {
-        d.x += d.vx;
-        d.y += d.vy;
-        d.r += d.vr;
-
-        if (d.x - d.r < viewbox.x || d.x + d.r > viewbox.width) {
-          d.vx *= -1;
-        }
-        if (d.y - d.r < viewbox.y || d.y + d.r > viewbox.height) {
-          d.vy *= -1;
-        }
-        if (d.r < d.rmin || d.r > d.rmax) {
-          d.vr *= -1;
-        }
-
-        d.el.setAttribute('cx', d.x);
-        d.el.setAttribute('cy', d.y);
-        d.el.setAttribute('r', d.r);
+        d.x += d.vx; d.y += d.vy; d.r += d.vr;
+        if (d.x - d.r < viewbox.x || d.x + d.r > viewbox.width) { d.vx *= -1; }
+        if (d.y - d.r < viewbox.y || d.y + d.r > viewbox.height) { d.vy *= -1; }
+        if (d.r < d.rmin || d.r > d.rmax) { d.vr *= -1; }
+        d.el.setAttribute('cx', d.x); d.el.setAttribute('cy', d.y); d.el.setAttribute('r', d.r);
       });
-
       requestAnimationFrame(animate);
     }
-
     animate();
   });
 </script>
