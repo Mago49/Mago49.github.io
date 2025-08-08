@@ -36,6 +36,12 @@
       z-index: 0;
     }
 
+    /* NOVO: Adicionado cursor de ponteiro para indicar que os círculos são clicáveis */
+    .background-svg circle {
+      cursor: pointer;
+      transition: fill 0.5s ease; /* Adiciona uma transição suave de cor */
+    }
+
     .container {
       position: relative;
       z-index: 10;
@@ -85,7 +91,6 @@
       box-shadow: 0 8px 20px rgba(0,0,0,0.2);
     }
 
-    /* estilo para os botões de contato */
     .contact-button {
       transition: all 0.3s ease-in-out;
     }
@@ -93,7 +98,6 @@
        transform: translatey(-2px);
        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
     }
-
 
     .logo-container {
       display: flex;
@@ -139,24 +143,49 @@
 
 <body>
   <svg
-  class="background-svg"
-  viewbox="0 0 1440 800"
-  preserveAspectRatio="xMidYMid slice"
-  xmlns="http://www.w3.org/2000/svg"
->
-  <circle cx="280" cy="280" r="280" fill="#1e3a8a" />
-  <circle cx="1160" cy="280" r="280" fill="#ef4444" />
-  <circle cx="280" cy="520" r="280" fill="#facc15" />
-  <circle cx="1160" cy="520" r="280" fill="#15803d" />
-</svg>
+    class="background-svg"
+    viewbox="0 0 1440 800"
+    preserveAspectRatio="xMidYMid slice"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <circle cx="280" cy="280" r="280" fill="#1e3a8a" />
+    <circle cx="1160" cy="280" r="280" fill="#ef4444" />
+    <circle cx="280" cy="520" r="280" fill="#facc15" />
+    <circle cx="1160" cy="520" r="280" fill="#15803d" />
+  </svg>
 
  <script>
   document.addEventListener('DOMContentLoaded', () => {
     const svg = document.querySelector('svg.background-svg');
     const circles = Array.from(svg.querySelectorAll('circle'));
 
-    const viewbox = svg.viewBox.baseVal;
+    // NOVO: Armazena as 4 cores originais em um array.
+    const originalColors = ['#1e3a8a', '#ef4444', '#facc15', '#15803d'];
+    
+    // NOVO: Função para embaralhar um array (algoritmo Fisher-Yates).
+    // Ela cria uma cópia embaralhada para não modificar o array original.
+    function shuffle(array) {
+      const shuffledArray = [...array]; // Cria uma cópia
+      for (let i = shuffledArray.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffledArray[i], shuffledArray[j]] = [shuffledArray[j], shuffledArray[i]];
+      }
+      return shuffledArray;
+    }
 
+    // NOVO: Função que será chamada no clique.
+    function shuffleAndApplyColors() {
+      // 1. Pega as cores originais e as embaralha.
+      const newColors = shuffle(originalColors);
+      
+      // 2. Aplica as novas cores a cada círculo.
+      circles.forEach((circle, index) => {
+        circle.setAttribute('fill', newColors[index]);
+      });
+    }
+    
+    const viewbox = svg.viewBox.baseVal;
+    
     const initialPositions = [
       { x: 280,  y: 280 },
       { x: 1160, y: 280 },
@@ -171,6 +200,10 @@
       data = circles.map((c, i) => {
         const initR = initialRadii[i] * 0.6; 
 
+        // NOVO: Adiciona o "ouvinte" de clique a cada círculo.
+        // Quando qualquer círculo for clicado, a função shuffleAndApplyColors será executada.
+        c.addEventListener('click', shuffleAndApplyColors);
+
         return {
           el: c,
           x: initialPositions[i].x,
@@ -179,8 +212,8 @@
           vx: (Math.random() * 0.5 + 0.2) * (Math.random() < 0.5 ? -1 : 1),
           vy: (Math.random() * 0.5 + 0.2) * (Math.random() < 0.5 ? -1 : 1),
           vr: (Math.random() * 0.03 + 0.015) * (Math.random() < 0.5 ? -1 : 1),
-          rmin: initR * 0.40, // Encolhe até 40% do tamanho
-          rmax: initR * 1.30  // Cresce até 130% do tamanho
+          rmin: initR * 0.40,
+          rmax: initR * 1.30
         };
       });
     }
