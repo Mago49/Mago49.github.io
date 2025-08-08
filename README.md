@@ -3,26 +3,22 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Animação de Fundo</title>
+  <title>Animação de Fundo (Diagnóstico)</title>
 
   <style>
-    /* Estilos essenciais para a animação funcionar em tela cheia */
     html, body {
       min-height: 100vh;
       margin: 0;
       padding: 0;
-      /* A cor de fundo original para manter a aparência */
       background-color: #f5f5dc; 
-      /* Previne barras de rolagem indesejadas que a animação possa causar */
       overflow: hidden; 
     }
 
-    /* Estilo que posiciona o SVG como um fundo fixo */
     .background-svg {
       position: fixed;
       top: 0; left: 0;
       width: 100%; height: 100%;
-      z-index: -1; /* Coloca o SVG atrás de qualquer conteúdo futuro */
+      z-index: -1;
     }
   </style>
 </head>
@@ -42,28 +38,44 @@
 
   <script>
     document.addEventListener('DOMContentLoaded', () => {
+      // 1. Mensagem para confirmar que o script começou
+      console.log("Script de animação iniciado.");
+
       const svg = document.querySelector('svg.background-svg');
+
+      // 2. VERIFICAÇÃO DE SEGURANÇA: O SVG foi encontrado?
+      if (!svg) {
+        console.error("ERRO CRÍTICO: O elemento SVG com a classe 'background-svg' não foi encontrado na página. A animação não pode começar.");
+        return; // Para a execução do script aqui mesmo
+      }
+      
+      console.log("Elemento SVG encontrado com sucesso. Verificando círculos...");
+
       const circles = Array.from(svg.querySelectorAll('circle'));
+
+      // 3. VERIFICAÇÃO DE SEGURANÇA: Os círculos foram encontrados?
+      if (circles.length === 0) {
+        console.warn("AVISO: O SVG foi encontrado, mas não há elementos <circle> dentro dele. A animação não pode começar.");
+        return;
+      }
+
+      console.log(`${circles.length} círculos encontrados. Iniciando animação...`);
+      
       const viewbox = svg.viewBox.baseVal;
-
-      const initialPositions = [
-        { x: 280,  y: 280 },
-        { x: 1160, y: 280 },
-        { x: 280,  y: 520 },
-        { x: 1160, y: 520 }
-      ];
-      const initialRadii = [280, 280, 280, 280];
-
       let data = [];
 
       function setupAnimation() {
+        const initialRadii = [280, 280, 280, 280]; // Mantendo os raios iniciais
         data = circles.map((c, i) => {
-          const initR = initialRadii[i] * 0.6; 
+          const initR = initialRadii[i] * 0.6;
+          // Lendo posições diretamente do SVG para maior robustez
+          const initialX = parseFloat(c.getAttribute('cx'));
+          const initialY = parseFloat(c.getAttribute('cy'));
 
           return {
             el: c,
-            x: initialPositions[i].x,
-            y: initialPositions[i].y,
+            x: initialX,
+            y: initialY,
             r: initR,
             vx: (Math.random() * 0.5 + 0.2) * (Math.random() < 0.5 ? -1 : 1),
             vy: (Math.random() * 0.5 + 0.2) * (Math.random() < 0.5 ? -1 : 1),
