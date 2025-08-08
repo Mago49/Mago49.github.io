@@ -74,30 +74,18 @@
     <circle cx="1160" cy="520" r="280" fill="#15803d" />
   </svg>
 
-  <main class="container">
-    <div class="logo-container">
-      <i class="fa-solid fa-brain fa-3x text-blue-900 pulse-icon"></i>
-      <h2 class="gradient-title">Sinfonia Interativa</h2>
-    </div>
-    <h1>IA Para Todos!</h1>
-    <p class="px-4">Clique nos círculos coloridos para compor uma melodia única. Cada cor revela uma nota diferente enquanto as formas dançam pela tela.</p>
-    <p class="footer mt-6">Uma experiência criada com JavaScript.</p>
-  </main>
-
  <script>
   document.addEventListener('DOMContentLoaded', () => {
     const svg = document.querySelector('svg.background-svg');
     const circles = Array.from(svg.querySelectorAll('circle'));
     
-    // --- MODIFICADO ---
-    // Os caminhos dos arquivos de áudio foram atualizados para os nomes que você forneceu.
-    // Certifique-se de que os arquivos re.mp3, do.mp3, la.mp3, e mi.mp3
-    // estejam na mesma pasta que este arquivo HTML.
+    // MODIFICADO: Os caminhos dos arquivos de áudio foram atualizados
+    // para corresponder aos nomes que você forneceu.
     const colorAndSoundData = [
-      { color: '#1e3a8a', sound: new Audio('re.mp3') },
-      { color: '#ef4444', sound: new Audio('do.mp3') },
-      { color: '#facc15', sound: new Audio('la.mp3') },
-      { color: '#15803d', sound: new Audio('mi.mp3') }
+      { color: '#1e3a8a', sound: new Audio('sounds/fa-note-sound.mp3') },
+      { color: '#ef4444', sound: new Audio('sounds/note-c-is-stretched.mp3') },
+      { color: '#facc15', sound: new Audio('sounds/note-d-is-stretched.mp3') },
+      { color: '#15803d', sound: new Audio('sounds/sol-extended.mp3') }
     ];
     
     function shuffle(array) {
@@ -128,11 +116,8 @@
       
       const clickedCircleData = data.find(d => d.el === clickedCircleElement);
       if (clickedCircleData) {
-        // Inverte a direção do crescimento/encolhimento do raio para um efeito de "toque"
-        clickedCircleData.vr *= -1.2; 
-        
-        // Garante que a velocidade não fique excessivamente alta
-        clickedCircleData.vr = Math.max(-0.5, Math.min(0.5, clickedCircleData.vr));
+        const newRandomRadius = Math.random() * (clickedCircleData.rmax - clickedCircleData.rmin) + clickedCircleData.rmin;
+        clickedCircleData.r = newRandomRadius;
       }
     }
     
