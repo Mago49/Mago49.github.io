@@ -20,7 +20,7 @@
 
     .panel {
         background: rgba(255, 255, 255, 0.95); border-radius: 12px;
-        box-shadow: 0 4px S15px rgba(0,0,0,0.1); padding: 20px; margin-bottom: 20px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1); padding: 20px; margin-bottom: 20px;
         width: 100%; max-width: 600px; box-sizing: border-box;
     }
     .panel h1, .panel h2 { margin-top: 0; border-bottom: 1px solid #ddd; padding-bottom: 10px; }
@@ -78,11 +78,9 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     // --- SETUP INICIAL ---
-    const NUM_SOUNDS = 20;
     const RECORD_DURATION = 60; 
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
-    // MODIFICADO: Cores ajustadas para combinar com a sua logo
     const colors = [
         { id: 0, name: "Azul", color: "#00529B" },
         { id: 1, name: "Vermelho", color: "#D42A2F" },
@@ -90,30 +88,18 @@ document.addEventListener('DOMContentLoaded', () => {
         { id: 3, name: "Verde", color: "#009A44" },
     ];
 
-    // Lista atualizada com os seus 20 nomes de arquivo personalizados.
     let soundFiles = [
-        'sounds/re.mp3',
-        'sounds/f.mp3',
-        'sounds/c.mp3',
-        'sounds/do-segunda-oitava.mp3',
-        'sounds/do-segunda-oitava-alongado.mp3',
-        'sounds/do.mp3',
-        'sounds/mi-esticado.mp3',
-        'sounds/novica-rebelde.mp3',
-        'sounds/mi.mp3',
-        'sounds/c-esticado.mp3',
-        'sounds/la.mp3',
-        'sounds/renote-o-som.mp3',
-        'sounds/nota-c.mp3',
-        'sounds/a-esticado.mp3',
-        'sounds/fa-esticado.mp3',
-        'sounds/nota-salgada.mp3',
-        'sounds/sol-estendida.mp3',
-        'sounds/nota-fa.mp3',
-        'sounds/nota-c-esticado.mp3',
-        'sounds/nota-d-esticado.mp3'
+        'sounds/re.mp3', 'sounds/f.mp3', 'sounds/c.mp3', 'sounds/do-segunda-oitava.mp3',
+        'sounds/do-segunda-oitava-alongado.mp3', 'sounds/do.mp3', 'sounds/mi-esticado.mp3',
+        'sounds/novica-rebelde.mp3', 'sounds/mi.mp3', 'sounds/c-esticado.mp3', 'sounds/la.mp3',
+        'sounds/renote-o-som.mp3', 'sounds/nota-c.mp3', 'sounds/a-esticado.mp3',
+        'sounds/fa-esticado.mp3', 'sounds/nota-salgada.mp3', 'sounds/sol-estendida.mp3',
+        'sounds/nota-fa.mp3', 'sounds/nota-c-esticado.mp3', 'sounds/nota-d-esticado.mp3'
     ];
     
+    // A constante NUM_SOUNDS agora é derivada do tamanho real da sua lista
+    const NUM_SOUNDS = soundFiles.length;
+
     let audioBuffers = {};
     let soundConfiguration = {};
 
@@ -123,36 +109,29 @@ document.addEventListener('DOMContentLoaded', () => {
     const recordButton = document.getElementById('record-button');
     const recorderStatus = document.getElementById('recorder-status');
 
-    // 1. Preenche a UI de configuração
     function populateConfigUI() {
         const panel = document.getElementById('config-panel');
         panel.innerHTML = '<h2>Configurar Sons</h2>';
         colors.forEach(colorInfo => {
             const group = document.createElement('div');
             group.className = 'control-group';
-            
             const label = document.createElement('label');
             label.innerHTML = `<span class="color-indicator" style="background-color: ${colorInfo.color};"></span> ${colorInfo.name}`;
-            
             const select = document.createElement('select');
             select.dataset.colorId = colorInfo.id;
-            
             soundFiles.forEach(filePath => {
                 const option = document.createElement('option');
                 option.value = filePath;
                 option.textContent = filePath.split('/').pop();
                 select.appendChild(option);
             });
-            
             group.appendChild(label);
             group.appendChild(select);
             panel.appendChild(group);
-
             select.addEventListener('change', handleConfigChange);
         });
     }
     
-    // 2. Salva e Carrega configurações do usuário
     function saveConfiguration() {
         localStorage.setItem('soundConfiguration', JSON.stringify(soundConfiguration));
     }
@@ -162,16 +141,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (savedConfig && Object.keys(savedConfig).length > 0) {
             soundConfiguration = savedConfig;
         } else {
+            // CÓDIGO MAIS ROBUSTO: Garante que não quebre se houver menos de 4 sons
             soundConfiguration = {
-                0: soundFiles[0],
-                1: soundFiles[1],
-                2: soundFiles[2],
-                3: soundFiles[3],
+                0: soundFiles.length > 0 ? soundFiles[0] : '',
+                1: soundFiles.length > 1 ? soundFiles[1] : '',
+                2: soundFiles.length > 2 ? soundFiles[2] : '',
+                3: soundFiles.length > 3 ? soundFiles[3] : '',
             };
         }
         document.querySelectorAll('#config-panel select').forEach(select => {
             const colorId = select.dataset.colorId;
-            if(soundConfiguration[colorId]) {
+            if (soundConfiguration[colorId]) {
                select.value = soundConfiguration[colorId];
             }
         });
@@ -185,14 +165,17 @@ document.addEventListener('DOMContentLoaded', () => {
         saveConfiguration();
     }
 
-    // 3. Pré-carrega todos os sons
     async function preloadSounds() {
         recorderStatus.textContent = `Carregando ${NUM_SOUNDS} sons...`;
         recordButton.disabled = true;
         try {
             const promises = soundFiles.map(async (filePath) => {
                 const response = await fetch(filePath);
-                if (!response.ok) throw new Error(`Falha ao carregar ${filePath}`);
+                if (!response.ok) {
+                    // Log mais detalhado do erro
+                    console.error(`Erro 404 (Não Encontrado): O arquivo ${filePath} não foi encontrado no servidor. Verifique o nome e o local do arquivo.`);
+                    throw new Error(`Falha ao carregar ${filePath}`);
+                }
                 const arrayBuffer = await response.arrayBuffer();
                 const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
                 audioBuffers[filePath] = audioBuffer;
@@ -202,13 +185,12 @@ document.addEventListener('DOMContentLoaded', () => {
             recordButton.disabled = false;
         } catch (error) {
             recorderStatus.textContent = 'Erro ao carregar sons. Verifique o console.';
-            console.error(error);
+            // Não precisa de outro console.error aqui, já que o de cima é mais específico
         }
     }
     
-    // 4. Toca um som
     function playSound(filePath) {
-        if (!audioBuffers[filePath]) return;
+        if (!audioBuffers[filePath] || !soundConfiguration) return;
         if (audioContext.state === 'suspended') { audioContext.resume(); }
         const source = audioContext.createBufferSource();
         source.buffer = audioBuffers[filePath];
@@ -223,23 +205,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // 5. Lógica de interação com os círculos
     document.querySelectorAll('.background-svg circle').forEach(circle => {
         circle.addEventListener('click', (event) => {
             const colorId = event.target.dataset.colorId;
             const soundToPlay = soundConfiguration[colorId];
-            playSound(soundToPlay);
+            if (soundToPlay) {
+                playSound(soundToPlay);
+            }
         });
     });
 
-    // 6. Lógica de Gravação
     recordButton.addEventListener('click', () => {
-        if (isRecording) return;
+        if (isRecording || recordButton.disabled) return;
         isRecording = true;
         recordedNotes = [];
         recordingStartTime = audioContext.currentTime;
         recordButton.disabled = true;
-        
         const interval = setInterval(() => {
             const elapsed = audioContext.currentTime - recordingStartTime;
             if (elapsed < RECORD_DURATION) {
@@ -257,20 +238,20 @@ document.addEventListener('DOMContentLoaded', () => {
         renderAndDownload();
     }
     
-    // 7. Renderização e Download
     async function renderAndDownload() {
         const offlineContext = new OfflineAudioContext(2, audioContext.sampleRate * RECORD_DURATION, audioContext.sampleRate);
         recordedNotes.forEach(note => {
-            const source = offlineContext.createBufferSource();
-            source.buffer = audioBuffers[note.filePath];
-            source.connect(offlineContext.destination);
-            source.start(note.time);
+            if (audioBuffers[note.filePath]) {
+                const source = offlineContext.createBufferSource();
+                source.buffer = audioBuffers[note.filePath];
+                source.connect(offlineContext.destination);
+                source.start(note.time);
+            }
         });
 
         const renderedBuffer = await offlineContext.startRendering();
         const wavBlob = bufferToWav(renderedBuffer);
         const url = URL.createObjectURL(wavBlob);
-
         const a = document.createElement('a');
         a.style.display = 'none';
         a.href = url;
@@ -279,7 +260,6 @@ document.addEventListener('DOMContentLoaded', () => {
         a.click();
         URL.revokeObjectURL(url);
         document.body.removeChild(a);
-        
         recorderStatus.textContent = 'Download concluído!';
         setTimeout(() => {
             if (!isRecording) recorderStatus.textContent = 'Pronto para gravar!';
@@ -288,16 +268,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function bufferToWav(buffer) {
-        let numOfChan = buffer.numberOfChannels,
-            len = buffer.length * numOfChan * 2 + 44,
-            wavBuffer = new ArrayBuffer(len),
-            view = new DataView(wavBuffer),
-            channels = [], i, sample, offset = 0, pos = 0;
-        setUint32(0x46464952); setUint32(len - 8); setUint32(0x45564157);
-        setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan);
-        setUint32(buffer.sampleRate); setUint32(buffer.sampleRate * 2 * numOfChan);
-        setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164);
-        setUint32(len - pos - 4);
+        let numOfChan = buffer.numberOfChannels, len = buffer.length * numOfChan * 2 + 44, wavBuffer = new ArrayBuffer(len), view = new DataView(wavBuffer), channels = [], i, sample, offset = 0, pos = 0;
+        setUint32(0x46464952); setUint32(len - 8); setUint32(0x45564157); setUint32(0x20746d66); setUint32(16); setUint16(1); setUint16(numOfChan); setUint32(buffer.sampleRate); setUint32(buffer.sampleRate * 2 * numOfChan); setUint16(numOfChan * 2); setUint16(16); setUint32(0x61746164); setUint32(len - pos - 4);
         for (i = 0; i < buffer.numberOfChannels; i++) channels.push(buffer.getChannelData(i));
         while (pos < len) {
             for (i = 0; i < numOfChan; i++) {
@@ -312,7 +284,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return new Blob([view], { type: 'audio/wav' });
     }
 
-    // --- INICIALIZAÇÃO ---
     populateConfigUI();
     loadConfiguration();
     preloadSounds();
