@@ -73,6 +73,10 @@
     <circle cx="280" cy="520" r="280" fill="#facc15" />
     <circle cx="1160" cy="520" r="280" fill="#15803d" />
   </svg>
+  
+  <div class="container">
+      </div>
+
 
  <script>
   document.addEventListener('DOMContentLoaded', () => {
@@ -112,11 +116,38 @@
     }
 
     const viewbox = svg.viewBox.baseVal;
-    // --- ALTERAÇÃO APLICADA AQUI ---
-    // REMOVIDO: O array com posições fixas não é mais necessário.
-    // const initialPositions = [ { x: 280, y: 280 }, { x: 1160, y: 280 }, { x: 280, y: 520 }, { x: 1160, y: 520 }];
     const initialRadii = [280, 280, 280, 280];
     let data = [];
+
+    // --- NOVO CÓDIGO COMEÇA AQUI ---
+    let visibleBounds; // Objeto para guardar os limites visíveis do SVG
+    const point = svg.createSVGPoint(); // Ponto auxiliar para conversão de coordenadas
+
+    // Função que calcula a área visível do SVG
+    function updateVisibleBounds() {
+      const ctm = svg.getScreenCTM().inverse(); // Matriz de transformação
+      
+      point.x = 0; // Canto superior esquerdo da tela
+      point.y = 0;
+      const topLeft = point.matrixTransform(ctm);
+      
+      point.x = window.innerWidth; // Canto inferior direito da tela
+      point.y = window.innerHeight;
+      const bottomRight = point.matrixTransform(ctm);
+
+      visibleBounds = {
+        x: topLeft.x,
+        y: topLeft.y,
+        width: bottomRight.x - topLeft.x,
+        height: bottomRight.y - topLeft.y
+      };
+    }
+    
+    // Calcula os limites iniciais e recalcula se a janela for redimensionada
+    updateVisibleBounds();
+    window.addEventListener('resize', updateVisibleBounds);
+    // --- FIM DO NOVO CÓDIGO ---
+
 
     function setupAnimation() {
       data = circles.map((c, i) => {
@@ -126,8 +157,6 @@
 
         return {
           el: c,
-          // --- ALTERAÇÃO APLICADA AQUI ---
-          // A posição inicial (x, y) agora é o centro do viewBox.
           x: viewbox.width / 2,
           y: viewbox.height / 2,
           r: initR,
@@ -147,26 +176,29 @@
         d.y += d.vy;
         d.r += d.vr;
 
+        // --- ALTERAÇÕES APLICADAS AQUI ---
+        // As checagens de colisão agora usam os limites visíveis calculados (visibleBounds)
+
         // Borda Direita
-        if (d.x + d.r > viewbox.width) {
+        if (d.x + d.r > visibleBounds.x + visibleBounds.width) {
           d.vx *= -1;
-          d.x = viewbox.width - d.r;
+          d.x = visibleBounds.x + visibleBounds.width - d.r;
         } 
         // Borda Esquerda
-        else if (d.x - d.r < viewbox.x) {
+        else if (d.x - d.r < visibleBounds.x) {
           d.vx *= -1;
-          d.x = viewbox.x + d.r;
+          d.x = visibleBounds.x + d.r;
         }
 
         // Borda Inferior
-        if (d.y + d.r > viewbox.height) {
+        if (d.y + d.r > visibleBounds.y + visibleBounds.height) {
           d.vy *= -1;
-          d.y = viewbox.height - d.r;
+          d.y = visibleBounds.y + visibleBounds.height - d.r;
         } 
         // Borda Superior
-        else if (d.y - d.r < viewbox.y) {
+        else if (d.y - d.r < visibleBounds.y) {
           d.vy *= -1;
-          d.y = viewbox.y + d.r;
+          d.y = visibleBounds.y + d.r;
         }
 
         if (d.r < d.rmin || d.r > d.rmax) {
@@ -182,7 +214,6 @@
 
     animate();
   });
-
 </script>
 </body>
 </html>
