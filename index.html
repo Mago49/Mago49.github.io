@@ -73,9 +73,6 @@
     <circle cx="280" cy="520" r="280" fill="#facc15" />
     <circle cx="1160" cy="520" r="280" fill="#15803d" />
   </svg>
-  
-  <div class="container">
-     </div>
 
  <script>
   document.addEventListener('DOMContentLoaded', () => {
@@ -98,16 +95,31 @@
       return shuffledArray;
     }
 
+    // --- CÓDIGO ALTERADO ---
     function handleInteraction(event) {
       const clickedCircleElement = event.target;
 
+      // --- INÍCIO DA MODIFICAÇÃO ---
+      // 1. Encontra o objeto de dados correspondente à bolinha que foi clicada.
+      const clickedCircleData = data.find(d => d.el === clickedCircleElement);
+
+      // 2. Se encontrou, calcula um novo raio aleatório dentro dos limites min/max.
+      if (clickedCircleData) {
+        const newRadius = Math.random() * (clickedCircleData.rmax - clickedCircleData.rmin) + clickedCircleData.rmin;
+        // 3. Atualiza o raio no objeto de dados. A função animate() aplicará a mudança.
+        clickedCircleData.r = newRadius;
+      }
+      // --- FIM DA MODIFICAÇÃO ---
+
+      // Código existente para tocar som
       const currentColor = clickedCircleElement.getAttribute('fill');
       const currentSoundData = colorAndSoundData.find(data => data.color === currentColor);
       if (currentSoundData) {
         currentSoundData.sound.currentTime = 0;
         currentSoundData.sound.play().catch(e => console.error("Erro ao tocar áudio:", e));
       }
-
+      
+      // Código existente para embaralhar cores
       const newColorOrder = shuffle(colorAndSoundData);
       circles.forEach((circle, index) => {
         circle.setAttribute('fill', newColorOrder[index].color);
@@ -117,33 +129,25 @@
     const viewbox = svg.viewBox.baseVal;
     const initialRadii = [280, 280, 280, 280];
     let data = [];
-
-    // Lógica para calcular a área visível do SVG
+    
     let visibleBounds;
     const point = svg.createSVGPoint();
 
     function updateVisibleBounds() {
       const ctm = svg.getScreenCTM().inverse();
-
-      point.x = 0;
-      point.y = 0;
+      point.x = 0; point.y = 0;
       const topLeft = point.matrixTransform(ctm);
-
-      point.x = window.innerWidth;
-      point.y = window.innerHeight;
+      point.x = window.innerWidth; point.y = window.innerHeight;
       const bottomRight = point.matrixTransform(ctm);
-
       visibleBounds = {
-        x: topLeft.x,
-        y: topLeft.y,
-        width: bottomRight.x - topLeft.x,
-        height: bottomRight.y - topLeft.y
+        x: topLeft.x, y: topLeft.y,
+        width: bottomRight.x - topLeft.x, height: bottomRight.y - topLeft.y
       };
     }
 
     updateVisibleBounds();
     window.addEventListener('resize', updateVisibleBounds);
-
+    
     function setupAnimation() {
       data = circles.map((c, i) => {
         c.addEventListener('click', handleInteraction);
@@ -166,44 +170,27 @@
     setupAnimation();
 
     function animate() {
-      // Garante que visibleBounds não seja nulo no primeiro frame
-      if (!visibleBounds) {
-        requestAnimationFrame(animate);
-        return;
-      }
-
       data.forEach((d) => {
         d.x += d.vx;
         d.y += d.vy;
         d.r += d.vr;
 
-        // **AQUI ESTÁ A ALTERAÇÃO PRINCIPAL**
-        // A detecção de colisão agora usa os limites visíveis (visibleBounds)
-        // em vez das dimensões fixas do viewBox.
-
-        // Colisão com a borda direita da janela
         if (d.x + d.r > visibleBounds.x + visibleBounds.width) {
           d.vx *= -1;
-          d.x = visibleBounds.x + visibleBounds.width - d.r; // Corrige a posição
-        } 
-        // Colisão com a borda esquerda da janela
-        else if (d.x - d.r < visibleBounds.x) {
+          d.x = visibleBounds.x + visibleBounds.width - d.r;
+        } else if (d.x - d.r < visibleBounds.x) {
           d.vx *= -1;
-          d.x = visibleBounds.x + d.r; // Corrige a posição
+          d.x = visibleBounds.x + d.r;
         }
 
-        // Colisão com a borda inferior da janela
         if (d.y + d.r > visibleBounds.y + visibleBounds.height) {
           d.vy *= -1;
-          d.y = visibleBounds.y + visibleBounds.height - d.r; // Corrige a posição
-        } 
-        // Colisão com a borda superior da janela
-        else if (d.y - d.r < visibleBounds.y) {
+          d.y = visibleBounds.y + visibleBounds.height - d.r;
+        } else if (d.y - d.r < visibleBounds.y) {
           d.vy *= -1;
-          d.y = visibleBounds.y + d.r; // Corrige a posição
+          d.y = visibleBounds.y + d.r;
         }
 
-        // Inverte a animação do raio se atingir o mínimo ou máximo
         if (d.r < d.rmin || d.r > d.rmax) {
           d.vr *= -1;
         }
