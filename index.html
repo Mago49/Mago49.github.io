@@ -78,14 +78,14 @@
   document.addEventListener('DOMContentLoaded', () => {
     const svg = document.querySelector('svg.background-svg');
     const circles = Array.from(svg.querySelectorAll('circle'));
-    
+
     const colorAndSoundData = [
       { color: '#1e3a8a', sound: new Audio('sounds/fa-note-sound.mp3') },
       { color: '#ef4444', sound: new Audio('sounds/note-c-is-stretched.mp3') },
       { color: '#facc15', sound: new Audio('sounds/note-d-is-stretched.mp3') },
       { color: '#15803d', sound: new Audio('sounds/sol-extended.mp3') }
     ];
-    
+
     function shuffle(array) {
       const shuffledArray = [...array];
       for (let i = shuffledArray.length - 1; i > 0; i--) {
@@ -110,22 +110,27 @@
         circle.setAttribute('fill', newColorOrder[index].color);
       });
     }
-    
+
     const viewbox = svg.viewBox.baseVal;
-    const initialPositions = [ { x: 280, y: 280 }, { x: 1160, y: 280 }, { x: 280, y: 520 }, { x: 1160, y: 520 }];
+    // --- ALTERAÇÃO APLICADA AQUI ---
+    // REMOVIDO: O array com posições fixas não é mais necessário.
+    // const initialPositions = [ { x: 280, y: 280 }, { x: 1160, y: 280 }, { x: 280, y: 520 }, { x: 1160, y: 520 }];
     const initialRadii = [280, 280, 280, 280];
     let data = [];
 
     function setupAnimation() {
       data = circles.map((c, i) => {
         c.addEventListener('click', handleInteraction);
-        
-        // --- ALTERAÇÃO APLICADA AQUI ---
-        // O raio inicial agora é 50% menor que o anterior.
-        const initR = initialRadii[i] * 0.3; 
-        
+
+        const initR = initialRadii[i] * 0.3;
+
         return {
-          el: c, x: initialPositions[i].x, y: initialPositions[i].y, r: initR,
+          el: c,
+          // --- ALTERAÇÃO APLICADA AQUI ---
+          // A posição inicial (x, y) agora é o centro do viewBox.
+          x: viewbox.width / 2,
+          y: viewbox.height / 2,
+          r: initR,
           vx: (Math.random() * 0.5 + 0.2) * (Math.random() < 0.5 ? -1 : 1),
           vy: (Math.random() * 0.5 + 0.2) * (Math.random() < 0.5 ? -1 : 1),
           vr: (Math.random() * 0.03 + 0.015) * (Math.random() < 0.5 ? -1 : 1),
@@ -163,7 +168,7 @@
           d.vy *= -1;
           d.y = viewbox.y + d.r;
         }
-        
+
         if (d.r < d.rmin || d.r > d.rmax) {
           d.vr *= -1;
         }
@@ -174,10 +179,10 @@
       });
       requestAnimationFrame(animate);
     }
-    
+
     animate();
   });
-   
+
 </script>
 </body>
 </html>
