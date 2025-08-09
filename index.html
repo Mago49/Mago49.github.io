@@ -79,8 +79,6 @@
     const svg = document.querySelector('svg.background-svg');
     const circles = Array.from(svg.querySelectorAll('circle'));
     
-    // MODIFICADO: Os caminhos dos arquivos de áudio foram atualizados
-    // para corresponder aos nomes que você forneceu.
     const colorAndSoundData = [
       { color: '#1e3a8a', sound: new Audio('sounds/fa-note-sound.mp3') },
       { color: '#ef4444', sound: new Audio('sounds/note-c-is-stretched.mp3') },
@@ -100,7 +98,6 @@
     function handleInteraction(event) {
       const clickedCircleElement = event.target;
 
-      // --- LÓGICA DE SOM DA COR ATUAL ---
       const currentColor = clickedCircleElement.getAttribute('fill');
       const currentSoundData = colorAndSoundData.find(data => data.color === currentColor);
       if (currentSoundData) {
@@ -108,17 +105,10 @@
         currentSoundData.sound.play().catch(e => console.error("Erro ao tocar áudio:", e));
       }
 
-      // --- LÓGICA VISUAL (COR E TAMANHO) ---
       const newColorOrder = shuffle(colorAndSoundData);
       circles.forEach((circle, index) => {
         circle.setAttribute('fill', newColorOrder[index].color);
       });
-      
-      const clickedCircleData = data.find(d => d.el === clickedCircleElement);
-      if (clickedCircleData) {
-        const newRandomRadius = Math.random() * (clickedCircleData.rmax - clickedCircleData.rmin) + clickedCircleData.rmin;
-        clickedCircleData.r = newRandomRadius;
-      }
     }
     
     const viewbox = svg.viewBox.baseVal;
@@ -129,7 +119,11 @@
     function setupAnimation() {
       data = circles.map((c, i) => {
         c.addEventListener('click', handleInteraction);
-        const initR = initialRadii[i] * 0.6; 
+        
+        // --- ALTERAÇÃO APLICADA AQUI ---
+        // O raio inicial agora é 50% menor que o anterior.
+        const initR = initialRadii[i] * 0.3; 
+        
         return {
           el: c, x: initialPositions[i].x, y: initialPositions[i].y, r: initR,
           vx: (Math.random() * 0.5 + 0.2) * (Math.random() < 0.5 ? -1 : 1),
@@ -144,16 +138,46 @@
 
     function animate() {
       data.forEach((d) => {
-        d.x += d.vx; d.y += d.vy; d.r += d.vr;
-        if (d.x - d.r < viewbox.x || d.x + d.r > viewbox.width) { d.vx *= -1; }
-        if (d.y - d.r < viewbox.y || d.y + d.r > viewbox.height) { d.vy *= -1; }
-        if (d.r < d.rmin || d.r > d.rmax) { d.vr *= -1; }
-        d.el.setAttribute('cx', d.x); d.el.setAttribute('cy', d.y); d.el.setAttribute('r', d.r);
+        d.x += d.vx;
+        d.y += d.vy;
+        d.r += d.vr;
+
+        // Borda Direita
+        if (d.x + d.r > viewbox.width) {
+          d.vx *= -1;
+          d.x = viewbox.width - d.r;
+        } 
+        // Borda Esquerda
+        else if (d.x - d.r < viewbox.x) {
+          d.vx *= -1;
+          d.x = viewbox.x + d.r;
+        }
+
+        // Borda Inferior
+        if (d.y + d.r > viewbox.height) {
+          d.vy *= -1;
+          d.y = viewbox.height - d.r;
+        } 
+        // Borda Superior
+        else if (d.y - d.r < viewbox.y) {
+          d.vy *= -1;
+          d.y = viewbox.y + d.r;
+        }
+        
+        if (d.r < d.rmin || d.r > d.rmax) {
+          d.vr *= -1;
+        }
+
+        d.el.setAttribute('cx', d.x);
+        d.el.setAttribute('cy', d.y);
+        d.el.setAttribute('r', d.r);
       });
       requestAnimationFrame(animate);
     }
+    
     animate();
   });
+   
 </script>
 </body>
 </html>
