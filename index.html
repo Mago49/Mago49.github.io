@@ -73,10 +73,6 @@
     <circle cx="280" cy="520" r="280" fill="#facc15" />
     <circle cx="1160" cy="520" r="280" fill="#15803d" />
   </svg>
-  
-  <div class="container">
-      </div>
-
 
  <script>
   document.addEventListener('DOMContentLoaded', () => {
@@ -126,11 +122,11 @@
     // Função que calcula a área visível do SVG
     function updateVisibleBounds() {
       const ctm = svg.getScreenCTM().inverse(); // Matriz de transformação
-      
+
       point.x = 0; // Canto superior esquerdo da tela
       point.y = 0;
       const topLeft = point.matrixTransform(ctm);
-      
+
       point.x = window.innerWidth; // Canto inferior direito da tela
       point.y = window.innerHeight;
       const bottomRight = point.matrixTransform(ctm);
@@ -142,7 +138,7 @@
         height: bottomRight.y - topLeft.y
       };
     }
-    
+
     // Calcula os limites iniciais e recalcula se a janela for redimensionada
     updateVisibleBounds();
     window.addEventListener('resize', updateVisibleBounds);
