@@ -72,6 +72,8 @@
     <circle cx="1160" cy="280" r="280" fill="#ef4444" />
     <circle cx="280" cy="520" r="280" fill="#facc15" />
     <circle cx="1160" cy="520" r="280" fill="#15803d" />
+    <circle cx="720" cy="100" r="280" fill="#8b5cf6" />
+    <circle cx="720" cy="700" r="280" fill="#f97316" />
   </svg>
 
  <script>
@@ -79,11 +81,14 @@
     const svg = document.querySelector('svg.background-svg');
     const circles = Array.from(svg.querySelectorAll('circle'));
 
+    // NOVO: Adicionados dados para os novos círculos (cores e sons)
     const colorAndSoundData = [
       { color: '#1e3a8a', sound: new Audio('sounds/fa-note-sound.mp3') },
       { color: '#ef4444', sound: new Audio('sounds/note-c-is-stretched.mp3') },
       { color: '#facc15', sound: new Audio('sounds/note-d-is-stretched.mp3') },
-      { color: '#15803d', sound: new Audio('sounds/sol-extended.mp3') }
+      { color: '#15803d', sound: new Audio('sounds/sol-extended.mp3') },
+      { color: '#8b5cf6', sound: new Audio('sounds/new-note-1.mp3') }, // Som de exemplo
+      { color: '#f97316', sound: new Audio('sounds/new-note-2.mp3') }  // Som de exemplo
     ];
 
     function shuffle(array) {
@@ -94,32 +99,24 @@
       }
       return shuffledArray;
     }
-
-    // --- CÓDIGO ALTERADO ---
+    
     function handleInteraction(event) {
       const clickedCircleElement = event.target;
-
-      // --- INÍCIO DA MODIFICAÇÃO ---
-      // 1. Encontra o objeto de dados correspondente à bolinha que foi clicada.
+      
       const clickedCircleData = data.find(d => d.el === clickedCircleElement);
 
-      // 2. Se encontrou, calcula um novo raio aleatório dentro dos limites min/max.
       if (clickedCircleData) {
         const newRadius = Math.random() * (clickedCircleData.rmax - clickedCircleData.rmin) + clickedCircleData.rmin;
-        // 3. Atualiza o raio no objeto de dados. A função animate() aplicará a mudança.
         clickedCircleData.r = newRadius;
       }
-      // --- FIM DA MODIFICAÇÃO ---
 
-      // Código existente para tocar som
       const currentColor = clickedCircleElement.getAttribute('fill');
       const currentSoundData = colorAndSoundData.find(data => data.color === currentColor);
       if (currentSoundData) {
         currentSoundData.sound.currentTime = 0;
         currentSoundData.sound.play().catch(e => console.error("Erro ao tocar áudio:", e));
       }
-      
-      // Código existente para embaralhar cores
+
       const newColorOrder = shuffle(colorAndSoundData);
       circles.forEach((circle, index) => {
         circle.setAttribute('fill', newColorOrder[index].color);
@@ -127,9 +124,10 @@
     }
 
     const viewbox = svg.viewBox.baseVal;
-    const initialRadii = [280, 280, 280, 280];
+    // NOVO: Array de raios ajustado para 6 círculos
+    const initialRadii = [280, 280, 280, 280, 280, 280];
     let data = [];
-    
+
     let visibleBounds;
     const point = svg.createSVGPoint();
 
@@ -147,7 +145,7 @@
 
     updateVisibleBounds();
     window.addEventListener('resize', updateVisibleBounds);
-    
+
     function setupAnimation() {
       data = circles.map((c, i) => {
         c.addEventListener('click', handleInteraction);
