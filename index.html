@@ -76,19 +76,33 @@
     <circle cx="720" cy="700" r="280" fill="#f97316" />
   </svg>
 
+ <div class="container"><div class="logo-container">
+        <i class="fas fa-brain fa-3x text-blue-800 pulse-icon"></i>
+        <h2 class="gradient-title">Inteligência Artificial para Todos</h2>
+    </div>
+    <h1>Descomplicando o Futuro, Hoje.</h1>
+    <p class="text-lg">Explore o poder da IA com soluções criativas e acessíveis. Da automação de tarefas à geração de conteúdo, estamos aqui para transformar suas ideias em realidade.</p>
+    <div class="mt-8 mb-6">
+        <a href="#contato" class="cta-button py-3 px-8">Vamos Conversar!</a>
+    </div>
+    <div class="footer">
+        <p>Contato: <a href="mailto:contato@iaparatodos.com" class="text-blue-800 hover:underline">contato@iaparatodos.com</a></p>
+    </div>
+ </div>
+
  <script>
   document.addEventListener('DOMContentLoaded', () => {
     const svg = document.querySelector('svg.background-svg');
     const circles = Array.from(svg.querySelectorAll('circle'));
 
-    // NOVO: Adicionados dados para os novos círculos (cores e sons)
+    // ALTERADO: Adicionados dados para os novos círculos (cores e sons)
     const colorAndSoundData = [
       { color: '#1e3a8a', sound: new Audio('sounds/fa-note-sound.mp3') },
       { color: '#ef4444', sound: new Audio('sounds/note-c-is-stretched.mp3') },
       { color: '#facc15', sound: new Audio('sounds/note-d-is-stretched.mp3') },
       { color: '#15803d', sound: new Audio('sounds/sol-extended.mp3') },
-      { color: '#8b5cf6', sound: new Audio('sounds/new-note-1.mp3') }, // Som de exemplo
-      { color: '#f97316', sound: new Audio('sounds/new-note-2.mp3') }  // Som de exemplo
+      { color: '#8b5cf6', sound: new Audio('sounds/new-note-1.mp3') }, // Lembre-se de adicionar este arquivo de áudio
+      { color: '#f97316', sound: new Audio('sounds/new-note-2.mp3') }  // Lembre-se de adicionar este arquivo de áudio
     ];
 
     function shuffle(array) {
@@ -99,17 +113,18 @@
       }
       return shuffledArray;
     }
-    
+
+    // A sua lógica de interação personalizada (sem alterações)
     function handleInteraction(event) {
       const clickedCircleElement = event.target;
-      
+
       const clickedCircleData = data.find(d => d.el === clickedCircleElement);
 
       if (clickedCircleData) {
         const newRadius = Math.random() * (clickedCircleData.rmax - clickedCircleData.rmin) + clickedCircleData.rmin;
         clickedCircleData.r = newRadius;
       }
-
+      
       const currentColor = clickedCircleElement.getAttribute('fill');
       const currentSoundData = colorAndSoundData.find(data => data.color === currentColor);
       if (currentSoundData) {
@@ -124,7 +139,7 @@
     }
 
     const viewbox = svg.viewBox.baseVal;
-    // NOVO: Array de raios ajustado para 6 círculos
+    // ALTERADO: Array de raios ajustado para 6 círculos
     const initialRadii = [280, 280, 280, 280, 280, 280];
     let data = [];
 
