@@ -84,7 +84,7 @@
     const svg = document.querySelector('svg.background-svg');
     const circles = Array.from(svg.querySelectorAll('circle'));
 
-    // --- Lógica das bolinhas ---
+    // --- Lógica das bolinhas (simplificada para foco no calendário) ---
     const viewbox = svg.viewBox.baseVal;
     const initialRadii = [280, 280, 280, 280];
     let data = [];
@@ -149,16 +149,6 @@
           const input = document.getElementById('codeInput');
           input.value = '';
           input.focus();
-
-          // Faz scroll suave até o centro da tela
-          let cell = info.dayEl; 
-          if (!cell) {
-            // fallback: procura célula pelo atributo data-date
-            cell = calendarEl.querySelector(`[data-date="${info.dateStr}"]`);
-          }
-          if (cell) {
-            cell.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }
 
           // Botão salvar
           document.getElementById('saveCode').onclick = function() {
