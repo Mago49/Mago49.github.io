@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>IA para Todos!</title>
+  <title>Calendário com Códigos</title>
 
   <!-- FullCalendar -->
   <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet" />
@@ -27,6 +27,31 @@
       width: 100%; height: 100%;
       z-index: 0;
     }
+    /* Estilo do modal */
+    .modal {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      display: none; align-items: center; justify-content: center;
+      z-index: 20;
+    }
+    .modal-content {
+      background: #fff; padding: 2rem; border-radius: 1rem;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+      text-align: center; max-width: 300px; width: 100%;
+    }
+    .modal-content h2 { margin-bottom: 1rem; }
+    .modal-content input {
+      width: 100%; padding: .5rem; font-size: 1rem;
+      border: 1px solid #ccc; border-radius: .5rem; margin-bottom: 1rem;
+      text-align: center;
+    }
+    .modal-content button {
+      padding: .5rem 1rem; border: none; border-radius: .5rem;
+      font-weight: bold; cursor: pointer;
+    }
+    .btn-save { background: #15803d; color: #fff; margin-right: .5rem; }
+    .btn-cancel { background: #ef4444; color: #fff; }
   </style>
 </head>
 
@@ -42,77 +67,31 @@
   <!-- Calendário -->
   <div id="calendar"></div>
 
+  <!-- Modal para inserir código -->
+  <div class="modal" id="codeModal">
+    <div class="modal-content">
+      <h2>Adicionar Código</h2>
+      <input type="text" id="codeInput" maxlength="4" placeholder="Ex: DDUU" />
+      <div>
+        <button class="btn-save" id="saveCode">Salvar</button>
+        <button class="btn-cancel" id="cancelCode">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       const svg = document.querySelector('svg.background-svg');
       const circles = Array.from(svg.querySelectorAll('circle'));
 
-      const colorAndSoundData = [
-        { color: '#1e3a8a', sound: new Audio('sounds/fa-note-sound.mp3') },
-        { color: '#ef4444', sound: new Audio('sounds/note-c-is-stretched.mp3') },
-        { color: '#facc15', sound: new Audio('sounds/note-d-is-stretched.mp3') },
-        { color: '#15803d', sound: new Audio('sounds/sol-extended.mp3') }
-      ];
-
-      function shuffle(array) {
-        const shuffledArray = [...array];
-        for (let i = shuffledArray.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [shuffledArray[i], shuffledArray[j]] = [shuffledArray[j], shuffledArray[i]];
-        }
-        return shuffledArray;
-      }
-
-      function handleInteraction(event) {
-        const clickedCircleElement = event.target;
-        const clickedCircleData = data.find(d => d.el === clickedCircleElement);
-
-        if (clickedCircleData) {
-          const newRadius = Math.random() * (clickedCircleData.rmax - clickedCircleData.rmin) + clickedCircleData.rmin;
-          clickedCircleData.r = newRadius;
-        }
-
-        const currentColor = clickedCircleElement.getAttribute('fill');
-        const currentSoundData = colorAndSoundData.find(data => data.color === currentColor);
-        if (currentSoundData) {
-          currentSoundData.sound.currentTime = 0;
-          currentSoundData.sound.play().catch(e => console.error("Erro ao tocar áudio:", e));
-        }
-
-        const newColorOrder = shuffle(colorAndSoundData);
-        circles.forEach((circle, index) => {
-          circle.setAttribute('fill', newColorOrder[index].color);
-        });
-      }
-
+      // --- Lógica das bolinhas (simplificada para foco no calendário) ---
       const viewbox = svg.viewBox.baseVal;
       const initialRadii = [280, 280, 280, 280];
       let data = [];
 
-      let visibleBounds;
-      const point = svg.createSVGPoint();
-
-      function updateVisibleBounds() {
-        const ctm = svg.getScreenCTM().inverse();
-        point.x = 0; point.y = 0;
-        const topLeft = point.matrixTransform(ctm);
-        point.x = window.innerWidth; point.y = window.innerHeight;
-        const bottomRight = point.matrixTransform(ctm);
-        visibleBounds = {
-          x: topLeft.x, y: topLeft.y,
-          width: bottomRight.x - topLeft.x, height: bottomRight.y - topLeft.y
-        };
-      }
-
-      updateVisibleBounds();
-      window.addEventListener('resize', updateVisibleBounds);
-
       function setupAnimation() {
         data = circles.map((c, i) => {
-          c.addEventListener('click', handleInteraction);
-
           const initR = initialRadii[i] * 0.3;
-
           return {
             el: c,
             x: viewbox.width / 2,
@@ -125,7 +104,6 @@
           };
         });
       }
-
       setupAnimation();
 
       function animate() {
@@ -133,38 +111,18 @@
           d.x += d.vx;
           d.y += d.vy;
           d.r += d.vr;
-
-          if (d.x + d.r > visibleBounds.x + visibleBounds.width) {
-            d.vx *= -1;
-            d.x = visibleBounds.x + visibleBounds.width - d.r;
-          } else if (d.x - d.r < visibleBounds.x) {
-            d.vx *= -1;
-            d.x = visibleBounds.x + d.r;
-          }
-
-          if (d.y + d.r > visibleBounds.y + visibleBounds.height) {
-            d.vy *= -1;
-            d.y = visibleBounds.y + visibleBounds.height - d.r;
-          } else if (d.y - d.r < visibleBounds.y) {
-            d.vy *= -1;
-            d.y = visibleBounds.y + d.r;
-          }
-
-          if (d.r < d.rmin || d.r > d.rmax) {
-            d.vr *= -1;
-          }
-
           d.el.setAttribute('cx', d.x);
           d.el.setAttribute('cy', d.y);
           d.el.setAttribute('r', d.r);
         });
         requestAnimationFrame(animate);
       }
-
       animate();
 
-      // --- Calendário integrado ---
+      // --- Calendário com escrita persistente ---
       const calendarEl = document.getElementById('calendar');
+      const savedEvents = JSON.parse(localStorage.getItem('calendarEvents')) || [];
+
       const calendar = new FullCalendar.Calendar(calendarEl, {
         initialView: 'dayGridMonth',
         locale: 'pt-br',
@@ -175,26 +133,34 @@
           center: 'title',
           right: 'dayGridMonth,timeGridWeek,timeGridDay'
         },
-        events: [
-          { title: 'Reunião', start: '2026-05-21T10:00:00' },
-          { title: 'Aniversário', start: '2026-05-25' }
-        ],
+        events: savedEvents,
         dateClick: function(info) {
-          // Interação com bolinhas ao clicar em uma data
-          data.forEach(d => {
-            const colors = ['#1e3a8a','#ef4444','#facc15','#15803d','#9333ea','#06b6d4'];
-            const randomColor = colors[Math.floor(Math.random() * colors.length)];
-            d.el.setAttribute('fill', randomColor);
+          // Abre modal para inserir código
+          const modal = document.getElementById('codeModal');
+          modal.style.display = 'flex';
 
-            d.el.animate([
-              { r: d.r },
-              { r: d.r * 1.2 },
-              { r: d.r }
-            ], {
-              duration: 600,
-              easing: 'ease-in-out'
-            });
-          });
+          const input = document.getElementById('codeInput');
+          input.value = '';
+          input.focus();
+
+          // Botão salvar
+          document.getElementById('saveCode').onclick = function() {
+            const code = input.value.trim();
+            if (code && code.length === 4) {
+              const newEvent = { title: code, start: info.dateStr };
+              calendar.addEvent(newEvent);
+              savedEvents.push(newEvent);
+              localStorage.setItem('calendarEvents', JSON.stringify(savedEvents));
+              modal.style.display = 'none';
+            } else {
+              alert("Digite exatamente 4 caracteres (letras ou números).");
+            }
+          };
+
+          // Botão cancelar
+          document.getElementById('cancelCode').onclick = function() {
+            modal.style.display = 'none';
+          };
         }
       });
       calendar.render();
