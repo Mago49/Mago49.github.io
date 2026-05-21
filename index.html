@@ -79,12 +79,12 @@
     </div>
   </div>
 
-  <script>
+<script>
   document.addEventListener('DOMContentLoaded', () => {
     const svg = document.querySelector('svg.background-svg');
     const circles = Array.from(svg.querySelectorAll('circle'));
 
-    // --- Lógica das bolinhas (simplificada para foco no calendário) ---
+    // --- Lógica das bolinhas ---
     const viewbox = svg.viewBox.baseVal;
     const initialRadii = [280, 280, 280, 280];
     let data = [];
@@ -151,8 +151,14 @@
           input.focus();
 
           // Faz scroll suave até o centro da tela
-          const cell = info.dayEl; // célula do calendário clicada
-          cell.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          let cell = info.dayEl; 
+          if (!cell) {
+            // fallback: procura célula pelo atributo data-date
+            cell = calendarEl.querySelector(`[data-date="${info.dateStr}"]`);
+          }
+          if (cell) {
+            cell.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
 
           // Botão salvar
           document.getElementById('saveCode').onclick = function() {
