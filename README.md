@@ -78,7 +78,6 @@
       </div>
     </div>
   </div>
-
 <script>
   document.addEventListener('DOMContentLoaded', () => {
     const svg = document.querySelector('svg.background-svg');
@@ -150,6 +149,10 @@
           input.value = '';
           input.focus();
 
+          // Faz scroll suave até o centro da tela
+          const cell = info.dayEl; // célula do calendário clicada
+          cell.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
           // Botão salvar
           document.getElementById('saveCode').onclick = function() {
             const code = input.value.trim();
@@ -178,5 +181,6 @@
     calendar.render();
   });
 </script>
+          
 </body>
 </html>
