@@ -79,70 +79,63 @@
     </div>
   </div>
 
-<script>
-  document.addEventListener('DOMContentLoaded', () => {
-    const svg = document.querySelector('svg.background-svg');
-    const circles = Array.from(svg.querySelectorAll('circle'));
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const svg = document.querySelector('svg.background-svg');
+      const circles = Array.from(svg.querySelectorAll('circle'));
 
-    // --- Lógica das bolinhas (simplificada para foco no calendário) ---
-    const viewbox = svg.viewBox.baseVal;
-    const initialRadii = [280, 280, 280, 280];
-    let data = [];
+      // --- Lógica das bolinhas (simplificada para foco no calendário) ---
+      const viewbox = svg.viewBox.baseVal;
+      const initialRadii = [280, 280, 280, 280];
+      let data = [];
 
-    function setupAnimation() {
-      data = circles.map((c, i) => {
-        const initR = initialRadii[i] * 0.3;
-        return {
-          el: c,
-          x: viewbox.width / 2,
-          y: viewbox.height / 2,
-          r: initR,
-          vx: (Math.random() * 0.5 + 0.2) * (Math.random() < 0.5 ? -1 : 1),
-          vy: (Math.random() * 0.5 + 0.2) * (Math.random() < 0.5 ? -1 : 1),
-          vr: (Math.random() * 0.03 + 0.015) * (Math.random() < 0.5 ? -1 : 1),
-          rmin: initR * 0.40, rmax: initR * 1.30
-        };
-      });
-    }
-    setupAnimation();
+      function setupAnimation() {
+        data = circles.map((c, i) => {
+          const initR = initialRadii[i] * 0.3;
+          return {
+            el: c,
+            x: viewbox.width / 2,
+            y: viewbox.height / 2,
+            r: initR,
+            vx: (Math.random() * 0.5 + 0.2) * (Math.random() < 0.5 ? -1 : 1),
+            vy: (Math.random() * 0.5 + 0.2) * (Math.random() < 0.5 ? -1 : 1),
+            vr: (Math.random() * 0.03 + 0.015) * (Math.random() < 0.5 ? -1 : 1),
+            rmin: initR * 0.40, rmax: initR * 1.30
+          };
+        });
+      }
+      setupAnimation();
 
-    function animate() {
-      data.forEach((d) => {
-        d.x += d.vx;
-        d.y += d.vy;
-        d.r += d.vr;
-        d.el.setAttribute('cx', d.x);
-        d.el.setAttribute('cy', d.y);
-        d.el.setAttribute('r', d.r);
-      });
-      requestAnimationFrame(animate);
-    }
-    animate();
+      function animate() {
+        data.forEach((d) => {
+          d.x += d.vx;
+          d.y += d.vy;
+          d.r += d.vr;
+          d.el.setAttribute('cx', d.x);
+          d.el.setAttribute('cy', d.y);
+          d.el.setAttribute('r', d.r);
+        });
+        requestAnimationFrame(animate);
+      }
+      animate();
 
-    // --- Calendário com escrita persistente ---
-    const calendarEl = document.getElementById('calendar');
-    const savedEvents = JSON.parse(localStorage.getItem('calendarEvents')) || [];
+      // --- Calendário com escrita persistente ---
+      const calendarEl = document.getElementById('calendar');
+      const savedEvents = JSON.parse(localStorage.getItem('calendarEvents')) || [];
 
-    // Controle de duplo clique
-    let lastClickDate = null;
-    let lastClickTime = 0;
-
-    const calendar = new FullCalendar.Calendar(calendarEl, {
-      initialView: 'dayGridMonth',
-      locale: 'pt-br',
-      selectable: true,
-      editable: true,
-      headerToolbar: {
-        left: 'prev,next today',
-        center: 'title',
-        right: 'dayGridMonth,timeGridWeek,timeGridDay'
-      },
-      events: savedEvents,
-      dateClick: function(info) {
-        const now = Date.now();
-
-        // Se clicou na mesma data em menos de 400ms → duplo clique
-        if (lastClickDate === info.dateStr && (now - lastClickTime) < 400) {
+      const calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        locale: 'pt-br',
+        selectable: true,
+        editable: true,
+        headerToolbar: {
+          left: 'prev,next today',
+          center: 'title',
+          right: 'dayGridMonth,timeGridWeek,timeGridDay'
+        },
+        events: savedEvents,
+        dateClick: function(info) {
+          // Abre modal para inserir código
           const modal = document.getElementById('codeModal');
           modal.style.display = 'flex';
 
@@ -169,14 +162,9 @@
             modal.style.display = 'none';
           };
         }
-
-        // Atualiza controle de clique
-        lastClickDate = info.dateStr;
-        lastClickTime = now;
-      }
+      });
+      calendar.render();
     });
-    calendar.render();
-  });
-</script>
+  </script>
 </body>
 </html>
