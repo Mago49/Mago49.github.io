@@ -1,9 +1,10 @@
+`html
 <!doctype html>
 <html lang="pt-br">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Calendário com Códigos e Níveis</title>
+  <title>Calendário com Códigos e Níveis Automáticos</title>
 
   <!-- FullCalendar -->
   <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet" />
@@ -11,13 +12,15 @@
 
   <style>
     :root{
-      --level-30: #dbeafe;   /* azul suave */
-      --level-60: #dcfce7;   /* verde suave */
-      --level-150:#fef9c3;   /* amarelo suave */
-      --level-300:#fde68a;   /* laranja suave */
-      --level-600:#fecdd3;   /* rosa suave */
-      --footer-bg: rgba(255,255,255,0.85);
+      --level-0: #e0f2fe;   / azul suave /
+      --level-1: #dcfce7;   / verde suave /
+      --level-2: #fef9c3;   / amarelo suave /
+      --level-3: #fde68a;   / laranja suave /
+      --level-4: #fecdd3;   / rosa suave /
+      --level-5: #ddd6fe;   / lilás suave /
       --text-dark: #0f172a;
+      --modal-border: #e6e6e6;
+      --footer-bg: rgba(255,255,255,0.9);
     }
 
     html, body {
@@ -26,12 +29,13 @@
       overflow-x: hidden; color: var(--text-dark);
     }
 
+    / Calendário ocupa a altura menos o rodapé /
     #calendar {
       position: relative;
       z-index: 10;
       width: 100%;
-      height: calc(100vh - 64px); /* espaço para o rodapé */
-      background: rgba(255,255,255,0.9);
+      height: calc(100vh - 72px);
+      background: rgba(255,255,255,0.92);
       box-sizing: border-box;
       padding-bottom: 1rem;
     }
@@ -43,7 +47,7 @@
       z-index: 0;
     }
 
-    /* Estilo do modal */
+    / Modal /
     .modal {
       position: fixed;
       top: 0; left: 0; width: 100%; height: 100%;
@@ -53,93 +57,21 @@
     }
     .modal-content {
       background: #fff; padding: 1.25rem; border-radius: 0.75rem;
-      box-shadow: 0 10px 25px rgba(2,6,23,0.25);
-      text-align: center; max-width: 360px; width: 92%;
+      box-shadow: 0 10px 25px rgba(2,6,23,0.12);
+      text-align: center; max-width: 420px; width: 92%;
     }
     .modal-content h2 { margin: 0 0 0.75rem 0; font-size: 1.125rem; }
-    .modal-row { display:flex; gap:0.5rem; align-items:center; margin-bottom:0.75rem; }
-    .modal-content input[type="text"] {
-      flex: 1;
+    .modal-row { display:flex; gap:0.5rem; align-items:center; margin-bottom:0.75rem; justify-content:center; }
+    .modal-content input[type="number"] {
+      width: 140px;
       padding: .5rem; font-size: 1rem;
-      border: 1px solid #e6e6e6; border-radius: .5rem;
+      border: 1px solid var(--modal-border); border-radius: .5rem;
       text-align: center;
     }
-    .modal-content select {
-      padding: .5rem; border-radius: .5rem; border: 1px solid #e6e6e6;
-      background: #fff; font-weight: 600;
-    }
-    .modal-actions { display:flex; justify-content:center; gap:0.5rem; margin-top:0.5rem; }
-    .modal-content button {
-      padding```html
-<!doctype html>
-<html lang="pt-br">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Calendário com Códigos e Níveis</title>
-
-  <!-- FullCalendar -->
-  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet" />
-  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
-
-  <style>
-    :root{
-      --level-30: #dbeafe;   /* azul suave */
-      --level-60: #dcfce7;   /* verde suave */
-      --level-150:#fef9c3;   /* amarelo suave */
-      --level-300:#fde68a;   /* laranja suave */
-      --level-600:#fecdd3;   /* rosa suave */
-      --footer-bg: rgba(255,255,255,0.85);
-      --text-dark: #0f172a;
-    }
-
-    html, body {
-      min-height: 100vh; margin: 0; padding: 0;
-      font-family: 'Poppins', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-      overflow-x: hidden; color: var(--text-dark);
-    }
-
-    #calendar {
-      position: relative;
-      z-index: 10;
-      width: 100%;
-      height: calc(100vh - 64px); /* espaço para o rodapé */
-      background: rgba(255,255,255,0.9);
-      box-sizing: border-box;
-      padding-bottom: 1rem;
-    }
-
-    .background-svg {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      z-index: 0;
-    }
-
-    /* Estilo do modal */
-    .modal {
-      position: fixed;
-      top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.45);
-      display: none; align-items: center; justify-content: center;
-      z-index: 40;
-    }
-    .modal-content {
-      background: #fff; padding: 1.25rem; border-radius: 0.75rem;
-      box-shadow: 0 10px 25px rgba(2,6,23,0.25);
-      text-align: center; max-width: 360px; width: 92%;
-    }
-    .modal-content h2 { margin: 0 0 0.75rem 0; font-size: 1.125rem; }
-    .modal-row { display:flex; gap:0.5rem; align-items:center; margin-bottom:0.75rem; }
-    .modal-content input[type="text"] {
-      flex: 1;
-      padding: .5rem; font-size: 1rem;
-      border: 1px solid #e6e6e6; border-radius: .5rem;
-      text-align: center;
-    }
-    .modal-content select {
-      padding: .5rem; border-radius: .5rem; border: 1px solid #e6e6e6;
-      background: #fff; font-weight: 600;
+    .level-preview {
+      width: 120px; height: 40px; border-radius: .5rem;
+      display:flex; align-items:center; justify-content:center;
+      font-weight:700; color:var(--text-dark); border:1px solid rgba(0,0,0,0.06);
     }
     .modal-actions { display:flex; justify-content:center; gap:0.5rem; margin-top:0.5rem; }
     .modal-content button {
@@ -149,7 +81,7 @@
     .btn-save { background: #15803d; color: #fff; }
     .btn-cancel { background: #ef4444; color: #fff; }
 
-    /* Rodapé com níveis */
+    / Rodapé com níveis /
     .footer {
       position: fixed;
       bottom: 0; left: 0;
@@ -158,60 +90,48 @@
       justify-content: space-between;
       align-items: center;
       gap: 0.5rem;
-      padding: 0.5rem;
+      padding: 0.6rem;
       background: var(--footer-bg);
       z-index: 30;
       box-shadow: 0 -6px 18px rgba(2,6,23,0.06);
       box-sizing: border-box;
     }
 
-    .levels {
-      display:flex; gap:0.5rem; align-items:center; flex:1;
-    }
+    .levels { display:flex; gap:0.5rem; align-items:center; flex:1; }
 
     .level {
       display:flex; align-items:center; gap:0.5rem;
       padding: 0.45rem 0.6rem;
       border-radius: 0.6rem;
-      cursor: pointer;
       user-select: none;
-      min-width: 56px;
+      min-width: 64px;
       justify-content:center;
       font-weight:700;
-      color: #0f172a;
+      color: var(--text-dark);
       border: 1px solid rgba(15,23,42,0.06);
-      transition: transform .12s ease, box-shadow .12s ease;
-    }
-    .level:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(2,6,23,0.08); }
-
-    .level.selected {
-      outline: 3px solid rgba(15,23,42,0.06);
-      box-shadow: 0 8px 24px rgba(2,6,23,0.10);
+      text-align:center;
     }
 
-    .level[data-level="30"]  { background: var(--level-30); }
-    .level[data-level="60"]  { background: var(--level-60); }
-    .level[data-level="150"] { background: var(--level-150); }
-    .level[data-level="300"] { background: var(--level-300); }
-    .level[data-level="600"] { background: var(--level-600); }
+    .level[data-level="0"] { background: var(--level-0); }
+    .level[data-level="1"] { background: var(--level-1); }
+    .level[data-level="2"] { background: var(--level-2); }
+    .level[data-level="3"] { background: var(--level-3); }
+    .level[data-level="4"] { background: var(--level-4); }
+    .level[data-level="5"] { background: var(--level-5); }
 
-    .footer .legend {
-      font-size: 0.85rem;
-      color: rgba(15,23,42,0.8);
-      margin-left: 0.5rem;
-      white-space: nowrap;
-    }
+    .legend { font-size: 0.9rem; margin-left: 0.75rem; white-space: nowrap; }
 
-    /* Responsividade */
+    / Responsividade /
     @media (max-width:600px){
-      .level { min-width: 44px; padding: 0.4rem 0.45rem; font-size: 0.9rem; }
-      #calendar { height: calc(100vh - 72px); }
+      .level { min-width: 48px; padding: 0.35rem 0.45rem; font-size: 0.9rem; }
+      #calendar { height: calc(100vh - 96px); }
+      .modal-content { max-width: 320px; }
     }
   </style>
 </head>
 
 <body>
-  <!-- Fundo animado com bolinhas -->
+  <!-- Fundo animado -->
   <svg class="background-svg" viewBox="0 0 1440 800" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <circle cx="280" cy="280" r="280" fill="#1e3a8a" />
     <circle cx="1160" cy="280" r="280" fill="#ef4444" />
@@ -222,24 +142,22 @@
   <!-- Calendário -->
   <div id="calendar" aria-label="Calendário"></div>
 
-  <!-- Modal para inserir código e escolher nível -->
+  <!-- Modal para inserir valor e ver nível calculado -->
   <div class="modal" id="codeModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="modal-content">
-      <h2 id="modalTitle">Adicionar Código</h2>
+      <h2 id="modalTitle">Adicionar Valor</h2>
 
       <div class="modal-row">
-        <input type="text" id="codeInput" maxlength="4" placeholder="Ex: DDUU" aria-label="Código (4 caracteres)" />
+        <label for="codeInput" style="font-weight:700; margin-right:0.5rem;">Valor</label>
+        <input type="number" id="codeInput" placeholder="0 - 600" min="0" max="600" aria-label="Valor numérico" />
       </div>
 
-      <div class="modal-row" style="justify-content:center;">
-        <label for="levelSelect" style="font-weight:700; margin-right:0.5rem;">Nível</label>
-        <select id="levelSelect" aria-label="Selecionar nível">
-          <option value="30" data-color="var(--level-30)">30</option>
-          <option value="60" data-color="var(--level-60)">60</option>
-          <option value="150" data-color="var(--level-150)">150</option>
-          <option value="300" data-color="var(--level-300)">300</option>
-          <option value="600" data-color="var(--level-600)">600</option>
-        </select>
+      <div class="modal-row" style="gap:1rem;">
+        <div style="text-align:left;">
+          <div style="font-size:0.9rem; color:rgba(15,23,42,0.8); margin-bottom:0.25rem;">Nível calculado</div>
+          <div id="levelInfo" style="font-weight:700;">—</div>
+        </div>
+        <div class="level-preview" id="levelPreview">—</div>
       </div>
 
       <div class="modal-actions">
@@ -249,68 +167,55 @@
     </div>
   </div>
 
-  <!-- Rodapé com níveis (clicáveis para seleção rápida) -->
+  <!-- Rodapé com níveis (informativo) -->
   <footer class="footer" aria-label="Níveis">
     <div class="levels" role="list">
-      <div class="level" role="listitem" data-level="30" title="Nível 30">30</div>
-      <div class="level" role="listitem" data-level="60" title="Nível 60">60</div>
-      <div class="level" role="listitem" data-level="150" title="Nível 150">150</div>
-      <div class="level" role="listitem" data-level="300" title="Nível 300">300</div>
-      <div class="level" role="listitem" data-level="600" title="Nível 600">600</div>
+      <div class="level" role="listitem" data-level="0">Nível 0<br><small>(0–29)</small></div>
+      <div class="level" role="listitem" data-level="1">Nível 1<br><small>(30)</small></div>
+      <div class="level" role="listitem" data-level="2">Nível 2<br><small>(31–60)</small></div>
+      <div class="level" role="listitem" data-level="3">Nível 3<br><small>(61–149)</small></div>
+      <div class="level" role="listitem" data-level="4">Nível 4<br><small>(150–299)</small></div>
+      <div class="level" role="listitem" data-level="5">Nível 5<br><small>(300–600)</small></div>
     </div>
-    <div class="legend" id="selectedLegend">Nível selecionado: <strong id="selectedLevelLabel">30</strong></div>
+    <div class="legend">Insira um valor; o sistema atribuirá o nível automaticamente.</div>
   </footer>
 
   <script>
   document.addEventListener('DOMContentLoaded', () => {
-    // Paleta de cores (valores finais usados para eventos)
-    const LEVELS = {
-      "30":  { color: getComputedStyle(document.documentElement).getPropertyValue('--level-30').trim() || '#dbeafe' },
-      "60":  { color: getComputedStyle(document.documentElement).getPropertyValue('--level-60').trim() || '#dcfce7' },
-      "150": { color: getComputedStyle(document.documentElement).getPropertyValue('--level-150').trim() || '#fef9c3' },
-      "300": { color: getComputedStyle(document.documentElement).getPropertyValue('--level-300').trim() || '#fde68a' },
-      "600": { color: getComputedStyle(document.documentElement).getPropertyValue('--level-600').trim() || '#fecdd3' }
-    };
-
-    // Elementos
-    const calendarEl = document.getElementById('calendar');
-    const modal = document.getElementById('codeModal');
-    const codeInput = document.getElementById('codeInput');
-    const levelSelect = document.getElementById('levelSelect');
-    const saveBtn = document.getElementById('saveCode');
-    const cancelBtn = document.getElementById('cancelCode');
-    const levelButtons = Array.from(document.querySelectorAll('.level'));
-    const selectedLevelLabel = document.getElementById('selectedLevelLabel');
-
-    // Estado
-    let selectedLevel = '30'; // nível padrão
-    let lastClickDate = null;
-    let lastClickTime = 0;
     const STORAGE_KEY = 'calendarEvents';
     let savedEvents = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
 
-    // Marca visual do nível selecionado no rodapé
-    function updateFooterSelection() {
-      levelButtons.forEach(btn => {
-        if (btn.dataset.level === selectedLevel) btn.classList.add('selected');
-        else btn.classList.remove('selected');
-      });
-      selectedLevelLabel.textContent = selectedLevel;
-      // sincroniza select do modal
-      levelSelect.value = selectedLevel;
+    // Recupera cores definidas em CSS
+    const LEVELS = {
+      0: getComputedStyle(document.documentElement).getPropertyValue('--level-0').trim() || '#e0f2fe',
+      1: getComputedStyle(document.documentElement).getPropertyValue('--level-1').trim() || '#dcfce7',
+      2: getComputedStyle(document.documentElement).getPropertyValue('--level-2').trim() || '#fef9c3',
+      3: getComputedStyle(document.documentElement).getPropertyValue('--level-3').trim() || '#fde68a',
+      4: getComputedStyle(document.documentElement).getPropertyValue('--level-4').trim() || '#fecdd3',
+      5: getComputedStyle(document.documentElement).getPropertyValue('--level-5').trim() || '#ddd6fe'
+    };
+
+    // Função que converte valor em nível conforme solicitado.
+    // Observação: para resolver sobreposições ambíguas, adotei a regra:
+    // 0–29 => nível 0
+    // 30 => nível 1
+    // 31–60 => nível 2
+    // 61–149 => nível 3
+    // 150–299 => nível 4
+    // 300–600 => nível 5
+    function getLevel(value) {
+      if (typeof value !== 'number' || isNaN(value)) return null;
+      if (value >= 0 && value <= 29) return 0;
+      if (value === 30) return 1;
+      if (value >= 31 && value <= 60) return 2;
+      if (value >= 61 && value <= 149) return 3;
+      if (value >= 150 && value <= 299) return 4;
+      if (value >= 300 && value <= 600) return 5;
+      return null;
     }
 
-    levelButtons.forEach(btn => {
-      btn.addEventListener('click', () => {
-        selectedLevel = btn.dataset.level;
-        updateFooterSelection();
-      });
-    });
-
-    // Inicializa seleção visual
-    updateFooterSelection();
-
     // Inicializa FullCalendar
+    const calendarEl = document.getElementById('calendar');
     const calendar = new FullCalendar.Calendar(calendarEl, {
       initialView: 'dayGridMonth',
       locale: 'pt-br',
@@ -322,8 +227,8 @@
         right: 'dayGridMonth,timeGridWeek,timeGridDay'
       },
       events: savedEvents.map(ev => {
-        // Garante compatibilidade: se cor estiver salva em ev.color use-a, senão derive do nível
-        const color = ev.color || (ev.level && LEVELS[ev.level] ? LEVELS[ev.level].color : LEVELS["30"].color);
+        // garante compatibilidade com objetos salvos
+        const color = ev.color || (ev.level !== undefined ? LEVELS[ev.level] : LEVELS[0]);
         return {
           title: ev.title,
           start: ev.start,
@@ -331,28 +236,25 @@
           backgroundColor: color,
           borderColor: color,
           textColor: '#0f172a',
-          extendedProps: { level: ev.level || '30' }
+          extendedProps: { level: ev.level }
         };
       }),
       dateClick: function(info) {
+        // Duplo clique simulado: mesma data em menos de 400ms
         const now = Date.now();
-        // Duplo clique detectado (mesma data em menos de 400ms)
-        if (lastClickDate === info.dateStr && (now - lastClickTime) < 400) {
+        if (calendar.lastClickDate === info.dateStr && (now - (calendar.lastClickTime || 0)) < 400) {
           openModalForDate(info.dateStr);
         }
-        lastClickDate = info.dateStr;
-        lastClickTime = now;
+        calendar._lastClickDate = info.dateStr;
+        calendar._lastClickTime = now;
       },
       eventClick: function(info) {
-        // Permite editar ou remover evento ao clicar (simples)
+        // Ao clicar em evento: editar (abre modal preenchido) ou remover
         const ev = info.event;
         const currentTitle = ev.title || '';
-        const currentLevel = ev.extendedProps.level || '30';
-        if (confirm(`Editar evento "${currentTitle}"?\nOK = editar; Cancel = remover`)) {
-          // abrir modal para editar
+        if (confirm(Editar evento "${currentTitle}"?\nOK = editar; Cancel = remover)) {
           openModalForDate(ev.startStr, ev);
         } else {
-          // remover
           if (confirm('Remover este evento?')) {
             // remove do calendário e do storage
             const start = ev.startStr;
@@ -367,49 +269,78 @@
 
     calendar.render();
 
-    // Abre modal para uma data; se eventObj for passado, preenche para edição
+    // Modal e elementos
+    const modal = document.getElementById('codeModal');
+    const input = document.getElementById('codeInput');
+    const saveBtn = document.getElementById('saveCode');
+    const cancelBtn = document.getElementById('cancelCode');
+    const levelInfo = document.getElementById('levelInfo');
+    const levelPreview = document.getElementById('levelPreview');
+
+    // Atualiza preview do nível conforme valor digitado
+    function updatePreviewFromValue(val) {
+      const n = Number(val);
+      const lvl = getLevel(n);
+      if (lvl === null) {
+        levelInfo.textContent = 'Valor inválido';
+        levelPreview.textContent = '—';
+        levelPreview.style.background = 'transparent';
+        levelPreview.style.border = '1px dashed rgba(0,0,0,0.06)';
+      } else {
+        levelInfo.textContent = Nível ${lvl};
+        levelPreview.textContent = Nível ${lvl};
+        levelPreview.style.background = LEVELS[lvl];
+        levelPreview.style.border = '1px solid rgba(0,0,0,0.06)';
+      }
+    }
+
+    // Abre modal para data; se eventObj for passado, preenche para edição
     function openModalForDate(dateStr, eventObj = null) {
       modal.style.display = 'flex';
-      codeInput.value = eventObj ? eventObj.title : '';
-      const lvl = eventObj ? (eventObj.extendedProps.level || '30') : selectedLevel;
-      levelSelect.value = lvl;
-      codeInput.focus();
-
-      // Salvar handler (substitui comportamento anterior)
-      saveBtn.onclick = function() {
-        const code = codeInput.value.trim().toUpperCase();
-        const level = levelSelect.value;
-        if (!code || code.length !== 4) {
-          alert("Digite exatamente 4 caracteres (letras ou números).");
-          return;
-        }
-
-        const color = LEVELS[level] ? LEVELS[level].color : LEVELS["30"].color;
-
-        if (eventObj) {
-          // editar evento existente
-          eventObj.setProp('title', code);
+      if (eventObj) {
+        // preencher com valor extraído do título se possível (assume formato "Valor: X (Nível Y)")
+        const match = (eventObj.title || '').match(/Valor:\s([0-9]+)\s/);
+        input.value = match ? match[1] : '';
+        updatePreviewFromValue(input.value);
+        // salvar handler editar
+        saveBtn.onclick = function() {
+          const raw = input.value.trim();
+          const value = raw === '' ? NaN : Number(raw);
+          const lvl = getLevel(value);
+          if (lvl === null) {
+            alert('Valor inválido. Insira um número entre 0 e 600 conforme as faixas.');
+            return;
+          }
+          const color = LEVELS[lvl];
+          // atualiza evento no calendário
+          eventObj.setProp('title', Valor: ${value} (Nível ${lvl}));
           eventObj.setProp('backgroundColor', color);
           eventObj.setProp('borderColor', color);
-          eventObj.setProp('textColor', '#0f172a');
-          eventObj.setExtendedProp('level', level);
-
-          // atualizar savedEvents
-          savedEvents = savedEvents.map(e => {
-            if (e.start === eventObj.startStr && e.title === eventObj.title && e.level === eventObj.extendedProps.level) {
-              // fallback: match by start and previous title might be different; safer to match by start and replace if same start and same original id not available
-            }
-            return e;
-          });
-
-          // Simpler approach: rebuild savedEvents from calendar events
+          eventObj.setExtendedProp('level', lvl);
+          // rebuild savedEvents
           rebuildSavedFromCalendar();
-        } else {
-          // criar novo evento
+          modal.style.display = 'none';
+        };
+      } else {
+        input.value = '';
+        updatePreviewFromValue('');
+        saveBtn.onclick = function() {
+          const raw = input.value.trim();
+          if (raw === '') {
+            alert('Digite um valor entre 0 e 600.');
+            return;
+          }
+          const value = Number(raw);
+          const lvl = getLevel(value);
+          if (lvl === null) {
+            alert('Valor inválido. Insira um número entre 0 e 600 conforme as faixas.');
+            return;
+          }
+          const color = LEVELS[lvl];
           const newEvent = {
-            title: code,
+            title: Valor: ${value} (Nível ${lvl}),
             start: dateStr,
-            level: level,
+            level: lvl,
             color: color
           };
           calendar.addEvent({
@@ -423,14 +354,22 @@
           });
           savedEvents.push(newEvent);
           localStorage.setItem(STORAGE_KEY, JSON.stringify(savedEvents));
-        }
+          modal.style.display = 'none';
+        };
+      }
 
-        modal.style.display = 'none';
-      };
-
+      // Cancelar
       cancelBtn.onclick = function() {
         modal.style.display = 'none';
       };
+
+      // Atualiza preview ao digitar
+      input.oninput = function() {
+        updatePreviewFromValue(this.value);
+      };
+
+      // Foco
+      setTimeout(() => input.focus(), 50);
     }
 
     // Reconstrói savedEvents a partir dos eventos atuais do calendário
@@ -440,12 +379,20 @@
         return {
           title: ev.title,
           start: ev.startStr,
-          level: ev.extendedProps.level || '30',
-          color: ev.backgroundColor || ev.borderColor || (LEVELS[ev.extendedProps.level] ? LEVELS[ev.extendedProps.level].color : LEVELS["30"].color)
+          level: ev.extendedProps.level !== undefined ? ev.extendedProps.level : getLevelFromTitle(ev.title),
+          color: ev.backgroundColor || ev.borderColor || LEVELS[0]
         };
       });
       savedEvents = arr;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(savedEvents));
+    }
+
+    // Tenta extrair nível do título (fallback)
+    function getLevelFromTitle(title) {
+      if (!title) return 0;
+      const m = title.match(/Nível\s*([0-9]+)/i);
+      if (m) return Number(m[1]);
+      return 0;
     }
 
     // Fecha modal ao clicar fora do conteúdo
@@ -453,24 +400,14 @@
       if (e.target === modal) modal.style.display = 'none';
     });
 
-    // Sincroniza seleção do rodapé com o select do modal
-    levelSelect.addEventListener('change', (e) => {
-      selectedLevel = e.target.value;
-      updateFooterSelection();
-    });
-
-    // Permite abrir modal com o nível atualmente selecionado ao clicar duas vezes no dia (simulado por duplo clique)
-    // (já tratado em dateClick)
-
-    // Se houver eventos salvos, já foram carregados no início; garantir que legenda esteja atualizada
-    updateFooterSelection();
-
-    // Acessibilidade: fechar modal com Escape
+    // Fechar modal com Escape
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && modal.style.display === 'flex') {
-        modal.style.display = 'none';
-      }
+      if (e.key === 'Escape' && modal.style.display === 'flex') modal.style.display = 'none';
     });
+
+    // Abre modal ao detectar duplo clique (já tratado em dateClick)
+    // Para compatibilidade: expõe função globalmente se quiser abrir programaticamente
+    window.openModalForDate = openModalForDate;
 
     // Inicial: se quiser limpar storage para testes, descomente:
     // localStorage.removeItem(STORAGE_KEY);
@@ -478,3 +415,4 @@
   </script>
 </body>
 </html>
+`
