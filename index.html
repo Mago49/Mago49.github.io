@@ -52,7 +52,7 @@
       opacity: 0.9;
     }
 
-    /* Modal */
+    /* Modal (mantido caso queira usar futuramente) */
     .modal {
       position: fixed;
       top: 0; left: 0; width: 100%; height: 100%;
@@ -67,23 +67,6 @@
       text-align: center; max-width: 420px; width: 100%;
       border: 1px solid var(--event-border);
     }
-    .modal-content h2 { margin: 0 0 0.75rem 0; font-size: 1.125rem; }
-    .modal-row { display:flex; gap:0.5rem; align-items:center; margin-bottom:0.75rem; }
-    .modal-row label { flex: 0 0 90px; text-align:left; font-size:0.9rem; color: #334155; }
-    .modal-content input[type="text"], .modal-content select {
-      flex: 1; padding: .5rem; font-size: 1rem;
-      border: 1px solid #e6e9ee; border-radius: .5rem;
-      text-align: center;
-      background: #fff;
-    }
-    .modal-actions { display:flex; gap:0.5rem; justify-content:center; margin-top:0.5rem; }
-    .modal-content button {
-      padding: .5rem 1rem; border: none; border-radius: .5rem;
-      font-weight: 600; cursor: pointer;
-    }
-    .btn-save { background: var(--modal-accent); color: #fff; }
-    .btn-cancel { background: var(--modal-cancel); color: #fff; }
-    .btn-delete { background: #6b7280; color: #fff; }
 
     /* Footer legenda */
     footer.legend {
@@ -115,10 +98,10 @@
     #platformPanel {
       position: fixed;
       right: 1rem;
-      top: 96px;
-      width: 320px;
+      bottom: 96px;
+      width: 340px;
       max-width: calc(100% - 2rem);
-      height: calc(100vh - 140px);
+      max-height: calc(100vh - 140px);
       background: rgba(255,255,255,0.95);
       border: 1px solid rgba(15,23,42,0.06);
       border-radius: 12px;
@@ -129,46 +112,49 @@
       flex-direction: column;
       gap: 0.5rem;
       font-family: inherit;
+      overflow-y: auto;
     }
     #platformPanel .panel-header { display:flex; align-items:center; justify-content:space-between; gap:0.5rem; }
     #platformPanel h3 { margin:0; font-size:1rem; }
     #platformPanel .panel-controls { display:flex; gap:0.5rem; align-items:center; }
-    #platformPanel input[type="search"] { padding:0.4rem 0.5rem; border-radius:8px; border:1px solid #e6e9ee; width:180px; }
-    #platformPanel button { padding:0.35rem 0.6rem; border-radius:8px; border: none; background:#0f172a; color:#fff; cursor:pointer; font-weight:600; }
+    #platformPanel input[type="search"] { padding:0.4rem 0.5rem; border-radius:8px; border:1px solid #e6e9ee; flex: 1; }
+    #platformPanel button { padding:0.35rem 0.6rem; border-radius:8px; border: none; background:#0f172a; color:#fff; cursor:pointer; font-weight:600; font-size: 0.85rem; }
     #platformPanel button[title] { background:#6b7280; }
     .panel-actions { display:flex; gap:0.5rem; }
     .panel-actions button { background:#15803d; padding:0.35rem 0.5rem; font-size:0.85rem; }
     .panel-actions button[title] { background:#ef4444; }
     #platformList { list-style:none; margin:0; padding:0; overflow:auto; flex:1; display:flex; flex-direction:column; gap:0.25rem; }
-    .platform-item { display:flex; align-items:center; gap:0.5rem; padding:0.45rem; border-radius:8px; border:1px solid rgba(0,0,0,0.04); background:#fff; }
+    .platform-item { 
+      display:flex; flex-direction: column; gap:0.35rem;
+      padding:0.6rem; border-radius:8px; border:1px solid rgba(0,0,0,0.04); 
+      background:#fff; cursor: pointer; transition: all 0.2s;
+    }
+    .platform-item:hover { background: #f8fafc; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+    .platform-item.selected { box-shadow: 0 6px 18px rgba(21,128,61,0.15); border-color: #15803d; }
+    .platform-item-header { display:flex; align-items:center; gap:0.5rem; }
     .platform-item .name { flex:1; font-weight:600; color:var(--text-dark); }
     .platform-item .meta { display:flex; gap:0.25rem; align-items:center; }
-    .platform-item .fav { background:transparent; border:none; color:#f59e0b; cursor:pointer; font-size:1.05rem; }
-    .platform-item input[type="checkbox"] { width:18px; height:18px; }
+    .platform-item .fav { background:transparent; border:none; color:#f59e0b; cursor:pointer; font-size:1.05rem; padding: 0; }
+    .platform-item .reset-date { font-size:0.75rem; color:#64748b; }
+    .platform-deposit-form {
+      display: flex; gap: 0.35rem; align-items: center;
+      padding-top: 0.35rem; border-top: 1px solid #e6e9ee;
+    }
+    .platform-deposit-form input { 
+      flex: 1; padding: 0.35rem; font-size: 0.85rem;
+      border: 1px solid #e6e9ee; border-radius: 6px;
+    }
+    .platform-deposit-form button {
+      padding: 0.35rem 0.5rem; font-size: 0.8rem; background: #15803d;
+    }
+    .platform-total { 
+      font-size: 0.85rem; color: #334155; padding: 0.35rem 0;
+      border-top: 1px solid #e6e9ee; margin-top: 0.35rem;
+    }
     .panel-footer { text-align:left; font-size:0.9rem; color:#334155; }
 
-    /* Modal select and bonus preview */
-    .modal-content select#platformSelect {
-      flex: 1;
-      padding: .5rem;
-      font-size: 1rem;
-      border: 1px solid #e6e9ee;
-      border-radius: .5rem;
-      background: #fff;
-      text-align: center;
-    }
-    #bonusPreview {
-      flex: 1;
-      padding: .45rem;
-      border-radius: .5rem;
-      border: 1px solid #e6e9ee;
-      background:#f8fafc;
-      font-weight:700;
-      text-align:center;
-    }
-
     @media (max-width:900px){
-      #platformPanel { width: 92%; left: 4%; right: 4%; top: auto; bottom: 96px; height: 220px; }
+      #platformPanel { width: 92%; left: 4%; right: 4%; bottom: 96px; }
       #calendar { height: calc(100vh - 320px); }
     }
   </style>
@@ -188,15 +174,13 @@
     <div class="panel-header">
       <h3>Plataformas</h3>
       <div class="panel-controls">
-        <input id="platformSearch" type="search" placeholder="Buscar plataforma" aria-label="Buscar plataforma" />
+        <input id="platformSearch" type="search" placeholder="Buscar" aria-label="Buscar plataforma" />
         <button id="togglePanelBtn" aria-expanded="true" title="Ocultar painel">✕</button>
       </div>
     </div>
 
     <div class="panel-actions">
-      <button id="selectAllBtn">Marcar todas</button>
-      <button id="clearAllBtn">Desmarcar todas</button>
-      <button id="resetDefaultsBtn" title="Restaurar lista padrão">Restaurar</button>
+      <button id="resetAllBtn" title="Resetar todos os depósitos">Resetar</button>
     </div>
 
     <ul id="platformList" role="list" aria-live="polite"></ul>
@@ -208,52 +192,6 @@
 
   <!-- Calendário -->
   <div id="calendar"></div>
-
-  <!-- Modal para inserir/editar código -->
-  <div class="modal" id="codeModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-    <div class="modal-content" role="document">
-      <h2 id="modalTitle">Adicionar / Editar Código</h2>
-
-      <div class="modal-row">
-        <label for="codeInput">Código</label>
-        <input type="text" id="codeInput" maxlength="8" placeholder="Ex: DDUU ou 1234" />
-      </div>
-
-      <div class="modal-row">
-        <label for="levelSelect">Nível</label>
-        <select id="levelSelect" aria-label="Selecionar nível">
-          <option value="0">Nível 0 — 1–29</option>
-          <option value="1">Nível 1 — 30–69</option>
-          <option value="2">Nível 2 — 70–149</option>
-          <option value="3">Nível 3 — 150–299</option>
-          <option value="4">Nível 4 — 300–600</option>
-        </select>
-      </div>
-
-      <div class="modal-row" style="justify-content:center;">
-        <label for="valueInput">Valor</label>
-        <input type="text" id="valueInput" placeholder="Ex: 45" inputmode="numeric" />
-      </div>
-
-      <div class="modal-row" style="justify-content:center;">
-        <label for="platformSelect">Plataforma</label>
-        <select id="platformSelect" aria-label="Selecionar plataforma">
-          <!-- opções preenchidas via JS -->
-        </select>
-      </div>
-
-      <div class="modal-row" id="bonusRow" style="justify-content:center; display:none;">
-        <label for="bonusPreview">Bônus previsto</label>
-        <input type="text" id="bonusPreview" readonly />
-      </div>
-
-      <div class="modal-actions">
-        <button class="btn-save" id="saveCode">Salvar</button>
-        <button class="btn-delete" id="deleteCode" style="display:none;">Excluir</button>
-        <button class="btn-cancel" id="cancelCode">Cancelar</button>
-      </div>
-    </div>
-  </div>
 
   <!-- Rodapé com níveis -->
   <footer class="legend" aria-hidden="false">
@@ -306,15 +244,16 @@
     animate();
 
     /* -------------------------
-       Painel de plataformas
+       Sistema de Plataformas com Depósitos
        ------------------------- */
+    const RESET_DAYS = [2, 3, 7, 15, 30]; // Dias de reinício de bônus
     const DEFAULT_PLATFORMS = Array.from({length:33}, (_,i) => ({
       id: 'p' + (i+1),
       name: `Plataforma ${i+1}`,
-      active: true,
-      favorite: false
+      resetDay: RESET_DAYS[i % RESET_DAYS.length],
+      deposits: []  // [{date, value}]
     }));
-    const PLAT_STORAGE_KEY = 'depositPlatforms_v1';
+    const PLAT_STORAGE_KEY = 'depositPlatforms_v2';
 
     function loadPlatforms(){
       try {
@@ -325,8 +264,8 @@
         return parsed.map((p, i) => ({
           id: p.id || ('p' + (i+1)),
           name: p.name || (`Plataforma ${i+1}`),
-          active: typeof p.active === 'boolean' ? p.active : true,
-          favorite: typeof p.favorite === 'boolean' ? p.favorite : false
+          resetDay: p.resetDay || RESET_DAYS[i % RESET_DAYS.length],
+          deposits: Array.isArray(p.deposits) ? p.deposits : []
         }));
       } catch (err) {
         console.error('Erro ao ler plataformas', err);
@@ -338,66 +277,185 @@
       localStorage.setItem(PLAT_STORAGE_KEY, JSON.stringify(list));
     }
 
+    // helpers para ciclo e emissões
+
+    function getCycleStart(platform, refDate = new Date()){
+      const resetDay = Number(platform.resetDay) || 1;
+      let year = refDate.getFullYear();
+      let month = refDate.getMonth();
+      if (refDate.getDate() < resetDay) {
+        month -= 1;
+        if (month < 0) { month = 11; year -= 1; }
+      }
+      return new Date(year, month, resetDay, 0, 0, 0, 0);
+    }
+
+    // retorna as 5 datas de emissão (Date objects) do ciclo a partir do cycleStart
+    function computeEmissionDates(platform, refDate = new Date()){
+      const cycleStart = getCycleStart(platform, refDate);
+      const offsets = [2, 3, 7, 15, 30];
+      return offsets.map(n => {
+        const d = new Date(cycleStart);
+        d.setDate(d.getDate() + n);
+        d.setHours(0,0,0,0);
+        return d;
+      });
+    }
+
+    // soma depósitos desde o início do ciclo até uma data (inclusive)
+    function sumDepositsUpTo(platform, toDate){
+      const cycleStart = getCycleStart(platform, toDate);
+      return (platform.deposits || [])
+        .filter(d => {
+          const depositDate = new Date(d.date);
+          return depositDate >= cycleStart && depositDate <= toDate;
+        })
+        .reduce((s, d) => s + (Number(d.value) || 0), 0);
+    }
+
+    // total acumulado no ciclo atual (até hoje)
+    function getTotalDepositsSinceCycle(platform){
+      return sumDepositsUpTo(platform, new Date());
+    }
+
+    function formatResetDate(resetDay){
+      const now = new Date();
+      return `${resetDay} de cada mês`;
+    }
+
+    function colorForLevel(valueOrLevel){
+      // Suporta receber um índice de nível (0..4) ou um valor monetário
+      const root = getComputedStyle(document.documentElement);
+      const lvlVars = [
+        root.getPropertyValue('--level-0').trim(),
+        root.getPropertyValue('--level-1').trim(),
+        root.getPropertyValue('--level-2').trim(),
+        root.getPropertyValue('--level-3').trim(),
+        root.getPropertyValue('--level-4').trim()
+      ];
+
+      const v = Number(valueOrLevel);
+      if (Number.isInteger(v) && v >= 0 && v <= 4) {
+        return lvlVars[v];
+      }
+
+      // caso seja valor monetário (deposit total), mapear por faixas
+      const amount = isNaN(v) ? 0 : v;
+      if (amount >= 300) return lvlVars[4];
+      if (amount >= 150) return lvlVars[3];
+      if (amount >= 70)  return lvlVars[2];
+      if (amount >= 30)  return lvlVars[1];
+      return lvlVars[0];
+    }
+
     function renderPlatformList(filter = ''){
       const listEl = document.getElementById('platformList');
       const countEl = document.getElementById('platformCount');
       listEl.innerHTML = '';
       const q = filter.trim().toLowerCase();
       const items = platforms.filter(p => p.name.toLowerCase().includes(q));
+
       items.forEach(p => {
         const li = document.createElement('li');
         li.className = 'platform-item';
         li.dataset.id = p.id;
 
-        const chk = document.createElement('input');
-        chk.type = 'checkbox';
-        chk.checked = !!p.active;
-        chk.addEventListener('change', () => {
-          p.active = chk.checked;
-          savePlatforms(platforms);
-          updateCount();
-        });
+        const total = getTotalDepositsSinceCycle(p);
+        const bgColor = colorForLevel(total);
+
+        // Header com nome (com swatch de cor)
+        const header = document.createElement('div');
+        header.className = 'platform-item-header';
 
         const name = document.createElement('div');
         name.className = 'name';
         name.textContent = p.name;
-        name.tabIndex = 0;
-        name.addEventListener('click', () => {
-          document.querySelectorAll('.platform-item').forEach(el => el.style.boxShadow = '');
-          li.style.boxShadow = '0 6px 18px rgba(21,128,61,0.08)';
-          const ev = new CustomEvent('platformSelected', { detail: { id: p.id, name: p.name } });
-          document.dispatchEvent(ev);
-        });
 
-        const meta = document.createElement('div');
-        meta.className = 'meta';
+        const swatch = document.createElement('div');
+        swatch.style.width = '12px';
+        swatch.style.height = '12px';
+        swatch.style.borderRadius = '4px';
+        swatch.style.background = bgColor;
+        swatch.title = `Cor pelo total: R$ ${total.toFixed(2)}`;
 
-        const favBtn = document.createElement('button');
-        favBtn.className = 'fav';
-        favBtn.title = p.favorite ? 'Remover favorito' : 'Marcar favorito';
-        favBtn.innerHTML = p.favorite ? '★' : '☆';
-        favBtn.addEventListener('click', (e) => {
+        header.appendChild(swatch);
+        header.appendChild(name);
+        li.appendChild(header);
+
+        // info de reset e total
+        const resetInfo = document.createElement('div');
+        resetInfo.className = 'reset-date';
+        resetInfo.textContent = `${formatResetDate(p.resetDay)} | Total no ciclo: R$ ${total.toFixed(2)}`;
+        li.appendChild(resetInfo);
+
+        // Form para adicionar depósito
+        const form = document.createElement('div');
+        form.className = 'platform-deposit-form';
+
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.placeholder = 'Valor do depósito';
+        input.min = '0';
+        input.step = '0.01';
+        input.value = '';
+
+        const btn = document.createElement('button');
+        btn.textContent = 'Adicionar';
+        btn.addEventListener('click', (e) => {
           e.stopPropagation();
-          p.favorite = !p.favorite;
-          favBtn.innerHTML = p.favorite ? '★' : '☆';
-          favBtn.title = p.favorite ? 'Remover favorito' : 'Marcar favorito';
+          const value = parseFloat(input.value);
+          if (isNaN(value) || value <= 0) {
+            alert('Digite um valor válido');
+            return;
+          }
+          p.deposits.push({
+            date: new Date().toISOString(),
+            value: value
+          });
           savePlatforms(platforms);
+          updateCalendarEvents();
+          renderPlatformList(q);
         });
 
-        meta.appendChild(favBtn);
-        li.appendChild(chk);
-        li.appendChild(name);
-        li.appendChild(meta);
+        // botão para reiniciar manualmente este platform (opcional)
+        const resetBtn = document.createElement('button');
+        resetBtn.textContent = 'Reinício';
+        resetBtn.title = 'Zerar depósitos do ciclo desta plataforma';
+        resetBtn.style.background = '#ef4444';
+        resetBtn.style.marginLeft = '6px';
+        resetBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          if (!confirm(`Zerar depósitos do ciclo atual de ${p.name}?`)) return;
+          p.deposits = [];
+          savePlatforms(platforms);
+          updateCalendarEvents();
+          renderPlatformList(q);
+        });
+
+        form.appendChild(input);
+        form.appendChild(btn);
+        form.appendChild(resetBtn);
+        li.appendChild(form);
+
+        // ao clicar no item, filtra o calendário para a plataforma
+        li.addEventListener('click', (e) => {
+          if (e.target === btn || e.target === input || e.target === resetBtn) return;
+          document.querySelectorAll('.platform-item').forEach(el => el.classList.remove('selected'));
+          li.classList.add('selected');
+          filterCalendarByPlatform(p.id);
+        });
+
         listEl.appendChild(li);
       });
 
-      countEl.textContent = `${items.length} de ${platforms.length} plataformas exibidas`;
+      const totalAll = platforms.reduce((s, pl) => s + getTotalDepositsSinceCycle(pl), 0);
+      countEl.textContent = `${items.length} plataformas • Total geral no ciclo: R$ ${totalAll.toFixed(2)}`;
     }
 
     function updateCount(){
       const countEl = document.getElementById('platformCount');
-      const activeCount = platforms.filter(p => p.active).length;
-      countEl.textContent = `${activeCount} ativas • ${platforms.length} totais`;
+      const totalAll = platforms.reduce((s, p) => s + getTotalDepositsSinceCycle(p), 0);
+      countEl.textContent = `${platforms.length} plataformas • Total: R$ ${totalAll.toFixed(2)}`;
     }
 
     let platforms = loadPlatforms();
@@ -408,25 +466,12 @@
       renderPlatformList(e.target.value);
     });
 
-    document.getElementById('selectAllBtn').addEventListener('click', () => {
-      platforms.forEach(p => p.active = true);
-      savePlatforms(platforms);
-      renderPlatformList(document.getElementById('platformSearch').value);
-      updateCount();
-    });
-    document.getElementById('clearAllBtn').addEventListener('click', () => {
-      platforms.forEach(p => p.active = false);
-      savePlatforms(platforms);
-      renderPlatformList(document.getElementById('platformSearch').value);
-      updateCount();
-    });
-
-    document.getElementById('resetDefaultsBtn').addEventListener('click', () => {
-      if (!confirm('Restaurar lista padrão de plataformas? Isso sobrescreverá suas alterações.')) return;
-      platforms = DEFAULT_PLATFORMS.slice();
+    document.getElementById('resetAllBtn').addEventListener('click', () => {
+      if (!confirm('Resetar todos os depósitos de TODAS as plataformas?')) return;
+      platforms.forEach(p => p.deposits = []);
       savePlatforms(platforms);
       renderPlatformList();
-      updateCount();
+      updateCalendarEvents();
     });
 
     const toggleBtn = document.getElementById('togglePanelBtn');
@@ -438,325 +483,98 @@
     });
 
     /* -------------------------
-       Calendário e persistência
+       Calendário integrado
        ------------------------- */
     const calendarEl = document.getElementById('calendar');
-    const STORAGE_KEY = 'calendarEvents_v2';
-    let savedEvents = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+    let currentSelectedPlatform = null;
 
-    function colorForLevel(level){
-      switch(String(level)){
-        case '0': return getComputedStyle(document.documentElement).getPropertyValue('--level-0').trim();
-        case '1': return getComputedStyle(document.documentElement).getPropertyValue('--level-1').trim();
-        case '2': return getComputedStyle(document.documentElement).getPropertyValue('--level-2').trim();
-        case '3': return getComputedStyle(document.documentElement).getPropertyValue('--level-3').trim();
-        case '4': return getComputedStyle(document.documentElement).getPropertyValue('--level-4').trim();
-        default: return '#ffffff';
-      }
-    }
+    function updateCalendarEvents(){
+      if (!calendar) return;
+      calendar.removeAllEvents();
 
-    function genId(){ return 'evt_' + Date.now() + '_' + Math.floor(Math.random()*1000); }
+      const now = new Date();
+      // janela de exibição: você pode ajustar se quiser ver mais/menos à frente
+      const windowFrom = new Date(now); windowFrom.setDate(windowFrom.getDate() - 10);
+      const windowTo = new Date(now); windowTo.setDate(windowTo.getDate() + 40);
 
-    // Função que calcula o bônus a partir do valor do depósito
-    function bonusForDeposit(value){
-      const v = Number(String(value).replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
-      if (v >= 5000) return 66;
-      if (v >= 2000) return 25;
-      if (v >= 1000) return 10;
-      if (v >= 600) return 7;
-      if (v >= 300) return 3.5;
-      if (v >= 150) return 1.5;
-      if (v >= 70) return 0.7;
-      if (v >= 30) return 0.3;
-      return 0;
-    }
+      platforms.forEach(platform => {
+        const emissionDates = computeEmissionDates(platform, now);
+        emissionDates.forEach(emDate => {
+          if (emDate >= windowFrom && emDate <= windowTo) {
+            const totalAtEmission = sumDepositsUpTo(platform, emDate);
+            const bg = colorForLevel(totalAtEmission);
 
-    function normalizeSavedEvents(arr){
-      return arr.map(e => {
-        const levelVal = (e.extendedProps && e.extendedProps.level) != null ? e.extendedProps.level : (e.level != null ? e.level : 0);
-        const valueVal = e.extendedProps ? e.extendedProps.value : e.value;
-        const platformVal = e.extendedProps ? e.extendedProps.platform : e.platform || '';
-        const bonusVal = e.extendedProps ? e.extendedProps.bonus : e.bonus || bonusForDeposit(valueVal);
-        return {
-          id: e.id || genId(),
-          title: e.title || '',
-          start: e.start,
-          extendedProps: { level: levelVal, value: valueVal, platform: platformVal, bonus: bonusVal },
-          backgroundColor: colorForLevel(levelVal),
-          borderColor: 'rgba(0,0,0,0.06)',
-          textColor: '#0f172a'
-        };
+            calendar.addEvent({
+              id: `emit_${platform.id}_${emDate.toISOString().slice(0,10)}`,
+              start: emDate.toISOString().slice(0,10),
+              allDay: true,
+              display: 'background', // colore o dia
+              backgroundColor: bg,
+              borderColor: 'rgba(0,0,0,0.06)',
+              extendedProps: {
+                platformId: platform.id,
+                platformName: platform.name,
+                totalAtEmission: totalAtEmission
+              }
+            });
+          }
+        });
       });
     }
 
-    let lastClickDate = null;
-    let lastClickTime = 0;
+    function filterCalendarByPlatform(platformId){
+      currentSelectedPlatform = platformId;
+      const allEvents = calendar.getEvents();
+      allEvents.forEach(event => {
+        const eventPlatformId = event.extendedProps.platformId;
+        event.setProp('display', eventPlatformId === platformId ? 'auto' : 'none');
+      });
+      const p = platforms.find(x => x.id === platformId);
+      if (p) {
+        console.log(`Filtrando: ${p.name} | Total no ciclo: R$ ${getTotalDepositsSinceCycle(p).toFixed(2)}`);
+      }
+    }
 
     const calendar = new FullCalendar.Calendar(calendarEl, {
       initialView: 'dayGridMonth',
       locale: 'pt-br',
       selectable: true,
-      editable: true,
       headerToolbar: {
         left: 'prev,next today',
         center: 'title',
         right: 'dayGridMonth,timeGridWeek,timeGridDay'
       },
-      events: normalizeSavedEvents(savedEvents),
+      events: [],
       eventDisplay: 'block',
       eventDidMount: function(info){
-        const lvl = info.event.extendedProps.level;
-        const bg = colorForLevel(lvl);
+        const bg = info.event.backgroundColor;
         info.el.style.background = bg;
         info.el.style.color = '#0f172a';
         info.el.style.border = '1px solid rgba(0,0,0,0.06)';
         info.el.style.borderRadius = '8px';
         info.el.style.fontWeight = '700';
-
-        // adicionar subtítulo com plataforma e bônus
-        const platformId = info.event.extendedProps.platform || '';
-        const bonus = info.event.extendedProps.bonus;
-        let meta = info.el.querySelector('.fc-event-meta');
-        if (!meta) {
-          meta = document.createElement('div');
-          meta.className = 'fc-event-meta';
-          meta.style.fontSize = '0.75rem';
-          meta.style.fontWeight = '600';
-          meta.style.marginTop = '4px';
-          info.el.appendChild(meta);
-        }
-        const platformName = platformId ? (platforms.find(p => p.id === platformId) || {name: platformId}).name : '';
-        meta.textContent = platformName ? `${platformName}${bonus ? ' • R$ ' + Number(bonus).toFixed(2) : ''}` : (bonus ? `Bônus R$ ${Number(bonus).toFixed(2)}` : '');
-      },
-      dateClick: function(info) {
-        const now = Date.now();
-        if (lastClickDate === info.dateStr && (now - lastClickTime) < 400) {
-          openModalForNew(info.dateStr);
-        }
-        lastClickDate = info.dateStr;
-        lastClickTime = now;
-      },
-      eventClick: function(info) {
-        openModalForEdit(info.event);
-      },
-      eventChange: function(changeInfo){
-        const ev = changeInfo.event;
-        saveOrUpdateEventFromCalendar(ev);
       }
     });
 
     calendar.render();
+    updateCalendarEvents();
 
-    /* -------------------------
-       Modal e manipulação de eventos
-       ------------------------- */
-    const modal = document.getElementById('codeModal');
-    const inputCode = document.getElementById('codeInput');
-    const selectLevel = document.getElementById('levelSelect');
-    const inputValue = document.getElementById('valueInput');
-    const btnSave = document.getElementById('saveCode');
-    const btnCancel = document.getElementById('cancelCode');
-    const btnDelete = document.getElementById('deleteCode');
-    const platformSelect = document.getElementById('platformSelect');
-    const bonusPreview = document.getElementById('bonusPreview');
-    const bonusRow = document.getElementById('bonusRow');
-
-    function populatePlatformSelect(){
-      platformSelect.innerHTML = '';
-      const emptyOpt = document.createElement('option');
-      emptyOpt.value = '';
-      emptyOpt.textContent = '— Selecionar plataforma —';
-      platformSelect.appendChild(emptyOpt);
-      platforms.forEach(p => {
-        const opt = document.createElement('option');
-        opt.value = p.id;
-        opt.textContent = p.name;
-        platformSelect.appendChild(opt);
-      });
+    // reexecuta updateCalendarEvents logo após meia-noite para refletir novos ciclos automaticamente
+    function scheduleDailyUpdate(){
+      const now = new Date();
+      const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
+      const ms = nextMidnight - now;
+      setTimeout(() => {
+        updateCalendarEvents();
+        scheduleDailyUpdate();
+      }, ms);
     }
+    scheduleDailyUpdate();
 
-    inputValue.addEventListener('input', () => {
-      const b = bonusForDeposit(inputValue.value);
-      if (b > 0) {
-        bonusRow.style.display = 'flex';
-        bonusPreview.value = `R$ ${b.toFixed(2)}`;
-      } else {
-        bonusRow.style.display = 'none';
-        bonusPreview.value = '';
-      }
-    });
-
-    populatePlatformSelect();
-
-    function openModalForNew(dateStr){
-      modal.style.display = 'flex';
-      modal.dataset.mode = 'new';
-      modal.dataset.date = dateStr;
-      modal.dataset.eventId = '';
-      inputCode.value = '';
-      selectLevel.value = '0';
-      inputValue.value = '';
-      platformSelect.value = '';
-      bonusRow.style.display = 'none';
-      btnDelete.style.display = 'none';
-      inputCode.focus();
-    }
-
-    function openModalForEdit(event){
-      modal.style.display = 'flex';
-      modal.dataset.mode = 'edit';
-      modal.dataset.date = event.startStr;
-      modal.dataset.eventId = event.id;
-      inputCode.value = event.title || '';
-      selectLevel.value = (event.extendedProps && event.extendedProps.level != null) ? String(event.extendedProps.level) : '0';
-      inputValue.value = (event.extendedProps && event.extendedProps.value != null) ? String(event.extendedProps.value) : '';
-      platformSelect.value = event.extendedProps && event.extendedProps.platform ? event.extendedProps.platform : '';
-      const b = bonusForDeposit(inputValue.value);
-      if (b > 0) { bonusRow.style.display = 'flex'; bonusPreview.value = `R$ ${b.toFixed(2)}`; } else { bonusRow.style.display = 'none'; bonusPreview.value = ''; }
-      btnDelete.style.display = 'inline-block';
-      inputCode.focus();
-    }
-
-    function closeModal(){
-      modal.style.display = 'none';
-      delete modal.dataset.mode;
-      delete modal.dataset.date;
-      delete modal.dataset.eventId;
-    }
-
-    btnSave.addEventListener('click', () => {
-      const code = inputCode.value.trim();
-      const level = Number(selectLevel.value);
-      const value = inputValue.value.trim();
-      const platformId = platformSelect.value || '';
-      const bonus = bonusForDeposit(value);
-
-      if (!code){
-        alert('Digite um código (campo obrigatório).');
-        inputCode.focus();
-        return;
-      }
-
-      const mode = modal.dataset.mode;
-      const dateStr = modal.dataset.date;
-
-      if (mode === 'new'){
-        const id = genId();
-        const newEvent = {
-          id,
-          title: code,
-          start: dateStr,
-          extendedProps: { level, value, platform: platformId, bonus },
-          backgroundColor: colorForLevel(level),
-          borderColor: 'rgba(0,0,0,0.06)',
-          textColor: '#0f172a'
-        };
-        calendar.addEvent(newEvent);
-        savedEvents.push({
-          id: newEvent.id,
-          title: newEvent.title,
-          start: newEvent.start,
-          extendedProps: newEvent.extendedProps
-        });
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(savedEvents));
-        closeModal();
-      } else if (mode === 'edit'){
-        const eventId = modal.dataset.eventId;
-        const ev = calendar.getEventById(eventId);
-        if (!ev){
-          alert('Evento não encontrado.');
-          closeModal();
-          return;
-        }
-        ev.setProp('title', code);
-        ev.setExtendedProp('level', level);
-        ev.setExtendedProp('value', value);
-        ev.setExtendedProp('platform', platformId);
-        ev.setExtendedProp('bonus', bonus);
-        const bg = colorForLevel(level);
-        ev.setProp('backgroundColor', bg);
-        ev.setProp('borderColor', 'rgba(0,0,0,0.06)');
-        ev.setProp('textColor', '#0f172a');
-
-        saveOrUpdateEventFromCalendar(ev);
-        closeModal();
-      }
-    });
-
-    btnDelete.addEventListener('click', () => {
-      if (!confirm('Deseja realmente excluir este evento?')) return;
-      const eventId = modal.dataset.eventId;
-      const ev = calendar.getEventById(eventId);
-      if (ev) ev.remove();
-      savedEvents = savedEvents.filter(e => e.id !== eventId);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(savedEvents));
-      closeModal();
-    });
-
-    btnCancel.addEventListener('click', () => {
-      closeModal();
-    });
-
-    modal.addEventListener('click', (e) => {
-      if (e.target === modal) closeModal();
-    });
-
-    function saveOrUpdateEventFromCalendar(ev){
-      const obj = {
-        id: ev.id,
-        title: ev.title,
-        start: ev.startStr,
-        extendedProps: {
-          level: ev.extendedProps.level != null ? ev.extendedProps.level : 0,
-          value: ev.extendedProps.value != null ? ev.extendedProps.value : '',
-          platform: ev.extendedProps.platform != null ? ev.extendedProps.platform : '',
-          bonus: ev.extendedProps.bonus != null ? ev.extendedProps.bonus : bonusForDeposit(ev.extendedProps.value)
-        }
-      };
-      const idx = savedEvents.findIndex(x => x.id === ev.id);
-      if (idx >= 0) savedEvents[idx] = obj;
-      else savedEvents.push(obj);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(savedEvents));
-    }
-
-    function normalizeAndSaveStorage(){
-      const events = calendar.getEvents().map(ev => ({
-        id: ev.id,
-        title: ev.title,
-        start: ev.startStr,
-        extendedProps: {
-          level: ev.extendedProps.level != null ? ev.extendedProps.level : 0,
-          value: ev.extendedProps.value != null ? ev.extendedProps.value : '',
-          platform: ev.extendedProps.platform != null ? ev.extendedProps.platform : '',
-          bonus: ev.extendedProps.bonus != null ? ev.extendedProps.bonus : bonusForDeposit(ev.extendedProps.value)
-        }
-      }));
-      savedEvents = events;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(savedEvents));
-    }
-
-    normalizeAndSaveStorage();
-
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        if (modal.style.display === 'flex') closeModal();
-      }
-    });
-
-    /* -------------------------
-       Integração painel -> calendário
-       ------------------------- */
-    document.addEventListener('platformSelected', (e) => {
-      const { id, name } = e.detail;
-      calendar.getEvents().forEach(ev => {
-        const match = ev.extendedProps && ev.extendedProps.platform === id;
-        ev.setProp('display', match ? 'auto' : 'none');
-      });
-      const eventsForPlatform = calendar.getEvents().filter(ev => ev.extendedProps && ev.extendedProps.platform === id);
-      const totalBonus = eventsForPlatform.reduce((s, ev) => s + (Number(ev.extendedProps.bonus) || 0), 0);
-      console.log(`Plataforma selecionada: ${name} — eventos: ${eventsForPlatform.length} — bônus total: R$ ${totalBonus.toFixed(2)}`);
-    });
-
+    // Toggle painel
+    window.togglePanel = () => {
+      panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+    };
   });
   </script>
 </body>
