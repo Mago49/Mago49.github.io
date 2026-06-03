@@ -308,12 +308,31 @@
     /* -------------------------
        Painel de plataformas
        ------------------------- */
-    const DEFAULT_PLATFORMS = Array.from({length:33}, (_,i) => ({
-      id: 'p' + (i+1),
-      name: `Plataforma ${i+1}`,
-      active: true,
-      favorite: false
-    }));
+    const DEFAULT_PLATFORMS = [
+  { id: 'p1', name: 'A73', active: true, favorite: false },
+  { id: 'p2', name: 'DDUU', active: true, favorite: false },
+  { id: 'p3', name: 'EE44', active: true, favorite: false },
+  { id: 'p4', name: 'FXX', active: true, favorite: false },
+  { id: 'p5', name: 'HHH5', active: true, favorite: false },
+  { id: 'p6', name: 'NNZZ', active: true, favorite: false },
+  { id: 'p7', name: 'PP11', active: true, favorite: false },
+  { id: 'p8', name: '1UUU', active: true, favorite: false },
+  { id: 'p9', name: '11TT', active: true, favorite: false },
+  { id: 'p10', name: '552X', active: true, favorite: false },
+  { id: 'p11', name: '35C', active: true, favorite: false },
+  { id: 'p12', name: '36Q', active: true, favorite: false },
+  { id: 'p13', name: '44MM', active: true, favorite: false },
+  { id: 'p14', name: '45T', active: true, favorite: false },
+  { id: 'p15', name: '5TTT', active: true, favorite: false },
+  { id: 'p16', name: '53D', active: true, favorite: false },
+  { id: 'p17', name: '551X', active: true, favorite: false },
+  { id: 'p18', name: '61T', active: true, favorite: false },
+  { id: 'p19', name: '63V', active: true, favorite: false },
+  { id: 'p20', name: '66GG', active: true, favorite: false },
+  { id: 'p21', name: '68D', active: true, favorite: false },
+  { id: 'p22', name: '7GGG', active: true, favorite: false },
+  { id: 'p23', name: '7JJJ', active: true, favorite: false },
+  { id: 'p24', name: '72B', active: true, favorite: false
     const PLAT_STORAGE_KEY = 'depositPlatforms_v1';
 
     function loadPlatforms(){
