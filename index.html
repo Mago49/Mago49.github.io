@@ -327,11 +327,10 @@
       '93D', '93K', '988K'
     ];
 
-    const RESET_DAYS = [2, 3, 7, 15, 30];
     const DEFAULT_PLATFORMS = Array.from({length:33}, (_,i) => ({
       id: 'p' + (i+1),
       name: PLATFORM_NAMES[i],
-      lastResetDate: null, // data em que o ciclo foi reiniciado
+      lastResetDate: null,
       deposits: []
     }));
     const PLAT_STORAGE_KEY = 'depositPlatforms_v3';
@@ -360,13 +359,11 @@
 
     /* Helpers para ciclo e emissões */
     function getCycleStart(platform, refDate = new Date()){
-      // Se há data de reset, usa essa
       if (platform.lastResetDate) {
         const resetDate = new Date(platform.lastResetDate);
         resetDate.setHours(0, 0, 0, 0);
         return resetDate;
       }
-      // Senão, usa comportamento padrão
       return new Date(refDate.getFullYear(), refDate.getMonth(), 1, 0, 0, 0, 0);
     }
 
