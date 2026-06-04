@@ -32,6 +32,11 @@
       background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
     }
 
+    body {
+      display: flex;
+      flex-direction: column;
+    }
+
     #calendar {
       position: relative;
       z-index: 10;
@@ -40,6 +45,7 @@
       background: rgba(255,255,255,0.9);
       box-sizing: border-box;
       padding: 1rem;
+      flex-shrink: 0;
     }
 
     .background-svg {
@@ -101,27 +107,30 @@
     }
 
     #platformPanel {
-      position: fixed;
-      right: 0;
-      bottom: 80px;
-      width: 340px;
-      max-height: calc(100vh - 140px);
+      position: relative;
+      width: 100%;
+      max-width: 100%;
       background: rgba(255,255,255,0.95);
       border: 1px solid rgba(15,23,42,0.06);
-      border-radius: 12px 12px 0 0;
-      box-shadow: -2px 0 15px rgba(2,6,23,0.1);
+      border-radius: 0;
+      box-shadow: 0 -2px 15px rgba(2,6,23,0.1);
       padding: 0.75rem;
-      z-index: 30;
+      z-index: 20;
       display: flex;
       flex-direction: column;
       gap: 0.5rem;
       font-family: inherit;
       overflow-y: auto;
-      transition: transform 0.3s ease;
+      max-height: none;
+      transition: max-height 0.3s ease, padding 0.3s ease;
+      flex-shrink: 0;
     }
 
     #platformPanel.minimized {
-      transform: translateY(calc(100% - 45px));
+      max-height: 0;
+      padding: 0;
+      overflow: hidden;
+      border: none;
     }
 
     #platformPanel .panel-header { display:flex; align-items:center; justify-content:space-between; gap:0.5rem; }
@@ -133,7 +142,7 @@
     .panel-actions { display:flex; gap:0.5rem; flex-wrap: wrap; }
     .panel-actions button { background:#15803d; padding:0.35rem 0.5rem; font-size:0.85rem; }
     .panel-actions button[title] { background:#ef4444; }
-    #platformList { list-style:none; margin:0; padding:0; overflow:auto; flex:1; display:flex; flex-direction:column; gap:0.25rem; }
+    #platformList { list-style:none; margin:0; padding:0; overflow:auto; flex:1; display:flex; flex-direction:column; gap:0.25rem; max-height: 400px; }
     .platform-item {
       display:flex; flex-direction: column; gap:0.35rem;
       padding:0.6rem; border-radius:8px; border:1px solid rgba(0,0,0,0.04);
@@ -178,18 +187,17 @@
     .minimize-tab {
       display: none;
       position: fixed;
-      right: 0;
       bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%);
       background: #15803d;
       color: #fff;
       border: none;
-      padding: 0.75rem;
-      border-radius: 12px 0 0 0;
+      padding: 0.75rem 1.5rem;
+      border-radius: 12px 12px 0 0;
       cursor: pointer;
       font-weight: 600;
-      z-index: 29;
-      writing-mode: vertical-rl;
-      text-orientation: mixed;
+      z-index: 19;
     }
 
     .minimize-tab.show {
@@ -338,13 +346,8 @@
     }
 
     @media (max-width:900px){
-      #platformPanel {
-        width: 100%;
-        right: 0;
-        bottom: 80px;
-        border-radius: 12px 12px 0 0;
-      }
-      #calendar { min-height: 420px; }
+      #platformList { max-height: 300px; }
+      #calendar { min-height: 400px; }
     }
   </style>
 </head>
@@ -359,7 +362,7 @@
 
   <div id="calendar"></div>
 
-  <button class="minimize-tab" id="minimizeTab">Painel</button>
+  <button class="minimize-tab" id="minimizeTab">Abrir Painel</button>
 
   <aside id="platformPanel" aria-label="Painel de plataformas">
     <div class="panel-header">
@@ -799,12 +802,14 @@
       panel.classList.toggle('minimized');
       minimizeTab.classList.toggle('show');
       toggleBtn.title = panel.classList.contains('minimized') ? 'Abrir painel' : 'Minimizar painel';
+      minimizeTab.textContent = panel.classList.contains('minimized') ? 'Abrir Painel' : 'Fechar Painel';
     });
 
     minimizeTab.addEventListener('click', () => {
       panel.classList.remove('minimized');
       minimizeTab.classList.remove('show');
       toggleBtn.title = 'Minimizar painel';
+      minimizeTab.textContent = 'Abrir Painel';
     });
 
     const calendarEl = document.getElementById('calendar');
