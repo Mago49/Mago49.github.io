@@ -163,26 +163,50 @@
     <circle cx="1160" cy="520" r="280" fill="#15803d" />
   </svg>
 
-  <!-- Painel lateral de plataformas -->
-  <aside id="platformPanel" aria-label="Painel de plataformas">
-    <div class="panel-header">
-      <h3>Plataformas</h3>
-      <div class="panel-controls">
-        <input id="platformSearch" type="search" placeholder="Buscar" aria-label="Buscar plataforma" />
-        <button id="togglePanelBtn" aria-expanded="true" title="Ocultar painel">✕</button>
-      </div>
-    </div>
+/* Platform panel: lateral em desktop, abaixo em mobile */
+#platformPanel {
+  position: fixed;
+  right: 1rem;
+  bottom: 96px;
+  width: 340px;
+  max-width: calc(100% - 2rem);
+  max-height: calc(100vh - 140px);
+  background: rgba(255,255,255,0.95);
+  border: 1px solid rgba(15,23,42,0.06);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(2,6,23,0.06);
+  padding: 0.75rem;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-family: inherit;
+  overflow-y: auto;
+}
 
-    <div class="panel-actions">
-      <button id="resetAllBtn" title="Resetar todos os depósitos">Resetar</button>
-    </div>
+/* mantém as regras internas (panel-header, panel-controls, etc.) tal como estão no seu CSS existente */
 
-    <ul id="platformList" role="list" aria-live="polite"></ul>
+/* Breakpoint: em telas pequenas, coloca o painel abaixo do calendário */
+@media (max-width: 900px) {
+  /* Painel passa a fazer parte do fluxo e fica abaixo do calendário */
+  #platformPanel {
+    position: static;        /* deixa o elemento fluir após o calendário */
+    width: 92%;
+    max-width: none;
+    margin: 0 auto 2rem;    /* centraliza e dá espaço abaixo */
+    left: auto;
+    right: auto;
+    bottom: auto;
+    max-height: none;       /* permite a página rolar normalmente */
+    overflow-y: visible;    /* evita rolagem interna pequena */
+  }
 
-    <div class="panel-footer">
-      <small id="platformCount"></small>
-    </div>
-  </aside>
+  /* Ajustes para o calendário em mobile */
+  #calendar {
+    height: auto;           /* permite o calendário crescer conforme conteúdo */
+    min-height: 360px;
+  }
+}
 
   <!-- Calendário -->
   <div id="calendar"></div>
