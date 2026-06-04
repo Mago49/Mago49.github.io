@@ -32,25 +32,19 @@
       background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
     }
 
-    /* Calendar container */
-    #calendar {
-      position: relative;
-      z-index: 10;
-      width: 100%;
-      height: calc(100vh - 96px);
-      background: rgba(255,255,255,0.9);
-      box-sizing: border-box;
-      padding: 1rem;
-    }
-
-    .background-svg {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      z-index: 0;
-      pointer-events: none;
-      opacity: 0.9;
-    }
+/* Calendar container (desktop: altura por viewport; mobile: auto para rolagem natural) */
+#calendar {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  /* Mantém boa altura em desktop, mas permite crescer em telas pequenas */
+  height: calc(100vh - 96px);
+  min-height: 420px;
+  background: rgba(255,255,255,0.9);
+  box-sizing: border-box;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
 
     /* Modal (mantido caso queira usar futuramente) */
     .modal {
