@@ -167,6 +167,53 @@
     }
     .panel-footer { text-align:left; font-size:0.9rem; color:#334155; }
 
+    /* Modal de reinício */
+    .reset-modal {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      display: none; align-items: center; justify-content: center;
+      z-index: 100;
+    }
+    .reset-modal-content {
+      background: #fff;
+      padding: 1.5rem;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      text-align: center;
+      max-width: 400px;
+    }
+    .reset-modal-content h2 {
+      margin: 0 0 1rem 0;
+      font-size: 1.25rem;
+    }
+    .reset-modal-content p {
+      margin: 0.5rem 0;
+      font-size: 0.95rem;
+      color: #64748b;
+    }
+    .reset-modal-buttons {
+      display: flex;
+      gap: 0.5rem;
+      justify-content: center;
+      margin-top: 1.5rem;
+    }
+    .reset-modal-buttons button {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-confirm {
+      background: #15803d;
+      color: #fff;
+    }
+    .btn-cancel-modal {
+      background: #e5e7eb;
+      color: #1f2937;
+    }
+
     @media (max-width:900px){
       #platformPanel { width: 92%; margin: 0.75rem auto 2rem; }
       #calendar { min-height: 420px; }
@@ -206,6 +253,19 @@
       <small id="platformCount"></small>
     </div>
   </aside>
+
+  <!-- Modal de reinício customizado -->
+  <div class="reset-modal" id="resetModal">
+    <div class="reset-modal-content">
+      <h2>Iniciar novo ciclo</h2>
+      <p id="resetModalText"></p>
+      <p style="font-weight: 600; color: #0f172a;">O ciclo recomeçará hoje (Dia 0)</p>
+      <div class="reset-modal-buttons">
+        <button class="btn-confirm" id="resetConfirmBtn">Confirmar</button>
+        <button class="btn-cancel-modal" id="resetCancelBtn">Cancelar</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Rodapé com níveis -->
   <footer class="legend" aria-hidden="false">
@@ -271,10 +331,10 @@
     const DEFAULT_PLATFORMS = Array.from({length:33}, (_,i) => ({
       id: 'p' + (i+1),
       name: PLATFORM_NAMES[i],
-      resetDay: RESET_DAYS[i % RESET_DAYS.length],
+      lastResetDate: null, // data em que o ciclo foi reiniciado
       deposits: []
     }));
-    const PLAT_STORAGE_KEY = 'depositPlatforms_v2';
+    const PLAT_STORAGE_KEY = 'depositPlatforms_v3';
 
     function loadPlatforms(){
       try {
@@ -285,7 +345,7 @@
         return parsed.map((p, i) => ({
           id: p.id || ('p' + (i+1)),
           name: p.name || PLATFORM_NAMES[i],
-          resetDay: p.resetDay || RESET_DAYS[i % RESET_DAYS.length],
+          lastResetDate: p.lastResetDate || null,
           deposits: Array.isArray(p.deposits) ? p.deposits : []
         }));
       } catch (err) {
@@ -300,14 +360,14 @@
 
     /* Helpers para ciclo e emissões */
     function getCycleStart(platform, refDate = new Date()){
-      const resetDay = Number(platform.resetDay) || 1;
-      let year = refDate.getFullYear();
-      let month = refDate.getMonth();
-      if (refDate.getDate() < resetDay) {
-        month -= 1;
-        if (month < 0) { month = 11; year -= 1; }
+      // Se há data de reset, usa essa
+      if (platform.lastResetDate) {
+        const resetDate = new Date(platform.lastResetDate);
+        resetDate.setHours(0, 0, 0, 0);
+        return resetDate;
       }
-      return new Date(year, month, resetDay, 0, 0, 0, 0);
+      // Senão, usa comportamento padrão
+      return new Date(refDate.getFullYear(), refDate.getMonth(), 1, 0, 0, 0, 0);
     }
 
     function getCurrentCycleDay(platform, refDate = new Date()){
@@ -318,9 +378,7 @@
       const timeDiff = today - cycleStart;
       const dayDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
       
-      // Se o dia é negativo (antes do ciclo começar), retorna 0
       if (dayDiff < 0) return 0;
-      // Dias 0-30 do ciclo
       return dayDiff;
     }
 
@@ -410,7 +468,14 @@
 
         const resetInfo = document.createElement('div');
         resetInfo.className = 'reset-date';
-        resetInfo.textContent = `Reinicia dia ${p.resetDay} | Total: R$ ${total.toFixed(2)}`;
+        if (p.lastResetDate) {
+          const resetDateObj = new Date(p.lastResetDate);
+          const dia = String(resetDateObj.getDate()).padStart(2, '0');
+          const mes = String(resetDateObj.getMonth() + 1).padStart(2, '0');
+          resetInfo.textContent = `Ciclo iniciado: ${dia}/${mes} | Total: R$ ${total.toFixed(2)}`;
+        } else {
+          resetInfo.textContent = `Ciclo não iniciado | Total: R$ ${total.toFixed(2)}`;
+        }
         li.appendChild(resetInfo);
 
         const form = document.createElement('div');
@@ -444,16 +509,12 @@
 
         const resetBtn = document.createElement('button');
         resetBtn.textContent = 'Reinício';
-        resetBtn.title = 'Zerar depósitos do ciclo desta plataforma';
+        resetBtn.title = 'Reiniciar ciclo desta plataforma';
         resetBtn.style.background = '#ef4444';
         resetBtn.style.marginLeft = '6px';
         resetBtn.addEventListener('click', (ev) => {
           ev.stopPropagation();
-          if (!confirm(`Zerar depósitos do ciclo atual de ${p.name}?`)) return;
-          p.deposits = [];
-          savePlatforms(platforms);
-          updateCalendarEvents();
-          renderPlatformList(q);
+          showResetModal(p, q);
         });
 
         form.appendChild(input);
@@ -474,6 +535,46 @@
       const totalAll = platforms.reduce((s, pl) => s + getTotalDepositsSinceCycle(pl), 0);
       countEl.textContent = `${items.length} plataformas • Total geral: R$ ${totalAll.toFixed(2)}`;
     }
+
+    /* Modal de reinício */
+    const resetModal = document.getElementById('resetModal');
+    const resetModalText = document.getElementById('resetModalText');
+    const resetConfirmBtn = document.getElementById('resetConfirmBtn');
+    const resetCancelBtn = document.getElementById('resetCancelBtn');
+    let currentResetPlatform = null;
+    let currentResetFilter = '';
+
+    function showResetModal(platform, filter){
+      currentResetPlatform = platform;
+      currentResetFilter = filter;
+      resetModalText.textContent = `Reiniciar ciclo de ${platform.name}?`;
+      resetModal.style.display = 'flex';
+    }
+
+    function closeResetModal(){
+      resetModal.style.display = 'none';
+      currentResetPlatform = null;
+    }
+
+    resetConfirmBtn.addEventListener('click', () => {
+      if (currentResetPlatform) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        currentResetPlatform.lastResetDate = today.toISOString();
+        savePlatforms(platforms);
+        updateCalendarEvents();
+        renderPlatformList(currentResetFilter);
+      }
+      closeResetModal();
+    });
+
+    resetCancelBtn.addEventListener('click', () => {
+      closeResetModal();
+    });
+
+    resetModal.addEventListener('click', (e) => {
+      if (e.target === resetModal) closeResetModal();
+    });
 
     let platforms = loadPlatforms();
     renderPlatformList();
