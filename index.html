@@ -139,8 +139,20 @@
     }
     .platform-item:hover { background: #f8fafc; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
     .platform-item.selected { box-shadow: 0 6px 18px rgba(21,128,61,0.15); border-color: #15803d; }
-    .platform-item-header { display:flex; align-items:center; gap:0.5rem; }
+    .platform-item-header { display:flex; align-items:center; gap:0.5rem; justify-content: space-between; }
     .platform-item .name { flex:1; font-weight:600; color:var(--text-dark); }
+    .platform-item .cycle-day { 
+      font-size:0.85rem; 
+      font-weight:700; 
+      background: #e0e7ff; 
+      color: #3730a3;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+    }
+    .platform-item .cycle-day.no-bonus { 
+      background: #fecaca; 
+      color: #991b1b;
+    }
     .platform-item .reset-date { font-size:0.75rem; color:#64748b; }
     .platform-deposit-form {
       display: flex; gap: 0.35rem; align-items: center;
@@ -248,10 +260,17 @@
     /* -------------------------
        Sistema de Plataformas com Depósitos
        ------------------------- */
+    const PLATFORM_NAMES = [
+      'A73', 'DDUU', 'EE44', 'FXX', 'HHH5', 'NNZZ', 'PP11', '1UUU', '11TT', '35C',
+      '36Q', '44MM', '45T', '5TTT', '53D', '552X', '551X', '61T', '63V', '66GG',
+      '68D', '7GGG', '7JJJ', '72B', '79C', '83H', '838X', '84D', '877X', '899V',
+      '93D', '93K', '988K'
+    ];
+
     const RESET_DAYS = [2, 3, 7, 15, 30];
     const DEFAULT_PLATFORMS = Array.from({length:33}, (_,i) => ({
       id: 'p' + (i+1),
-      name: `Plataforma ${i+1}`,
+      name: PLATFORM_NAMES[i],
       resetDay: RESET_DAYS[i % RESET_DAYS.length],
       deposits: []
     }));
@@ -265,7 +284,7 @@
         if (!Array.isArray(parsed)) return DEFAULT_PLATFORMS.slice();
         return parsed.map((p, i) => ({
           id: p.id || ('p' + (i+1)),
-          name: p.name || (`Plataforma ${i+1}`),
+          name: p.name || PLATFORM_NAMES[i],
           resetDay: p.resetDay || RESET_DAYS[i % RESET_DAYS.length],
           deposits: Array.isArray(p.deposits) ? p.deposits : []
         }));
@@ -291,6 +310,20 @@
       return new Date(year, month, resetDay, 0, 0, 0, 0);
     }
 
+    function getCurrentCycleDay(platform, refDate = new Date()){
+      const cycleStart = getCycleStart(platform, refDate);
+      const today = new Date(refDate);
+      today.setHours(0, 0, 0, 0);
+      
+      const timeDiff = today - cycleStart;
+      const dayDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+      
+      // Se o dia é negativo (antes do ciclo começar), retorna 0
+      if (dayDiff < 0) return 0;
+      // Dias 0-30 do ciclo
+      return dayDiff;
+    }
+
     function computeEmissionDates(platform, refDate = new Date()){
       const cycleStart = getCycleStart(platform, refDate);
       const offsets = [2, 3, 7, 15, 30];
@@ -314,10 +347,6 @@
 
     function getTotalDepositsSinceCycle(platform){
       return sumDepositsUpTo(platform, new Date());
-    }
-
-    function formatResetDate(resetDay){
-      return `${resetDay} de cada mês`;
     }
 
     function colorForLevel(valueOrLevel){
@@ -357,6 +386,7 @@
 
         const total = getTotalDepositsSinceCycle(p);
         const bgColor = colorForLevel(total);
+        const cycleDay = getCurrentCycleDay(p);
 
         const header = document.createElement('div');
         header.className = 'platform-item-header';
@@ -365,20 +395,22 @@
         name.className = 'name';
         name.textContent = p.name;
 
-        const swatch = document.createElement('div');
-        swatch.style.width = '12px';
-        swatch.style.height = '12px';
-        swatch.style.borderRadius = '4px';
-        swatch.style.background = bgColor;
-        swatch.title = `Cor pelo total: R$ ${total.toFixed(2)}`;
+        const cycleInfo = document.createElement('div');
+        cycleInfo.className = 'cycle-day';
+        if (cycleDay === 0) {
+          cycleInfo.classList.add('no-bonus');
+          cycleInfo.textContent = 'Dia 0';
+        } else {
+          cycleInfo.textContent = `Dia ${cycleDay}`;
+        }
 
-        header.appendChild(swatch);
         header.appendChild(name);
+        header.appendChild(cycleInfo);
         li.appendChild(header);
 
         const resetInfo = document.createElement('div');
         resetInfo.className = 'reset-date';
-        resetInfo.textContent = `${formatResetDate(p.resetDay)} | Total no ciclo: R$ ${total.toFixed(2)}`;
+        resetInfo.textContent = `Reinicia dia ${p.resetDay} | Total: R$ ${total.toFixed(2)}`;
         li.appendChild(resetInfo);
 
         const form = document.createElement('div');
@@ -440,7 +472,7 @@
       });
 
       const totalAll = platforms.reduce((s, pl) => s + getTotalDepositsSinceCycle(pl), 0);
-      countEl.textContent = `${items.length} plataformas • Total geral no ciclo: R$ ${totalAll.toFixed(2)}`;
+      countEl.textContent = `${items.length} plataformas • Total geral: R$ ${totalAll.toFixed(2)}`;
     }
 
     let platforms = loadPlatforms();
@@ -513,7 +545,7 @@
       });
       const p = platforms.find(x => x.id === platformId);
       if (p) {
-        console.log(`Filtrando: ${p.name} | Total no ciclo: R$ ${getTotalDepositsSinceCycle(p).toFixed(2)}`);
+        console.log(`Filtrando: ${p.name} | Dia do ciclo: ${getCurrentCycleDay(p)} | Total: R$ ${getTotalDepositsSinceCycle(p).toFixed(2)}`);
       }
     }
 
@@ -549,6 +581,7 @@
       const ms = nextMidnight - now;
       setTimeout(() => {
         updateCalendarEvents();
+        renderPlatformList(document.getElementById('platformSearch').value);
         scheduleDailyUpdate();
       }, ms);
     }
