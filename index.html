@@ -104,25 +104,29 @@
 
     /* Platform panel */
     #platformPanel {
-      position: relative;
-      right: auto;
-      top: auto;
-      width: calc(100% - 2rem);
-      max-width: 1040px;
-      margin: 1rem auto 2.5rem;
-      height: auto;
+      position: fixed;
+      right: 0;
+      bottom: 80px;
+      width: 340px;
+      max-height: calc(100vh - 140px);
       background: rgba(255,255,255,0.95);
       border: 1px solid rgba(15,23,42,0.06);
-      border-radius: 12px;
-      box-shadow: 0 10px 30px rgba(2,6,23,0.06);
+      border-radius: 12px 12px 0 0;
+      box-shadow: -2px 0 15px rgba(2,6,23,0.1);
       padding: 0.75rem;
       z-index: 30;
       display: flex;
       flex-direction: column;
       gap: 0.5rem;
       font-family: inherit;
-      overflow: visible;
+      overflow-y: auto;
+      transition: transform 0.3s ease;
     }
+
+    #platformPanel.minimized {
+      transform: translateY(calc(100% - 45px));
+    }
+
     #platformPanel .panel-header { display:flex; align-items:center; justify-content:space-between; gap:0.5rem; }
     #platformPanel h3 { margin:0; font-size:1rem; }
     #platformPanel .panel-controls { display:flex; gap:0.5rem; align-items:center; }
@@ -174,6 +178,28 @@
     }
     .panel-footer { text-align:left; font-size:0.9rem; color:#334155; }
 
+    /* Minimized panel button */
+    .minimize-tab {
+      display: none;
+      position: fixed;
+      right: 0;
+      bottom: 80px;
+      background: #15803d;
+      color: #fff;
+      border: none;
+      padding: 0.75rem;
+      border-radius: 12px 0 0 0;
+      cursor: pointer;
+      font-weight: 600;
+      z-index: 29;
+      writing-mode: vertical-rl;
+      text-orientation: mixed;
+    }
+
+    .minimize-tab.show {
+      display: block;
+    }
+
     /* Modal de reinício */
     .reset-modal {
       position: fixed;
@@ -198,6 +224,23 @@
       margin: 0.5rem 0;
       font-size: 0.95rem;
       color: #64748b;
+    }
+    .reset-date-picker {
+      margin: 1rem 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .reset-date-picker label {
+      font-size: 0.9rem;
+      color: #334155;
+      text-align: left;
+    }
+    .reset-date-picker input {
+      padding: 0.5rem;
+      border: 1px solid #e6e9ee;
+      border-radius: 6px;
+      font-size: 0.95rem;
     }
     .reset-modal-buttons {
       display: flex;
@@ -283,7 +326,12 @@
     }
 
     @media (max-width:900px){
-      #platformPanel { width: 92%; margin: 0.75rem auto 2rem; }
+      #platformPanel {
+        width: 100%;
+        right: 0;
+        bottom: 80px;
+        border-radius: 12px 12px 0 0;
+      }
       #calendar { min-height: 420px; }
     }
   </style>
@@ -301,13 +349,16 @@
   <!-- Calendário -->
   <div id="calendar"></div>
 
-  <!-- Painel de plataformas (abaixo do calendário) -->
+  <!-- Botão para minimizar -->
+  <button class="minimize-tab" id="minimizeTab">Painel</button>
+
+  <!-- Painel de plataformas -->
   <aside id="platformPanel" aria-label="Painel de plataformas">
     <div class="panel-header">
       <h3>Plataformas</h3>
       <div class="panel-controls">
         <input id="platformSearch" type="search" placeholder="Buscar" aria-label="Buscar plataforma" />
-        <button id="togglePanelBtn" aria-expanded="true" title="Ocultar painel">✕</button>
+        <button id="togglePanelBtn" aria-expanded="true" title="Minimizar painel">−</button>
       </div>
     </div>
 
@@ -328,7 +379,11 @@
     <div class="reset-modal-content">
       <h2>Iniciar novo ciclo</h2>
       <p id="resetModalText"></p>
-      <p style="font-weight: 600; color: #0f172a;">O ciclo recomeçará hoje (Dia 0)</p>
+      <div class="reset-date-picker">
+        <label for="resetDateInput">Selecione a data de reinício:</label>
+        <input type="date" id="resetDateInput" />
+      </div>
+      <p style="font-weight: 600; color: #0f172a;">O ciclo recomeçará no dia selecionado (Dia 0)</p>
       <div class="reset-modal-buttons">
         <button class="btn-confirm" id="resetConfirmBtn">Confirmar</button>
         <button class="btn-cancel-modal" id="resetCancelBtn">Cancelar</button>
@@ -675,6 +730,7 @@
     /* Modal de reinício */
     const resetModal = document.getElementById('resetModal');
     const resetModalText = document.getElementById('resetModalText');
+    const resetDateInput = document.getElementById('resetDateInput');
     const resetConfirmBtn = document.getElementById('resetConfirmBtn');
     const resetCancelBtn = document.getElementById('resetCancelBtn');
     let currentResetPlatform = null;
@@ -684,6 +740,13 @@
       currentResetPlatform = platform;
       currentResetFilter = filter;
       resetModalText.textContent = `Reiniciar ciclo de ${platform.name}?`;
+      
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      resetDateInput.value = `${yyyy}-${mm}-${dd}`;
+      
       resetModal.style.display = 'flex';
     }
 
@@ -694,9 +757,9 @@
 
     resetConfirmBtn.addEventListener('click', () => {
       if (currentResetPlatform) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        currentResetPlatform.lastResetDate = today.toISOString();
+        const selectedDate = new Date(resetDateInput.value);
+        selectedDate.setHours(0, 0, 0, 0);
+        currentResetPlatform.lastResetDate = selectedDate.toISOString();
         savePlatforms(platforms);
         updateCalendarEvents();
         renderPlatformList(currentResetFilter);
@@ -734,10 +797,18 @@
 
     const toggleBtn = document.getElementById('togglePanelBtn');
     const panel = document.getElementById('platformPanel');
+    const minimizeTab = document.getElementById('minimizeTab');
+
     toggleBtn.addEventListener('click', () => {
-      const isHidden = panel.style.display === 'none';
-      panel.style.display = isHidden ? 'flex' : 'none';
-      toggleBtn.title = isHidden ? 'Ocultar painel' : 'Mostrar painel';
+      panel.classList.toggle('minimized');
+      minimizeTab.classList.toggle('show');
+      toggleBtn.title = panel.classList.contains('minimized') ? 'Abrir painel' : 'Minimizar painel';
+    });
+
+    minimizeTab.addEventListener('click', () => {
+      panel.classList.remove('minimized');
+      minimizeTab.classList.remove('show');
+      toggleBtn.title = 'Minimizar painel';
     });
 
     /* -------------------------
