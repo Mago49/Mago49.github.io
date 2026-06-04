@@ -75,21 +75,21 @@
       z-index: 30;
       background: var(--footer-bg);
       border-top: 1px solid rgba(15,23,42,0.06);
-      display:flex; gap:1rem; align-items:center;
-      padding: 0.75rem 1rem;
+      display:flex; gap:0.75rem; align-items:center;
+      padding: 0.5rem 1rem;
       box-shadow: 0 -6px 18px rgba(2,6,23,0.03);
       flex-wrap:wrap;
     }
-    .legend-item { display:flex; gap:0.5rem; align-items:center; font-size:0.95rem; color:var(--text-dark); }
-    .legend-swatch { width:28px; height:20px; border-radius:6px; border:1px solid var(--event-border); box-shadow: inset 0 -2px 0 rgba(0,0,0,0.03); }
-    .legend-label { font-weight:600; margin-right:0.25rem; color:#0f172a; }
+    .legend-item { display:flex; gap:0.35rem; align-items:center; font-size:0.85rem; color:var(--text-dark); }
+    .legend-swatch { width:20px; height:16px; border-radius:4px; border:1px solid var(--event-border); box-shadow: inset 0 -2px 0 rgba(0,0,0,0.03); }
+    .legend-label { font-weight:600; margin-right:0.15rem; color:#0f172a; font-size: 0.8rem; }
 
     /* Event styling helper */
     .fc-event {
       border-radius: 8px;
       padding: 2px 6px;
       font-weight:700;
-      color: #0f172a;
+      color: #000000;
       border: 1px solid rgba(0,0,0,0.06);
       box-shadow: none;
     }
@@ -99,6 +99,7 @@
       white-space: normal;
       word-break: break-word;
       padding: 2px;
+      color: #000000;
     }
 
     /* Platform panel */
@@ -128,7 +129,7 @@
     #platformPanel input[type="search"] { padding:0.4rem 0.5rem; border-radius:8px; border:1px solid #e6e9ee; flex: 1; }
     #platformPanel button { padding:0.35rem 0.6rem; border-radius:8px; border: none; background:#0f172a; color:#fff; cursor:pointer; font-weight:600; font-size: 0.85rem; }
     #platformPanel button[title] { background:#6b7280; }
-    .panel-actions { display:flex; gap:0.5rem; }
+    .panel-actions { display:flex; gap:0.5rem; flex-wrap: wrap; }
     .panel-actions button { background:#15803d; padding:0.35rem 0.5rem; font-size:0.85rem; }
     .panel-actions button[title] { background:#ef4444; }
     #platformList { list-style:none; margin:0; padding:0; overflow:auto; flex:1; display:flex; flex-direction:column; gap:0.25rem; }
@@ -138,7 +139,7 @@
       background:#fff; cursor: pointer; transition: all 0.2s;
     }
     .platform-item:hover { background: #f8fafc; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-    .platform-item.selected { box-shadow: 0 6px 18px rgba(21,128,61,0.15); border-color: #15803d; }
+    .platform-item.selected { box-shadow: 0 6px 18px rgba(21,128,61,0.15); border: 3px solid #15803d; }
     .platform-item-header { display:flex; align-items:center; gap:0.5rem; justify-content: space-between; }
     .platform-item .name { flex:1; font-weight:600; color:var(--text-dark); }
     .platform-item .cycle-day { 
@@ -164,6 +165,12 @@
     }
     .platform-deposit-form button {
       padding: 0.35rem 0.5rem; font-size: 0.8rem; background: #15803d;
+    }
+    .platform-actions-buttons {
+      display: flex; gap: 0.35rem;
+    }
+    .platform-actions-buttons button {
+      flex: 1; padding: 0.35rem 0.5rem; font-size: 0.75rem;
     }
     .panel-footer { text-align:left; font-size:0.9rem; color:#334155; }
 
@@ -214,6 +221,67 @@
       color: #1f2937;
     }
 
+    /* Modal de histórico */
+    .history-modal {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      display: none; align-items: center; justify-content: center;
+      z-index: 100;
+    }
+    .history-modal-content {
+      background: #fff;
+      padding: 1.5rem;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      max-width: 500px;
+      width: 95%;
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+    .history-modal-content h2 {
+      margin: 0 0 1rem 0;
+      font-size: 1.25rem;
+    }
+    .history-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem;
+      border-bottom: 1px solid #e5e7eb;
+      font-size: 0.9rem;
+    }
+    .history-item:last-child {
+      border-bottom: none;
+    }
+    .history-date {
+      font-weight: 600;
+      color: #0f172a;
+    }
+    .history-value {
+      background: #15803d;
+      color: #fff;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+    .history-empty {
+      text-align: center;
+      color: #64748b;
+      padding: 1rem;
+    }
+    .history-close {
+      margin-top: 1rem;
+      padding: 0.5rem 1rem;
+      background: #e5e7eb;
+      color: #1f2937;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+    }
+
     @media (max-width:900px){
       #platformPanel { width: 92%; margin: 0.75rem auto 2rem; }
       #calendar { min-height: 420px; }
@@ -244,6 +312,7 @@
     </div>
 
     <div class="panel-actions">
+      <button id="allBonusBtn" title="Ver todos os bônus">TODOS OS BÔNUS</button>
       <button id="resetAllBtn" title="Resetar todos os depósitos">Resetar</button>
     </div>
 
@@ -264,6 +333,15 @@
         <button class="btn-confirm" id="resetConfirmBtn">Confirmar</button>
         <button class="btn-cancel-modal" id="resetCancelBtn">Cancelar</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Modal de histórico -->
+  <div class="history-modal" id="historyModal">
+    <div class="history-modal-content">
+      <h2 id="historyTitle">Histórico de Depósitos</h2>
+      <div id="historyList"></div>
+      <button class="history-close" id="historyCloseBtn">Fechar</button>
     </div>
   </div>
 
@@ -485,6 +563,20 @@
         input.step = '0.01';
         input.value = '';
 
+        form.appendChild(input);
+        li.appendChild(form);
+
+        const actionButtons = document.createElement('div');
+        actionButtons.className = 'platform-actions-buttons';
+
+        const historyBtn = document.createElement('button');
+        historyBtn.textContent = 'Histórico';
+        historyBtn.style.background = '#3b82f6';
+        historyBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          showHistoryModal(p);
+        });
+
         const btn = document.createElement('button');
         btn.textContent = 'Adicionar';
         btn.addEventListener('click', (e) => {
@@ -506,21 +598,19 @@
 
         const resetBtn = document.createElement('button');
         resetBtn.textContent = 'Reinício';
-        resetBtn.title = 'Reiniciar ciclo desta plataforma';
         resetBtn.style.background = '#ef4444';
-        resetBtn.style.marginLeft = '6px';
         resetBtn.addEventListener('click', (ev) => {
           ev.stopPropagation();
           showResetModal(p, q);
         });
 
-        form.appendChild(input);
-        form.appendChild(btn);
-        form.appendChild(resetBtn);
-        li.appendChild(form);
+        actionButtons.appendChild(historyBtn);
+        actionButtons.appendChild(btn);
+        actionButtons.appendChild(resetBtn);
+        li.appendChild(actionButtons);
 
         li.addEventListener('click', (e) => {
-          if (e.target === btn || e.target === input || e.target === resetBtn) return;
+          if (e.target === btn || e.target === input || e.target === resetBtn || e.target === historyBtn) return;
           document.querySelectorAll('.platform-item').forEach(el => el.classList.remove('selected'));
           li.classList.add('selected');
           filterCalendarByPlatform(p.id);
@@ -532,6 +622,55 @@
       const totalAll = platforms.reduce((s, pl) => s + getTotalDepositsSinceCycle(pl), 0);
       countEl.textContent = `${items.length} plataformas • Total geral: R$ ${totalAll.toFixed(2)}`;
     }
+
+    /* Modal de histórico */
+    const historyModal = document.getElementById('historyModal');
+    const historyTitle = document.getElementById('historyTitle');
+    const historyList = document.getElementById('historyList');
+    const historyCloseBtn = document.getElementById('historyCloseBtn');
+    let currentHistoryPlatform = null;
+
+    function showHistoryModal(platform){
+      currentHistoryPlatform = platform;
+      historyTitle.textContent = `Histórico de Depósitos - ${platform.name}`;
+      historyList.innerHTML = '';
+
+      if (platform.deposits.length === 0) {
+        historyList.innerHTML = '<div class="history-empty">Nenhum depósito registrado</div>';
+      } else {
+        const sortedDeposits = [...platform.deposits].sort((a, b) => new Date(b.date) - new Date(a.date));
+        sortedDeposits.forEach(dep => {
+          const depositDate = new Date(dep.date);
+          const dia = String(depositDate.getDate()).padStart(2, '0');
+          const mes = String(depositDate.getMonth() + 1).padStart(2, '0');
+          const ano = depositDate.getFullYear();
+          const horas = String(depositDate.getHours()).padStart(2, '0');
+          const minutos = String(depositDate.getMinutes()).padStart(2, '0');
+
+          const item = document.createElement('div');
+          item.className = 'history-item';
+          item.innerHTML = `
+            <span class="history-date">${dia}/${mes}/${ano} ${horas}:${minutos}</span>
+            <span class="history-value">R$ ${Number(dep.value).toFixed(2)}</span>
+          `;
+          historyList.appendChild(item);
+        });
+      }
+
+      historyModal.style.display = 'flex';
+    }
+
+    historyCloseBtn.addEventListener('click', () => {
+      historyModal.style.display = 'none';
+      currentHistoryPlatform = null;
+    });
+
+    historyModal.addEventListener('click', (e) => {
+      if (e.target === historyModal) {
+        historyModal.style.display = 'none';
+        currentHistoryPlatform = null;
+      }
+    });
 
     /* Modal de reinício */
     const resetModal = document.getElementById('resetModal');
@@ -578,6 +717,11 @@
 
     document.getElementById('platformSearch').addEventListener('input', (e) => {
       renderPlatformList(e.target.value);
+    });
+
+    document.getElementById('allBonusBtn').addEventListener('click', () => {
+      document.querySelectorAll('.platform-item').forEach(el => el.classList.remove('selected'));
+      showAllBonusCalendar();
     });
 
     document.getElementById('resetAllBtn').addEventListener('click', () => {
@@ -647,6 +791,14 @@
       }
     }
 
+    function showAllBonusCalendar(){
+      const allEvents = calendar.getEvents();
+      allEvents.forEach(event => {
+        event.setProp('display', 'block');
+      });
+      console.log('Exibindo todos os bônus do calendário');
+    }
+
     const calendar = new FullCalendar.Calendar(calendarEl, {
       initialView: 'dayGridMonth',
       locale: 'pt-br',
@@ -661,7 +813,7 @@
       eventDidMount: function(info){
         const bg = info.event.backgroundColor;
         info.el.style.background = bg;
-        info.el.style.color = '#0f172a';
+        info.el.style.color = '#000000';
         info.el.style.border = '1px solid rgba(0,0,0,0.06)';
         info.el.style.borderRadius = '8px';
         info.el.style.fontWeight = '700';
