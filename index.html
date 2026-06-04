@@ -308,10 +308,19 @@
       padding: 0.75rem;
       border-bottom: 1px solid #e5e7eb;
       font-size: 0.9rem;
+      gap: 0.5rem;
     }
 
     .history-item:last-child {
       border-bottom: none;
+    }
+
+    .history-item-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex: 1;
+      gap: 0.5rem;
     }
 
     .history-date {
@@ -325,6 +334,22 @@
       padding: 0.25rem 0.5rem;
       border-radius: 4px;
       font-weight: 600;
+    }
+
+    .history-delete-btn {
+      background: #ef4444;
+      color: #fff;
+      border: none;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.75rem;
+      transition: background 0.2s;
+    }
+
+    .history-delete-btn:hover {
+      background: #dc2626;
     }
 
     .history-empty {
@@ -694,7 +719,7 @@
         historyList.innerHTML = '<div class="history-empty">Nenhum depósito registrado</div>';
       } else {
         const sortedDeposits = [...platform.deposits].sort((a, b) => new Date(b.date) - new Date(a.date));
-        sortedDeposits.forEach(dep => {
+        sortedDeposits.forEach((dep, index) => {
           const depositDate = new Date(dep.date);
           const dia = String(depositDate.getDate()).padStart(2, '0');
           const mes = String(depositDate.getMonth() + 1).padStart(2, '0');
@@ -704,10 +729,36 @@
 
           const item = document.createElement('div');
           item.className = 'history-item';
-          item.innerHTML = `
-            <span class="history-date">${dia}/${mes}/${ano} ${horas}:${minutos}</span>
-            <span class="history-value">R$ ${Number(dep.value).toFixed(2)}</span>
-          `;
+          
+          const itemContent = document.createElement('div');
+          itemContent.className = 'history-item-content';
+          
+          const dateSpan = document.createElement('span');
+          dateSpan.className = 'history-date';
+          dateSpan.textContent = `${dia}/${mes}/${ano} ${horas}:${minutos}`;
+          
+          const valueSpan = document.createElement('span');
+          valueSpan.className = 'history-value';
+          valueSpan.textContent = `R$ ${Number(dep.value).toFixed(2)}`;
+          
+          itemContent.appendChild(dateSpan);
+          itemContent.appendChild(valueSpan);
+          item.appendChild(itemContent);
+
+          const deleteBtn = document.createElement('button');
+          deleteBtn.className = 'history-delete-btn';
+          deleteBtn.textContent = 'Excluir';
+          deleteBtn.addEventListener('click', () => {
+            if (confirm(`Deseja excluir este depósito de R$ ${Number(dep.value).toFixed(2)}?`)) {
+              platform.deposits.splice(platform.deposits.indexOf(dep), 1);
+              savePlatforms(platforms);
+              updateCalendarEvents();
+              renderPlatformList(document.getElementById('platformSearch').value);
+              showHistoryModal(platform);
+            }
+          });
+          item.appendChild(deleteBtn);
+
           historyList.appendChild(item);
         });
       }
