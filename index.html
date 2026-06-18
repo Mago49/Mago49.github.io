@@ -17,24 +17,266 @@
       --level-3: #fde68a;
       --level-4: #D3D3D3;
       --text-dark: #0f172a;
+      --text-soft: #475569;
       --modal-bg: #ffffff;
       --modal-accent: #15803d;
       --modal-cancel: #ef4444;
-      --footer-bg: rgba(255,255,255,0.95);
+      --footer-bg: rgba(255,255,255,0.9);
       --event-border: rgba(0,0,0,0.08);
+      --surface: rgba(255,255,255,0.78);
+      --surface-strong: rgba(255,255,255,0.92);
+      --border-soft: rgba(15,23,42,0.08);
+      --shadow-soft: 0 16px 40px rgba(15, 23, 42, 0.08);
+      --shadow-card: 0 10px 24px rgba(15, 23, 42, 0.08);
+      --primary: #0f172a;
+      --accent: #15803d;
+      --danger: #ef4444;
+      --blue: #2563eb;
+      --radius-xl: 24px;
+      --radius-lg: 18px;
+      --radius-md: 12px;
     }
 
+    * { box-sizing: border-box; }
+
     html, body {
-      min-height: 100vh; margin: 0; padding: 0;
+      min-height: 100vh;
+      margin: 0;
+      padding: 0;
       font-family: 'Poppins', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
       color: var(--text-dark);
       overflow-x: hidden;
-      background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+      background:
+        radial-gradient(circle at top, rgba(255,255,255,0.95), rgba(248,250,252,0.98) 45%, rgba(241,245,249,1) 100%),
+        linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+      scroll-behavior: smooth;
     }
 
     body {
       display: flex;
       flex-direction: column;
+      position: relative;
+    }
+
+    .background-svg {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+      opacity: 0.9;
+    }
+
+    .page-shell {
+      position: relative;
+      z-index: 10;
+      width: min(1240px, calc(100% - 2rem));
+      margin: 0 auto;
+      padding: 1rem 0 7rem;
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      margin: 1rem 0 1.25rem;
+      padding: 1.5rem;
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius-xl);
+      background: linear-gradient(135deg, rgba(255,255,255,0.86), rgba(255,255,255,0.7));
+      backdrop-filter: blur(14px);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, rgba(37,99,235,0.08), transparent 35%, rgba(21,128,61,0.08));
+      pointer-events: none;
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.9fr);
+      gap: 1.25rem;
+      align-items: center;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.45rem 0.8rem;
+      border-radius: 999px;
+      background: rgba(15,23,42,0.08);
+      color: var(--primary);
+      font-size: 0.82rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      margin-bottom: 0.9rem;
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: clamp(1.9rem, 4vw, 3rem);
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+    }
+
+    .hero p {
+      margin: 0.9rem 0 0;
+      max-width: 62ch;
+      color: var(--text-soft);
+      font-size: 1rem;
+      line-height: 1.65;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-top: 1.25rem;
+    }
+
+    .hero-actions button {
+      border: none;
+      border-radius: 999px;
+      padding: 0.8rem 1.1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+    }
+
+    .hero-actions button:hover,
+    .hero-actions button:focus-visible,
+    #platformPanel button:hover,
+    #platformPanel button:focus-visible,
+    .minimize-tab:hover,
+    .minimize-tab:focus-visible,
+    .history-delete-btn:hover,
+    .history-close:hover,
+    .btn-confirm:hover,
+    .btn-cancel-modal:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 22px rgba(15, 23, 42, 0.12);
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    .btn-secondary {
+      background: rgba(255,255,255,0.86);
+      color: var(--primary);
+      border: 1px solid rgba(15,23,42,0.08);
+    }
+
+    .hero-summary {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.85rem;
+    }
+
+    .summary-card {
+      padding: 1rem;
+      border-radius: var(--radius-lg);
+      background: var(--surface-strong);
+      border: 1px solid var(--border-soft);
+      box-shadow: var(--shadow-card);
+    }
+
+    .summary-label {
+      display: block;
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #64748b;
+      margin-bottom: 0.35rem;
+    }
+
+    .summary-value {
+      display: block;
+      font-size: clamp(1.1rem, 2vw, 1.6rem);
+      font-weight: 800;
+      color: var(--text-dark);
+    }
+
+    .summary-note {
+      display: block;
+      margin-top: 0.35rem;
+      font-size: 0.88rem;
+      color: var(--text-soft);
+      line-height: 1.45;
+    }
+
+    .layout-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.6fr) minmax(320px, 0.95fr);
+      gap: 1rem;
+      align-items: start;
+    }
+
+    .main-column,
+    .side-column {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      min-width: 0;
+    }
+
+    .card-shell {
+      background: var(--surface);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius-xl);
+      backdrop-filter: blur(14px);
+      box-shadow: var(--shadow-soft);
+      overflow: hidden;
+    }
+
+    .section-heading {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: 1.1rem 1.2rem 0;
+    }
+
+    .section-heading h2,
+    .section-heading h3 {
+      margin: 0;
+      font-size: 1.05rem;
+    }
+
+    .section-heading p {
+      margin: 0.35rem 0 0;
+      color: var(--text-soft);
+      font-size: 0.92rem;
+      line-height: 1.5;
+    }
+
+    .calendar-toolbar {
+      display: flex;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+      align-items: center;
+      padding: 0.9rem 1.2rem 0;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.45rem 0.75rem;
+      border-radius: 999px;
+      background: rgba(15,23,42,0.06);
+      color: var(--primary);
+      font-size: 0.84rem;
+      font-weight: 600;
     }
 
     #calendar {
@@ -42,60 +284,64 @@
       z-index: 10;
       width: 100%;
       min-height: 520px;
-      background: rgba(255,255,255,0.9);
-      box-sizing: border-box;
-      padding: 1rem;
+      background: transparent;
+      padding: 1rem 1.2rem 1.25rem;
       flex-shrink: 0;
     }
 
-    .background-svg {
-      position: fixed;
-      top: 0; left: 0;
-      width: 100%; height: 100%;
-      z-index: 0;
-      pointer-events: none;
-      opacity: 0.9;
+    .fc .fc-toolbar-title {
+      font-size: clamp(1.1rem, 2vw, 1.45rem);
+      font-weight: 800;
+      color: var(--text-dark);
     }
 
-    .modal {
-      position: fixed;
-      top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.45);
-      display: none; align-items: center; justify-content: center;
-      z-index: 40;
-      padding: 1rem;
+    .fc .fc-button {
+      border-radius: 999px;
+      border: none;
+      background: #0f172a;
+      padding: 0.55rem 0.9rem;
+      font-weight: 700;
+      box-shadow: none;
     }
 
-    .modal-content {
-      background: var(--modal-bg); padding: 1.25rem; border-radius: 12px;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.18);
-      text-align: center; max-width: 420px; width: 100%;
-      border: 1px solid var(--event-border);
+    .fc .fc-button-primary:not(:disabled).fc-button-active,
+    .fc .fc-button-primary:not(:disabled):active,
+    .fc .fc-button-primary:hover {
+      background: #1e293b;
     }
 
-    footer.legend {
-      position: fixed;
-      bottom: 0; left: 0; right: 0;
-      z-index: 30;
-      background: var(--footer-bg);
-      border-top: 1px solid rgba(15,23,42,0.06);
-      display:flex; gap:0.75rem; align-items:center;
-      padding: 0.5rem 1rem;
-      box-shadow: 0 -6px 18px rgba(2,6,23,0.03);
-      flex-wrap:wrap;
+    .fc-theme-standard td,
+    .fc-theme-standard th,
+    .fc-theme-standard .fc-scrollgrid {
+      border-color: rgba(148, 163, 184, 0.28);
     }
 
-    .legend-item { display:flex; gap:0.35rem; align-items:center; font-size:0.85rem; color:var(--text-dark); }
-    .legend-swatch { width:20px; height:16px; border-radius:4px; border:1px solid var(--event-border); box-shadow: inset 0 -2px 0 rgba(0,0,0,0.03); }
-    .legend-label { font-weight:600; margin-right:0.15rem; color:#0f172a; font-size: 0.8rem; }
+    .fc .fc-col-header-cell-cushion,
+    .fc .fc-daygrid-day-number {
+      color: var(--text-dark);
+      font-weight: 700;
+      text-decoration: none;
+    }
+
+    .fc .fc-day-today {
+      background: rgba(37, 99, 235, 0.08) !important;
+    }
+
+    .fc .fc-daygrid-day-frame {
+      transition: background 0.2s ease;
+    }
+
+    .fc .fc-daygrid-day:hover .fc-daygrid-day-frame {
+      background: rgba(255,255,255,0.35);
+    }
 
     .fc-event {
-      border-radius: 8px;
-      padding: 2px 6px;
-      font-weight:700;
+      border-radius: 10px;
+      padding: 3px 7px;
+      font-weight: 700;
       color: #000000;
       border: 1px solid rgba(0,0,0,0.06);
-      box-shadow: none;
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
     }
 
     .fc-event-title {
@@ -110,20 +356,21 @@
       position: relative;
       width: 100%;
       max-width: 100%;
-      background: rgba(255,255,255,0.95);
-      border: 1px solid rgba(15,23,42,0.06);
-      border-radius: 0;
-      box-shadow: 0 -2px 15px rgba(2,6,23,0.1);
-      padding: 0.75rem;
+      background: var(--surface);
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-soft);
+      padding: 1rem;
       z-index: 20;
       display: flex;
       flex-direction: column;
-      gap: 0.5rem;
+      gap: 0.75rem;
       font-family: inherit;
       overflow-y: auto;
       max-height: none;
-      transition: max-height 0.3s ease, padding 0.3s ease;
+      transition: max-height 0.3s ease, padding 0.3s ease, opacity 0.3s ease;
       flex-shrink: 0;
+      backdrop-filter: blur(14px);
     }
 
     #platformPanel.minimized {
@@ -131,97 +378,278 @@
       padding: 0;
       overflow: hidden;
       border: none;
+      opacity: 0;
     }
 
-    #platformPanel .panel-header { display:flex; align-items:center; justify-content:space-between; gap:0.5rem; }
-    #platformPanel h3 { margin:0; font-size:1rem; }
-    #platformPanel .panel-controls { display:flex; gap:0.5rem; align-items:center; }
-    #platformPanel input[type="search"] { padding:0.4rem 0.5rem; border-radius:8px; border:1px solid #e6e9ee; flex: 1; }
-    #platformPanel button { padding:0.35rem 0.6rem; border-radius:8px; border: none; background:#0f172a; color:#fff; cursor:pointer; font-weight:600; font-size: 0.85rem; }
+    #platformPanel .panel-header {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:0.75rem;
+    }
+
+    #platformPanel h3 {
+      margin:0;
+      font-size:1.08rem;
+    }
+
+    #platformPanel .panel-controls {
+      display:flex;
+      gap:0.5rem;
+      align-items:center;
+      flex: 1;
+      justify-content: flex-end;
+    }
+
+    #platformPanel input[type="search"] {
+      padding:0.7rem 0.85rem;
+      border-radius:999px;
+      border:1px solid #dbe2ea;
+      flex: 1;
+      min-width: 0;
+      background: rgba(255,255,255,0.95);
+    }
+
+    #platformPanel input[type="search"],
+    .platform-deposit-form input,
+    .reset-date-picker input {
+      outline: none;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    #platformPanel input[type="search"]:focus,
+    .platform-deposit-form input:focus,
+    .reset-date-picker input:focus {
+      border-color: rgba(37,99,235,0.45);
+      box-shadow: 0 0 0 4px rgba(37,99,235,0.12);
+    }
+
+    #platformPanel button {
+      padding:0.65rem 0.85rem;
+      border-radius:999px;
+      border: none;
+      background:#0f172a;
+      color:#fff;
+      cursor:pointer;
+      font-weight:700;
+      font-size: 0.85rem;
+      transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+    }
+
     #platformPanel button[title] { background:#6b7280; }
-    .panel-actions { display:flex; gap:0.5rem; flex-wrap: wrap; }
-    .panel-actions button { background:#15803d; padding:0.35rem 0.5rem; font-size:0.85rem; }
+
+    .panel-actions {
+      display:flex;
+      gap:0.6rem;
+      flex-wrap: wrap;
+    }
+
+    .panel-actions button {
+      background:#15803d;
+      padding:0.7rem 0.85rem;
+      font-size:0.84rem;
+      flex: 1;
+      min-width: 140px;
+    }
+
     .panel-actions button[title] { background:#ef4444; }
-    #platformList { list-style:none; margin:0; padding:0; overflow:auto; flex:1; display:flex; flex-direction:column; gap:0.25rem; max-height: 400px; }
+
+    #platformList {
+      list-style:none;
+      margin:0;
+      padding:0;
+      overflow:auto;
+      flex:1;
+      display:flex;
+      flex-direction:column;
+      gap:0.55rem;
+      max-height: 760px;
+    }
+
     .platform-item {
-      display:flex; flex-direction: column; gap:0.35rem;
-      padding:0.6rem; border-radius:8px; border:1px solid rgba(0,0,0,0.04);
-      background:#fff; cursor: pointer; transition: all 0.2s;
+      display:flex;
+      flex-direction: column;
+      gap:0.55rem;
+      padding:0.9rem;
+      border-radius:16px;
+      border:1px solid rgba(0,0,0,0.05);
+      background: rgba(255,255,255,0.94);
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 6px 18px rgba(15,23,42,0.04);
     }
-    .platform-item:hover { background: #f8fafc; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
-    .platform-item.selected { box-shadow: 0 6px 18px rgba(21,128,61,0.15); border: 3px solid #15803d; }
-    .platform-item-header { display:flex; align-items:center; gap:0.5rem; justify-content: space-between; }
-    .platform-item .name { flex:1; font-weight:600; color:var(--text-dark); }
-    .platform-item .cycle-day { 
-      font-size:0.85rem; 
-      font-weight:700; 
-      background: #e0e7ff; 
+
+    .platform-item:hover {
+      background: #ffffff;
+      box-shadow: 0 10px 22px rgba(0,0,0,0.07);
+      transform: translateY(-1px);
+    }
+
+    .platform-item.selected {
+      box-shadow: 0 10px 28px rgba(21,128,61,0.16);
+      border: 2px solid #15803d;
+    }
+
+    .platform-item-header {
+      display:flex;
+      align-items:center;
+      gap:0.5rem;
+      justify-content: space-between;
+    }
+
+    .platform-item .name {
+      flex:1;
+      font-weight:700;
+      color:var(--text-dark);
+      font-size: 1rem;
+    }
+
+    .platform-item .cycle-day {
+      font-size:0.82rem;
+      font-weight:800;
+      background: #e0e7ff;
       color: #3730a3;
-      padding: 0.2rem 0.5rem;
-      border-radius: 4px;
+      padding: 0.3rem 0.6rem;
+      border-radius: 999px;
+      white-space: nowrap;
     }
-    .platform-item .cycle-day.no-bonus { 
-      background: #fecaca; 
+
+    .platform-item .cycle-day.no-bonus {
+      background: #fecaca;
       color: #991b1b;
     }
-    .platform-item .reset-date { font-size:0.75rem; color:#64748b; }
+
+    .platform-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .platform-item .reset-date {
+      font-size:0.8rem;
+      color:#64748b;
+    }
+
+    .platform-total-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.35rem 0.65rem;
+      border-radius: 999px;
+      font-size: 0.8rem;
+      font-weight: 800;
+      color: #0f172a;
+      border: 1px solid rgba(15,23,42,0.06);
+      box-shadow: inset 0 -2px 0 rgba(255,255,255,0.2);
+    }
+
     .platform-deposit-form {
-      display: flex; gap: 0.35rem; align-items: center;
-      padding-top: 0.35rem; border-top: 1px solid #e6e9ee;
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      padding-top: 0.15rem;
     }
+
     .platform-deposit-form input {
-      flex: 1; padding: 0.35rem; font-size: 0.85rem;
-      border: 1px solid #e6e9ee; border-radius: 6px;
+      flex: 1;
+      padding: 0.75rem 0.85rem;
+      font-size: 0.9rem;
+      border: 1px solid #e6e9ee;
+      border-radius: 12px;
+      background: #fff;
     }
-    .platform-deposit-form button {
-      padding: 0.35rem 0.5rem; font-size: 0.8rem; background: #15803d;
-    }
+
     .platform-actions-buttons {
-      display: flex; gap: 0.35rem;
+      display: flex;
+      gap: 0.45rem;
+      flex-wrap: wrap;
     }
+
     .platform-actions-buttons button {
-      flex: 1; padding: 0.35rem 0.5rem; font-size: 0.75rem;
+      flex: 1;
+      padding: 0.65rem 0.75rem;
+      font-size: 0.78rem;
+      min-width: 92px;
     }
-    .panel-footer { text-align:left; font-size:0.9rem; color:#334155; }
+
+    .panel-footer {
+      text-align:left;
+      font-size:0.9rem;
+      color:#334155;
+      padding-top: 0.2rem;
+    }
+
+    .tips-card {
+      padding: 1.05rem 1.1rem 1.1rem;
+    }
+
+    .tips-list {
+      margin: 0.8rem 0 0;
+      padding-left: 1rem;
+      color: var(--text-soft);
+      display: grid;
+      gap: 0.55rem;
+      font-size: 0.92rem;
+      line-height: 1.55;
+    }
 
     .minimize-tab {
       display: none;
       position: fixed;
-      bottom: 80px;
+      bottom: 92px;
       left: 50%;
       transform: translateX(-50%);
       background: #15803d;
       color: #fff;
       border: none;
-      padding: 0.75rem 1.5rem;
-      border-radius: 12px 12px 0 0;
+      padding: 0.9rem 1.5rem;
+      border-radius: 16px 16px 0 0;
       cursor: pointer;
-      font-weight: 600;
+      font-weight: 700;
       z-index: 19;
+      box-shadow: 0 12px 24px rgba(21,128,61,0.22);
     }
 
     .minimize-tab.show {
       display: block;
     }
 
-    .reset-modal {
+    .modal,
+    .reset-modal,
+    .history-modal {
       position: fixed;
-      top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.5);
-      display: none; align-items: center; justify-content: center;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(15,23,42,0.48);
+      display: none;
+      align-items: center;
+      justify-content: center;
       z-index: 100;
+      padding: 1rem;
+      backdrop-filter: blur(4px);
     }
 
-    .reset-modal-content {
+    .modal-content,
+    .reset-modal-content,
+    .history-modal-content {
       background: #fff;
       padding: 1.5rem;
-      border-radius: 12px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-      text-align: center;
-      max-width: 400px;
+      border-radius: 20px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+      width: min(100%, 520px);
+      border: 1px solid rgba(15,23,42,0.08);
     }
 
-    .reset-modal-content h2 {
+    .modal-content {
+      text-align: center;
+      max-width: 420px;
+    }
+
+    .reset-modal-content h2,
+    .history-modal-content h2 {
       margin: 0 0 1rem 0;
       font-size: 1.25rem;
     }
@@ -230,6 +658,7 @@
       margin: 0.5rem 0;
       font-size: 0.95rem;
       color: #64748b;
+      line-height: 1.55;
     }
 
     .reset-date-picker {
@@ -243,28 +672,32 @@
       font-size: 0.9rem;
       color: #334155;
       text-align: left;
+      font-weight: 600;
     }
 
     .reset-date-picker input {
-      padding: 0.5rem;
+      padding: 0.8rem 0.9rem;
       border: 1px solid #e6e9ee;
-      border-radius: 6px;
+      border-radius: 12px;
       font-size: 0.95rem;
     }
 
     .reset-modal-buttons {
       display: flex;
-      gap: 0.5rem;
+      gap: 0.6rem;
       justify-content: center;
       margin-top: 1.5rem;
+      flex-wrap: wrap;
     }
 
-    .reset-modal-buttons button {
-      padding: 0.5rem 1rem;
+    .reset-modal-buttons button,
+    .history-close {
+      padding: 0.75rem 1rem;
       border: none;
-      border-radius: 6px;
-      font-weight: 600;
+      border-radius: 12px;
+      font-weight: 700;
       cursor: pointer;
+      transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
     }
 
     .btn-confirm {
@@ -272,43 +705,26 @@
       color: #fff;
     }
 
-    .btn-cancel-modal {
+    .btn-cancel-modal,
+    .history-close {
       background: #e5e7eb;
       color: #1f2937;
     }
 
-    .history-modal {
-      position: fixed;
-      top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.5);
-      display: none; align-items: center; justify-content: center;
-      z-index: 100;
-    }
-
     .history-modal-content {
-      background: #fff;
-      padding: 1.5rem;
-      border-radius: 12px;
-      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-      max-width: 500px;
-      width: 95%;
-      max-height: 70vh;
+      max-width: 560px;
+      max-height: 75vh;
       overflow-y: auto;
-    }
-
-    .history-modal-content h2 {
-      margin: 0 0 1rem 0;
-      font-size: 1.25rem;
     }
 
     .history-item {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 0.75rem;
+      padding: 0.9rem;
       border-bottom: 1px solid #e5e7eb;
-      font-size: 0.9rem;
-      gap: 0.5rem;
+      font-size: 0.92rem;
+      gap: 0.65rem;
     }
 
     .history-item:last-child {
@@ -320,7 +736,8 @@
       justify-content: space-between;
       align-items: center;
       flex: 1;
-      gap: 0.5rem;
+      gap: 0.65rem;
+      flex-wrap: wrap;
     }
 
     .history-date {
@@ -331,21 +748,21 @@
     .history-value {
       background: #15803d;
       color: #fff;
-      padding: 0.25rem 0.5rem;
-      border-radius: 4px;
-      font-weight: 600;
+      padding: 0.3rem 0.55rem;
+      border-radius: 999px;
+      font-weight: 700;
     }
 
     .history-delete-btn {
       background: #ef4444;
       color: #fff;
       border: none;
-      padding: 0.25rem 0.5rem;
-      border-radius: 4px;
+      padding: 0.45rem 0.65rem;
+      border-radius: 10px;
       cursor: pointer;
-      font-weight: 600;
-      font-size: 0.75rem;
-      transition: background 0.2s;
+      font-weight: 700;
+      font-size: 0.76rem;
+      transition: background 0.2s, transform 0.18s ease, box-shadow 0.18s ease;
     }
 
     .history-delete-btn:hover {
@@ -358,21 +775,154 @@
       padding: 1rem;
     }
 
-    .history-close {
-      margin-top: 1rem;
-      padding: 0.5rem 1rem;
-      background: #e5e7eb;
-      color: #1f2937;
-      border: none;
-      border-radius: 6px;
-      font-weight: 600;
-      cursor: pointer;
-      width: 100%;
+    footer.legend {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 30;
+      background: var(--footer-bg);
+      border-top: 1px solid rgba(15,23,42,0.06);
+      display:flex;
+      gap:0.75rem;
+      align-items:center;
+      justify-content: center;
+      padding: 0.7rem 1rem;
+      box-shadow: 0 -10px 24px rgba(2,6,23,0.05);
+      flex-wrap:wrap;
+      backdrop-filter: blur(14px);
+    }
+
+    .legend-item {
+      display:flex;
+      gap:0.42rem;
+      align-items:center;
+      font-size:0.85rem;
+      color:var(--text-dark);
+      padding: 0.2rem 0.1rem;
+    }
+
+    .legend-swatch {
+      width:20px;
+      height:16px;
+      border-radius:5px;
+      border:1px solid var(--event-border);
+      box-shadow: inset 0 -2px 0 rgba(0,0,0,0.03);
+    }
+
+    .legend-label {
+      font-weight:700;
+      margin-right:0.15rem;
+      color:#0f172a;
+      font-size: 0.8rem;
+    }
+
+    @media (max-width: 1100px){
+      .hero-content,
+      .layout-grid {
+        grid-template-columns: 1fr;
+      }
+
+      #platformList {
+        max-height: 500px;
+      }
     }
 
     @media (max-width:900px){
-      #platformList { max-height: 300px; }
-      #calendar { min-height: 400px; }
+      .page-shell {
+        width: min(100% - 1rem, 1240px);
+        padding-bottom: 8.4rem;
+      }
+
+      .hero {
+        padding: 1.2rem;
+      }
+
+      .hero-summary {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      #calendar {
+        min-height: 420px;
+        padding: 0.9rem;
+      }
+
+      .fc .fc-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+      }
+
+      .fc .fc-toolbar-title {
+        text-align: center;
+      }
+
+      .fc .fc-toolbar-chunk {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+      }
+
+      #platformPanel .panel-header {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      #platformPanel .panel-controls {
+        width: 100%;
+      }
+    }
+
+    @media (max-width:640px){
+      .page-shell {
+        width: calc(100% - 0.75rem);
+        padding-bottom: 9rem;
+      }
+
+      .hero h1 {
+        font-size: 1.8rem;
+      }
+
+      .hero p {
+        font-size: 0.95rem;
+      }
+
+      .hero-summary {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-actions,
+      .panel-actions,
+      .platform-actions-buttons,
+      .reset-modal-buttons {
+        flex-direction: column;
+      }
+
+      .hero-actions button,
+      .panel-actions button,
+      .platform-actions-buttons button,
+      .reset-modal-buttons button {
+        width: 100%;
+      }
+
+      .platform-meta,
+      .history-item,
+      .history-item-content {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .minimize-tab {
+        bottom: 110px;
+        width: calc(100% - 2rem);
+        text-align: center;
+      }
+
+      footer.legend {
+        justify-content: flex-start;
+        padding-bottom: calc(0.8rem + env(safe-area-inset-bottom));
+      }
     }
   </style>
 </head>
@@ -385,30 +935,106 @@
     <circle cx="1160" cy="520" r="280" fill="#15803d" />
   </svg>
 
-  <div id="calendar"></div>
+  <main class="page-shell">
+    <section class="hero card-shell" aria-label="Resumo da página">
+      <div class="hero-content">
+        <div>
+          <span class="hero-badge">✨ Painel atualizado</span>
+          <h1>Gerencie ciclos, bônus e depósitos com mais clareza</h1>
+          <p>
+            Acompanhe suas plataformas em um layout mais moderno, organizado e fácil de usar.
+            O visual foi refinado para destacar informações importantes sem alterar as bolinhas do fundo.
+          </p>
+          <div class="hero-actions">
+            <button class="btn-primary" id="scrollToPanelBtn">Ver plataformas</button>
+            <button class="btn-secondary" id="scrollToCalendarBtn">Ir para calendário</button>
+          </div>
+        </div>
 
-  <button class="minimize-tab" id="minimizeTab">Abrir Painel</button>
-
-  <aside id="platformPanel" aria-label="Painel de plataformas">
-    <div class="panel-header">
-      <h3>Plataformas</h3>
-      <div class="panel-controls">
-        <input id="platformSearch" type="search" placeholder="Buscar" aria-label="Buscar plataforma" />
-        <button id="togglePanelBtn" aria-expanded="true" title="Minimizar painel">−</button>
+        <div class="hero-summary" aria-label="Resumo geral">
+          <div class="summary-card">
+            <span class="summary-label">Plataformas</span>
+            <span class="summary-value" id="heroPlatformCount">0</span>
+            <span class="summary-note">Quantidade total monitorada no painel.</span>
+          </div>
+          <div class="summary-card">
+            <span class="summary-label">Total acumulado</span>
+            <span class="summary-value" id="heroTotalDeposits">R$ 0,00</span>
+            <span class="summary-note">Soma dos depósitos do ciclo atual.</span>
+          </div>
+          <div class="summary-card">
+            <span class="summary-label">Com bônus hoje</span>
+            <span class="summary-value" id="heroBonusToday">0</span>
+            <span class="summary-note">Plataformas com evento no dia atual.</span>
+          </div>
+          <div class="summary-card">
+            <span class="summary-label">Status</span>
+            <span class="summary-value" id="heroNextHighlight">Em dia</span>
+            <span class="summary-note" id="heroNextHighlightNote">Visualização rápida do momento atual.</span>
+          </div>
+        </div>
       </div>
-    </div>
+    </section>
 
-    <div class="panel-actions">
-      <button id="allBonusBtn" title="Ver todos os bônus">TODOS OS BÔNUS</button>
-      <button id="resetAllBtn" title="Resetar todos os depósitos">Resetar</button>
-    </div>
+    <section class="layout-grid" aria-label="Conteúdo principal">
+      <div class="main-column">
+        <section class="card-shell" aria-label="Calendário de bônus">
+          <div class="section-heading">
+            <div>
+              <h2>Calendário de bônus</h2>
+              <p>Veja os próximos eventos e acompanhe os ciclos por nível de depósito.</p>
+            </div>
+          </div>
+          <div class="calendar-toolbar">
+            <span class="pill">📅 Visual mensal, semanal e diária</span>
+            <span class="pill">🎯 Cores por nível automático</span>
+            <span class="pill">⚡ Atualização local instantânea</span>
+          </div>
+          <div id="calendar"></div>
+        </section>
+      </div>
 
-    <ul id="platformList" role="list" aria-live="polite"></ul>
+      <div class="side-column">
+        <button class="minimize-tab" id="minimizeTab">Abrir Painel</button>
 
-    <div class="panel-footer">
-      <small id="platformCount"></small>
-    </div>
-  </aside>
+        <aside id="platformPanel" aria-label="Painel de plataformas">
+          <div class="panel-header">
+            <h3>Plataformas</h3>
+            <div class="panel-controls">
+              <input id="platformSearch" type="search" placeholder="Buscar plataforma" aria-label="Buscar plataforma" />
+              <button id="togglePanelBtn" aria-expanded="true" title="Minimizar painel">−</button>
+            </div>
+          </div>
+
+          <div class="panel-actions">
+            <button id="allBonusBtn" title="Ver todos os bônus">TODOS OS BÔNUS</button>
+            <button id="resetAllBtn" title="Resetar todos os depósitos">Resetar</button>
+          </div>
+
+          <ul id="platformList" role="list" aria-live="polite"></ul>
+
+          <div class="panel-footer">
+            <small id="platformCount"></small>
+          </div>
+        </aside>
+
+        <section class="card-shell tips-card" aria-label="Dicas de uso">
+          <div class="section-heading" style="padding:0;">
+            <div>
+              <h3>Dicas rápidas</h3>
+              <p>Use o painel com mais agilidade no dia a dia.</p>
+            </div>
+          </div>
+          <ul class="tips-list">
+            <li>Use a busca para localizar uma plataforma rapidamente.</li>
+            <li>Abra o histórico para revisar depósitos recentes antes de resetar.</li>
+            <li>Selecione uma plataforma para filtrar somente os bônus dela no calendário.</li>
+            <li>Os níveis mudam automaticamente conforme o total acumulado no ciclo.</li>
+          </ul>
+        </section>
+      </div>
+    </section>
+  </main>
 
   <div class="reset-modal" id="resetModal">
     <div class="reset-modal-content">
@@ -517,6 +1143,13 @@
       localStorage.setItem(PLAT_STORAGE_KEY, JSON.stringify(list));
     }
 
+    function formatCurrency(value){
+      return new Intl.NumberFormat('pt-BR', {
+        style: 'currency',
+        currency: 'BRL'
+      }).format(Number(value) || 0);
+    }
+
     function getCycleStart(platform, refDate = new Date()){
       if (platform.lastResetDate) {
         const resetDate = new Date(platform.lastResetDate);
@@ -530,10 +1163,10 @@
       const cycleStart = getCycleStart(platform, refDate);
       const today = new Date(refDate);
       today.setHours(0, 0, 0, 0);
-      
+
       const timeDiff = today - cycleStart;
       const dayDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
-      
+
       if (dayDiff < 0) return 0;
       return dayDiff;
     }
@@ -586,6 +1219,39 @@
       return lvlVars[0];
     }
 
+    function getEventsForDate(targetDate){
+      const target = new Date(targetDate);
+      target.setHours(0,0,0,0);
+      const targetTime = target.getTime();
+      return platforms.filter(platform => computeEmissionDates(platform).some(date => date.getTime() === targetTime));
+    }
+
+    function updateHeroSummary(){
+      const totalPlatforms = platforms.length;
+      const totalDeposits = platforms.reduce((sum, platform) => sum + getTotalDepositsSinceCycle(platform), 0);
+      const bonusToday = getEventsForDate(new Date()).length;
+      const activeCycles = platforms.filter(platform => getCurrentCycleDay(platform) > 0).length;
+      const topPlatform = [...platforms]
+        .sort((a, b) => getTotalDepositsSinceCycle(b) - getTotalDepositsSinceCycle(a))[0];
+
+      document.getElementById('heroPlatformCount').textContent = String(totalPlatforms);
+      document.getElementById('heroTotalDeposits').textContent = formatCurrency(totalDeposits);
+      document.getElementById('heroBonusToday').textContent = String(bonusToday);
+
+      const highlightEl = document.getElementById('heroNextHighlight');
+      const highlightNoteEl = document.getElementById('heroNextHighlightNote');
+
+      if (topPlatform && getTotalDepositsSinceCycle(topPlatform) > 0) {
+        highlightEl.textContent = topPlatform.name;
+        highlightNoteEl.textContent = `${formatCurrency(getTotalDepositsSinceCycle(topPlatform))} no ciclo atual • ${activeCycles} plataformas ativas.`;
+      } else {
+        highlightEl.textContent = activeCycles > 0 ? 'Em dia' : 'Sem depósitos';
+        highlightNoteEl.textContent = activeCycles > 0
+          ? `${activeCycles} plataformas com ciclo em andamento.`
+          : 'Adicione depósitos para começar a acompanhar os níveis.';
+      }
+    }
+
     function renderPlatformList(filter = ''){
       const listEl = document.getElementById('platformList');
       const countEl = document.getElementById('platformCount');
@@ -622,17 +1288,28 @@
         header.appendChild(cycleInfo);
         li.appendChild(header);
 
+        const meta = document.createElement('div');
+        meta.className = 'platform-meta';
+
         const resetInfo = document.createElement('div');
         resetInfo.className = 'reset-date';
         if (p.lastResetDate) {
           const resetDateObj = new Date(p.lastResetDate);
           const dia = String(resetDateObj.getDate()).padStart(2, '0');
           const mes = String(resetDateObj.getMonth() + 1).padStart(2, '0');
-          resetInfo.textContent = `Ciclo iniciado: ${dia}/${mes} | Total: R$ ${total.toFixed(2)}`;
+          resetInfo.textContent = `Ciclo iniciado: ${dia}/${mes}`;
         } else {
-          resetInfo.textContent = `Ciclo não iniciado | Total: R$ ${total.toFixed(2)}`;
+          resetInfo.textContent = 'Ciclo não iniciado';
         }
-        li.appendChild(resetInfo);
+
+        const totalBadge = document.createElement('span');
+        totalBadge.className = 'platform-total-badge';
+        totalBadge.style.background = bgColor;
+        totalBadge.textContent = formatCurrency(total);
+
+        meta.appendChild(resetInfo);
+        meta.appendChild(totalBadge);
+        li.appendChild(meta);
 
         const form = document.createElement('div');
         form.className = 'platform-deposit-form';
@@ -652,7 +1329,7 @@
 
         const historyBtn = document.createElement('button');
         historyBtn.textContent = 'Histórico';
-        historyBtn.style.background = '#3b82f6';
+        historyBtn.style.background = '#2563eb';
         historyBtn.addEventListener('click', (ev) => {
           ev.stopPropagation();
           showHistoryModal(p);
@@ -675,6 +1352,7 @@
           savePlatforms(platforms);
           updateCalendarEvents();
           renderPlatformList(q);
+          updateHeroSummary();
         });
 
         const resetBtn = document.createElement('button');
@@ -701,7 +1379,8 @@
       });
 
       const totalAll = platforms.reduce((s, pl) => s + getTotalDepositsSinceCycle(pl), 0);
-      countEl.textContent = `${items.length} plataformas • Total geral: R$ ${totalAll.toFixed(2)}`;
+      countEl.textContent = `${items.length} plataformas • Total geral: ${formatCurrency(totalAll)}`;
+      updateHeroSummary();
     }
 
     const historyModal = document.getElementById('historyModal');
@@ -719,7 +1398,7 @@
         historyList.innerHTML = '<div class="history-empty">Nenhum depósito registrado</div>';
       } else {
         const sortedDeposits = [...platform.deposits].sort((a, b) => new Date(b.date) - new Date(a.date));
-        sortedDeposits.forEach((dep, index) => {
+        sortedDeposits.forEach((dep) => {
           const depositDate = new Date(dep.date);
           const dia = String(depositDate.getDate()).padStart(2, '0');
           const mes = String(depositDate.getMonth() + 1).padStart(2, '0');
@@ -729,18 +1408,18 @@
 
           const item = document.createElement('div');
           item.className = 'history-item';
-          
+
           const itemContent = document.createElement('div');
           itemContent.className = 'history-item-content';
-          
+
           const dateSpan = document.createElement('span');
           dateSpan.className = 'history-date';
           dateSpan.textContent = `${dia}/${mes}/${ano} ${horas}:${minutos}`;
-          
+
           const valueSpan = document.createElement('span');
           valueSpan.className = 'history-value';
-          valueSpan.textContent = `R$ ${Number(dep.value).toFixed(2)}`;
-          
+          valueSpan.textContent = formatCurrency(dep.value);
+
           itemContent.appendChild(dateSpan);
           itemContent.appendChild(valueSpan);
           item.appendChild(itemContent);
@@ -749,12 +1428,13 @@
           deleteBtn.className = 'history-delete-btn';
           deleteBtn.textContent = 'Excluir';
           deleteBtn.addEventListener('click', () => {
-            if (confirm(`Deseja excluir este depósito de R$ ${Number(dep.value).toFixed(2)}?`)) {
+            if (confirm(`Deseja excluir este depósito de ${formatCurrency(dep.value)}?`)) {
               platform.deposits.splice(platform.deposits.indexOf(dep), 1);
               savePlatforms(platforms);
               updateCalendarEvents();
               renderPlatformList(document.getElementById('platformSearch').value);
               showHistoryModal(platform);
+              updateHeroSummary();
             }
           });
           item.appendChild(deleteBtn);
@@ -790,13 +1470,13 @@
       currentResetPlatform = platform;
       currentResetFilter = filter;
       resetModalText.textContent = `Reiniciar ciclo de ${platform.name}?`;
-      
+
       const today = new Date();
       const yyyy = today.getFullYear();
       const mm = String(today.getMonth() + 1).padStart(2, '0');
       const dd = String(today.getDate()).padStart(2, '0');
       resetDateInput.value = `${yyyy}-${mm}-${dd}`;
-      
+
       resetModal.style.display = 'flex';
     }
 
@@ -813,6 +1493,7 @@
         savePlatforms(platforms);
         updateCalendarEvents();
         renderPlatformList(currentResetFilter);
+        updateHeroSummary();
       }
       closeResetModal();
     });
@@ -843,6 +1524,15 @@
       savePlatforms(platforms);
       renderPlatformList();
       updateCalendarEvents();
+      updateHeroSummary();
+    });
+
+    document.getElementById('scrollToPanelBtn').addEventListener('click', () => {
+      document.getElementById('platformPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    document.getElementById('scrollToCalendarBtn').addEventListener('click', () => {
+      document.getElementById('calendar').scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
 
     const toggleBtn = document.getElementById('togglePanelBtn');
@@ -897,6 +1587,8 @@
           }
         });
       });
+
+      updateHeroSummary();
     }
 
     function filterCalendarByPlatform(platformId){
@@ -907,7 +1599,7 @@
       });
       const p = platforms.find(x => x.id === platformId);
       if (p) {
-        console.log(`Filtrando: ${p.name} | Dia do ciclo: ${getCurrentCycleDay(p)} | Total: R$ ${getTotalDepositsSinceCycle(p).toFixed(2)}`);
+        console.log(`Filtrando: ${p.name} | Dia do ciclo: ${getCurrentCycleDay(p)} | Total: ${formatCurrency(getTotalDepositsSinceCycle(p))}`);
       }
     }
 
@@ -935,7 +1627,7 @@
         info.el.style.background = bg;
         info.el.style.color = '#000000';
         info.el.style.border = '1px solid rgba(0,0,0,0.06)';
-        info.el.style.borderRadius = '8px';
+        info.el.style.borderRadius = '10px';
         info.el.style.fontWeight = '700';
         info.el.style.fontSize = '0.75rem';
         info.el.style.padding = '2px';
@@ -944,6 +1636,7 @@
 
     calendar.render();
     updateCalendarEvents();
+    updateHeroSummary();
 
     function scheduleDailyUpdate(){
       const now = new Date();
@@ -952,6 +1645,7 @@
       setTimeout(() => {
         updateCalendarEvents();
         renderPlatformList(document.getElementById('platformSearch').value);
+        updateHeroSummary();
         scheduleDailyUpdate();
       }, ms);
     }
