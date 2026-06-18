@@ -1,35 +1,962 @@
-const PLATFORM_CONFIG = {
-  'FXX': { vipLevel: 2, group: 'com_aposta_minima' },
-  '551X': { vipLevel: 3, group: 'com_aposta_minima' },
-  '838X': { vipLevel: 3, group: 'com_aposta_minima' },
-  'PP11': { vipLevel: 4, group: 'com_aposta_minima' },
-  '1UUU': { vipLevel: 3, group: 'com_aposta_minima' },
-  '11TT': { vipLevel: 3, group: 'com_aposta_minima' },
-  'DDUU': { vipLevel: 4, group: 'com_aposta_minima' },
-  '45T': { vipLevel: 2, group: 'com_aposta_minima' },
-  '7GGG': { vipLevel: 3, group: 'com_aposta_minima' },
-  '66GG': { vipLevel: 3, group: 'com_aposta_minima' },
-  '44MM': { vipLevel: 3, group: 'com_aposta_minima' },
-  'NNZZ': { vipLevel: 3, group: 'com_aposta_minima' },
-  '899V': { vipLevel: 3, group: 'com_aposta_minima' },
-  '83H': { vipLevel: 3, group: 'com_aposta_minima' },
-  '5TTT': { vipLevel: 3, group: 'com_aposta_minima' },
-  '84D': { vipLevel: 3, group: 'com_aposta_minima' },
-  '552X': { vipLevel: 3, group: 'com_aposta_minima' },
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Calendário com Códigos e Plataformas</title>
 
-  '35C': { vipLevel: 2, group: 'sem_aposta_minima' },
-  '63V': { vipLevel: 3, group: 'sem_aposta_minima' },
-  '68D': { vipLevel: 2, group: 'sem_aposta_minima' },
-  '61T': { vipLevel: 2, group: 'sem_aposta_minima' },
-  '72B': { vipLevel: 3, group: 'sem_aposta_minima' },
-  '36Q': { vipLevel: 4, group: 'sem_aposta_minima' },
-  '53D': { vipLevel: 2, group: 'sem_aposta_minima' },
-  '93K': { vipLevel: 3, group: 'sem_aposta_minima' },
-  '93D': { vipLevel: 3, group: 'sem_aposta_minima' },
-  'A73': { vipLevel: 3, group: 'sem_aposta_minima' },
-  'EE44': { vipLevel: 3, group: 'sem_aposta_minima' },
-  '7JJJ': { vipLevel: 3, group: 'sem_aposta_minima' },
-  '877X': { vipLevel: 3, group: 'sem_aposta_minima' },
-  '79C': { vipLevel: 3, group: 'sem_aposta_minima' },
-  '988K': { vipLevel: 3, group: 'sem_aposta_minima' },
-};
+  <!-- FullCalendar -->
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+
+  <style>
+    :root{
+      --level-0: #fecdd3;
+      --level-1: #dcfce7;
+      --level-2: #fef9c3;
+      --level-3: #fde68a;
+      --level-4: #D3D3D3;
+      --text-dark: #0f172a;
+      --modal-bg: #ffffff;
+      --modal-accent: #15803d;
+      --modal-cancel: #ef4444;
+      --footer-bg: rgba(255,255,255,0.95);
+      --event-border: rgba(0,0,0,0.08);
+    }
+
+    html, body {
+      min-height: 100vh; margin: 0; padding: 0;
+      font-family: 'Poppins', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      color: var(--text-dark);
+      overflow-x: hidden;
+      background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+    }
+
+    #calendar {
+      position: relative;
+      z-index: 10;
+      width: 100%;
+      min-height: 520px;
+      background: rgba(255,255,255,0.9);
+      box-sizing: border-box;
+      padding: 1rem;
+      flex-shrink: 0;
+    }
+
+    .background-svg {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 0;
+      pointer-events: none;
+      opacity: 0.9;
+    }
+
+    .modal {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.45);
+      display: none; align-items: center; justify-content: center;
+      z-index: 40;
+      padding: 1rem;
+    }
+
+    .modal-content {
+      background: var(--modal-bg); padding: 1.25rem; border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.18);
+      text-align: center; max-width: 420px; width: 100%;
+      border: 1px solid var(--event-border);
+    }
+
+    footer.legend {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      z-index: 30;
+      background: var(--footer-bg);
+      border-top: 1px solid rgba(15,23,42,0.06);
+      display:flex; gap:0.75rem; align-items:center;
+      padding: 0.5rem 1rem;
+      box-shadow: 0 -6px 18px rgba(2,6,23,0.03);
+      flex-wrap:wrap;
+    }
+
+    .legend-item { display:flex; gap:0.35rem; align-items:center; font-size:0.85rem; color:var(--text-dark); }
+    .legend-swatch { width:20px; height:16px; border-radius:4px; border:1px solid var(--event-border); box-shadow: inset 0 -2px 0 rgba(0,0,0,0.03); }
+    .legend-label { font-weight:600; margin-right:0.15rem; color:#0f172a; font-size: 0.8rem; }
+
+    .fc-event {
+      border-radius: 8px;
+      padding: 2px 6px;
+      font-weight:700;
+      color: #000000;
+      border: 1px solid rgba(0,0,0,0.06);
+      box-shadow: none;
+    }
+
+    .fc-event-title {
+      font-size: 0.75rem;
+      white-space: normal;
+      word-break: break-word;
+      padding: 2px;
+      color: #000000;
+    }
+
+    #platformPanel {
+      position: relative;
+      width: 100%;
+      max-width: 100%;
+      background: rgba(255,255,255,0.95);
+      border: 1px solid rgba(15,23,42,0.06);
+      border-radius: 0;
+      box-shadow: 0 -2px 15px rgba(2,6,23,0.1);
+      padding: 0.75rem;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      font-family: inherit;
+      overflow-y: auto;
+      max-height: none;
+      transition: max-height 0.3s ease, padding 0.3s ease;
+      flex-shrink: 0;
+    }
+
+    #platformPanel.minimized {
+      max-height: 0;
+      padding: 0;
+      overflow: hidden;
+      border: none;
+    }
+
+    #platformPanel .panel-header { display:flex; align-items:center; justify-content:space-between; gap:0.5rem; }
+    #platformPanel h3 { margin:0; font-size:1rem; }
+    #platformPanel .panel-controls { display:flex; gap:0.5rem; align-items:center; }
+    #platformPanel input[type="search"] { padding:0.4rem 0.5rem; border-radius:8px; border:1px solid #e6e9ee; flex: 1; }
+    #platformPanel button { padding:0.35rem 0.6rem; border-radius:8px; border: none; background:#0f172a; color:#fff; cursor:pointer; font-weight:600; font-size: 0.85rem; }
+    #platformPanel button[title] { background:#6b7280; }
+    .panel-actions { display:flex; gap:0.5rem; flex-wrap: wrap; }
+    .panel-actions button { background:#15803d; padding:0.35rem 0.5rem; font-size:0.85rem; }
+    .panel-actions button[title] { background:#ef4444; }
+    #platformList { list-style:none; margin:0; padding:0; overflow:auto; flex:1; display:flex; flex-direction:column; gap:0.25rem; max-height: 400px; }
+    .platform-item {
+      display:flex; flex-direction: column; gap:0.35rem;
+      padding:0.6rem; border-radius:8px; border:1px solid rgba(0,0,0,0.04);
+      background:#fff; cursor: pointer; transition: all 0.2s;
+    }
+    .platform-item:hover { background: #f8fafc; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+    .platform-item.selected { box-shadow: 0 6px 18px rgba(21,128,61,0.15); border: 3px solid #15803d; }
+    .platform-item-header { display:flex; align-items:center; gap:0.5rem; justify-content: space-between; }
+    .platform-item .name { flex:1; font-weight:600; color:var(--text-dark); }
+    .platform-item .cycle-day { 
+      font-size:0.85rem; 
+      font-weight:700; 
+      background: #e0e7ff; 
+      color: #3730a3;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+    }
+    .platform-item .cycle-day.no-bonus { 
+      background: #fecaca; 
+      color: #991b1b;
+    }
+    .platform-item .reset-date { font-size:0.75rem; color:#64748b; }
+    .platform-deposit-form {
+      display: flex; gap: 0.35rem; align-items: center;
+      padding-top: 0.35rem; border-top: 1px solid #e6e9ee;
+    }
+    .platform-deposit-form input {
+      flex: 1; padding: 0.35rem; font-size: 0.85rem;
+      border: 1px solid #e6e9ee; border-radius: 6px;
+    }
+    .platform-deposit-form button {
+      padding: 0.35rem 0.5rem; font-size: 0.8rem; background: #15803d;
+    }
+    .platform-actions-buttons {
+      display: flex; gap: 0.35rem;
+    }
+    .platform-actions-buttons button {
+      flex: 1; padding: 0.35rem 0.5rem; font-size: 0.75rem;
+    }
+    .panel-footer { text-align:left; font-size:0.9rem; color:#334155; }
+
+    .minimize-tab {
+      display: none;
+      position: fixed;
+      bottom: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #15803d;
+      color: #fff;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 12px 12px 0 0;
+      cursor: pointer;
+      font-weight: 600;
+      z-index: 19;
+    }
+
+    .minimize-tab.show {
+      display: block;
+    }
+
+    .reset-modal {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      display: none; align-items: center; justify-content: center;
+      z-index: 100;
+    }
+
+    .reset-modal-content {
+      background: #fff;
+      padding: 1.5rem;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      text-align: center;
+      max-width: 400px;
+    }
+
+    .reset-modal-content h2 {
+      margin: 0 0 1rem 0;
+      font-size: 1.25rem;
+    }
+
+    .reset-modal-content p {
+      margin: 0.5rem 0;
+      font-size: 0.95rem;
+      color: #64748b;
+    }
+
+    .reset-date-picker {
+      margin: 1rem 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .reset-date-picker label {
+      font-size: 0.9rem;
+      color: #334155;
+      text-align: left;
+    }
+
+    .reset-date-picker input {
+      padding: 0.5rem;
+      border: 1px solid #e6e9ee;
+      border-radius: 6px;
+      font-size: 0.95rem;
+    }
+
+    .reset-modal-buttons {
+      display: flex;
+      gap: 0.5rem;
+      justify-content: center;
+      margin-top: 1.5rem;
+    }
+
+    .reset-modal-buttons button {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn-confirm {
+      background: #15803d;
+      color: #fff;
+    }
+
+    .btn-cancel-modal {
+      background: #e5e7eb;
+      color: #1f2937;
+    }
+
+    .history-modal {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      display: none; align-items: center; justify-content: center;
+      z-index: 100;
+    }
+
+    .history-modal-content {
+      background: #fff;
+      padding: 1.5rem;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      max-width: 500px;
+      width: 95%;
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+
+    .history-modal-content h2 {
+      margin: 0 0 1rem 0;
+      font-size: 1.25rem;
+    }
+
+    .history-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem;
+      border-bottom: 1px solid #e5e7eb;
+      font-size: 0.9rem;
+      gap: 0.5rem;
+    }
+
+    .history-item:last-child {
+      border-bottom: none;
+    }
+
+    .history-item-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex: 1;
+      gap: 0.5rem;
+    }
+
+    .history-date {
+      font-weight: 600;
+      color: #0f172a;
+    }
+
+    .history-value {
+      background: #15803d;
+      color: #fff;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+
+    .history-delete-btn {
+      background: #ef4444;
+      color: #fff;
+      border: none;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.75rem;
+      transition: background 0.2s;
+    }
+
+    .history-delete-btn:hover {
+      background: #dc2626;
+    }
+
+    .history-empty {
+      text-align: center;
+      color: #64748b;
+      padding: 1rem;
+    }
+
+    .history-close {
+      margin-top: 1rem;
+      padding: 0.5rem 1rem;
+      background: #e5e7eb;
+      color: #1f2937;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+    }
+
+    @media (max-width:900px){
+      #platformList { max-height: 300px; }
+      #calendar { min-height: 400px; }
+    }
+  </style>
+</head>
+
+<body>
+  <svg class="background-svg" viewBox="0 0 1440 800" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <circle cx="280" cy="280" r="280" fill="#1e3a8a" />
+    <circle cx="1160" cy="280" r="280" fill="#ef4444" />
+    <circle cx="280" cy="520" r="280" fill="#facc15" />
+    <circle cx="1160" cy="520" r="280" fill="#15803d" />
+  </svg>
+
+  <div id="calendar"></div>
+
+  <button class="minimize-tab" id="minimizeTab">Abrir Painel</button>
+
+  <aside id="platformPanel" aria-label="Painel de plataformas">
+    <div class="panel-header">
+      <h3>Plataformas</h3>
+      <div class="panel-controls">
+        <input id="platformSearch" type="search" placeholder="Buscar" aria-label="Buscar plataforma" />
+        <button id="togglePanelBtn" aria-expanded="true" title="Minimizar painel">−</button>
+      </div>
+    </div>
+
+    <div class="panel-actions">
+      <button id="allBonusBtn" title="Ver todos os bônus">TODOS OS BÔNUS</button>
+      <button id="resetAllBtn" title="Resetar todos os depósitos">Resetar</button>
+    </div>
+
+    <ul id="platformList" role="list" aria-live="polite"></ul>
+
+    <div class="panel-footer">
+      <small id="platformCount"></small>
+    </div>
+  </aside>
+
+  <div class="reset-modal" id="resetModal">
+    <div class="reset-modal-content">
+      <h2>Iniciar novo ciclo</h2>
+      <p id="resetModalText"></p>
+      <div class="reset-date-picker">
+        <label for="resetDateInput">Selecione a data de reinício:</label>
+        <input type="date" id="resetDateInput" />
+      </div>
+      <p style="font-weight: 600; color: #0f172a;">O ciclo recomeçará no dia selecionado (Dia 0)</p>
+      <div class="reset-modal-buttons">
+        <button class="btn-confirm" id="resetConfirmBtn">Confirmar</button>
+        <button class="btn-cancel-modal" id="resetCancelBtn">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="history-modal" id="historyModal">
+    <div class="history-modal-content">
+      <h2 id="historyTitle">Histórico de Depósitos</h2>
+      <div id="historyList"></div>
+      <button class="history-close" id="historyCloseBtn">Fechar</button>
+    </div>
+  </div>
+
+  <footer class="legend" aria-hidden="false">
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--level-0)"></div><div><span class="legend-label">Nível 0</span><span>1–29</span></div></div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--level-1)"></div><div><span class="legend-label">Nível 1</span><span>30–69</span></div></div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--level-2)"></div><div><span class="legend-label">Nível 2</span><span>70–149</span></div></div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--level-3)"></div><div><span class="legend-label">Nível 3</span><span>150–299</span></div></div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--level-4)"></div><div><span class="legend-label">Nível 4</span><span>300–600</span></div></div>
+  </footer>
+
+  <script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const svg = document.querySelector('svg.background-svg');
+    const circles = Array.from(svg.querySelectorAll('circle'));
+    const viewbox = svg.viewBox.baseVal;
+    const initialRadii = [280, 280, 280, 280];
+
+    const data = circles.map((c, i) => {
+      const initR = initialRadii[i] * (0.28 + Math.random() * 0.12);
+      return {
+        el: c,
+        x: (Math.random() * viewbox.width) | 0,
+        y: (Math.random() * viewbox.height) | 0,
+        r: initR,
+        vx: (Math.random() * 0.6 + 0.1) * (Math.random() < 0.5 ? -1 : 1),
+        vy: (Math.random() * 0.6 + 0.1) * (Math.random() < 0.5 ? -1 : 1),
+        vr: (Math.random() * 0.04 + 0.01) * (Math.random() < 0.5 ? -1 : 1),
+        rmin: initR * 0.4,
+        rmax: initR * 1.3
+      };
+    });
+
+    function animate() {
+      data.forEach((d) => {
+        d.x += d.vx;
+        d.y += d.vy;
+        d.r += d.vr;
+        if (d.x < -200 || d.x > viewbox.width + 200) d.vx *= -1;
+        if (d.y < -200 || d.y > viewbox.height + 200) d.vy *= -1;
+        if (d.r < d.rmin || d.r > d.rmax) d.vr *= -1;
+        d.el.setAttribute('cx', d.x);
+        d.el.setAttribute('cy', d.y);
+        d.el.setAttribute('r', Math.max(10, d.r));
+      });
+      requestAnimationFrame(animate);
+    }
+    animate();
+
+    const PLATFORM_NAMES = [
+      'A73', 'DDUU', 'EE44', 'FXX', 'HHH5', 'NNZZ', 'PP11', '1UUU', '11TT', '35C',
+      '36Q', '44MM', '45T', '5TTT', '53D', '552X', '551X', '61T', '63V', '66GG',
+      '68D', '7GGG', '7JJJ', '72B', '79C', '83H', '838X', '84D', '877X', '899V',
+      '93D', '93K', '988K'
+    ];
+
+    const DEFAULT_PLATFORMS = Array.from({length:33}, (_,i) => ({
+      id: 'p' + (i+1),
+      name: PLATFORM_NAMES[i],
+      lastResetDate: null,
+      deposits: []
+    }));
+    const PLAT_STORAGE_KEY = 'depositPlatforms_v3';
+
+    function loadPlatforms(){
+      try {
+        const raw = localStorage.getItem(PLAT_STORAGE_KEY);
+        if (!raw) return DEFAULT_PLATFORMS.slice();
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return DEFAULT_PLATFORMS.slice();
+        return parsed.map((p, i) => ({
+          id: p.id || ('p' + (i+1)),
+          name: p.name || PLATFORM_NAMES[i],
+          lastResetDate: p.lastResetDate || null,
+          deposits: Array.isArray(p.deposits) ? p.deposits : []
+        }));
+      } catch (err) {
+        console.error('Erro ao ler plataformas', err);
+        return DEFAULT_PLATFORMS.slice();
+      }
+    }
+
+    function savePlatforms(list){
+      localStorage.setItem(PLAT_STORAGE_KEY, JSON.stringify(list));
+    }
+
+    function getCycleStart(platform, refDate = new Date()){
+      if (platform.lastResetDate) {
+        const resetDate = new Date(platform.lastResetDate);
+        resetDate.setHours(0, 0, 0, 0);
+        return resetDate;
+      }
+      return new Date(refDate.getFullYear(), refDate.getMonth(), 1, 0, 0, 0, 0);
+    }
+
+    function getCurrentCycleDay(platform, refDate = new Date()){
+      const cycleStart = getCycleStart(platform, refDate);
+      const today = new Date(refDate);
+      today.setHours(0, 0, 0, 0);
+      
+      const timeDiff = today - cycleStart;
+      const dayDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+      
+      if (dayDiff < 0) return 0;
+      return dayDiff;
+    }
+
+    function computeEmissionDates(platform, refDate = new Date()){
+      const cycleStart = getCycleStart(platform, refDate);
+      const offsets = [2, 3, 7, 15, 30];
+      return offsets.map(n => {
+        const d = new Date(cycleStart);
+        d.setDate(d.getDate() + n);
+        d.setHours(0,0,0,0);
+        return d;
+      });
+    }
+
+    function sumDepositsUpTo(platform, toDate){
+      const cycleStart = getCycleStart(platform, toDate);
+      return (platform.deposits || [])
+        .filter(d => {
+          const depositDate = new Date(d.date);
+          return depositDate >= cycleStart && depositDate <= toDate;
+        })
+        .reduce((s, d) => s + (Number(d.value) || 0), 0);
+    }
+
+    function getTotalDepositsSinceCycle(platform){
+      return sumDepositsUpTo(platform, new Date());
+    }
+
+    function colorForLevel(valueOrLevel){
+      const root = getComputedStyle(document.documentElement);
+      const lvlVars = [
+        root.getPropertyValue('--level-0').trim(),
+        root.getPropertyValue('--level-1').trim(),
+        root.getPropertyValue('--level-2').trim(),
+        root.getPropertyValue('--level-3').trim(),
+        root.getPropertyValue('--level-4').trim()
+      ];
+
+      const v = Number(valueOrLevel);
+      if (Number.isInteger(v) && v >= 0 && v <= 4) {
+        return lvlVars[v];
+      }
+
+      const amount = isNaN(v) ? 0 : v;
+      if (amount >= 300) return lvlVars[4];
+      if (amount >= 150) return lvlVars[3];
+      if (amount >= 70)  return lvlVars[2];
+      if (amount >= 30)  return lvlVars[1];
+      return lvlVars[0];
+    }
+
+    function renderPlatformList(filter = ''){
+      const listEl = document.getElementById('platformList');
+      const countEl = document.getElementById('platformCount');
+      listEl.innerHTML = '';
+      const q = filter.trim().toLowerCase();
+      const items = platforms.filter(p => p.name.toLowerCase().includes(q));
+
+      items.forEach(p => {
+        const li = document.createElement('li');
+        li.className = 'platform-item';
+        li.dataset.id = p.id;
+
+        const total = getTotalDepositsSinceCycle(p);
+        const bgColor = colorForLevel(total);
+        const cycleDay = getCurrentCycleDay(p);
+
+        const header = document.createElement('div');
+        header.className = 'platform-item-header';
+
+        const name = document.createElement('div');
+        name.className = 'name';
+        name.textContent = p.name;
+
+        const cycleInfo = document.createElement('div');
+        cycleInfo.className = 'cycle-day';
+        if (cycleDay === 0) {
+          cycleInfo.classList.add('no-bonus');
+          cycleInfo.textContent = 'Dia 0';
+        } else {
+          cycleInfo.textContent = `Dia ${cycleDay}`;
+        }
+
+        header.appendChild(name);
+        header.appendChild(cycleInfo);
+        li.appendChild(header);
+
+        const resetInfo = document.createElement('div');
+        resetInfo.className = 'reset-date';
+        if (p.lastResetDate) {
+          const resetDateObj = new Date(p.lastResetDate);
+          const dia = String(resetDateObj.getDate()).padStart(2, '0');
+          const mes = String(resetDateObj.getMonth() + 1).padStart(2, '0');
+          resetInfo.textContent = `Ciclo iniciado: ${dia}/${mes} | Total: R$ ${total.toFixed(2)}`;
+        } else {
+          resetInfo.textContent = `Ciclo não iniciado | Total: R$ ${total.toFixed(2)}`;
+        }
+        li.appendChild(resetInfo);
+
+        const form = document.createElement('div');
+        form.className = 'platform-deposit-form';
+
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.placeholder = 'Valor do depósito';
+        input.min = '0';
+        input.step = '0.01';
+        input.value = '';
+
+        form.appendChild(input);
+        li.appendChild(form);
+
+        const actionButtons = document.createElement('div');
+        actionButtons.className = 'platform-actions-buttons';
+
+        const historyBtn = document.createElement('button');
+        historyBtn.textContent = 'Histórico';
+        historyBtn.style.background = '#3b82f6';
+        historyBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          showHistoryModal(p);
+        });
+
+        const btn = document.createElement('button');
+        btn.textContent = 'Adicionar';
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const value = parseFloat(input.value);
+          if (isNaN(value) || value <= 0) {
+            alert('Digite um valor válido');
+            return;
+          }
+          p.deposits.push({
+            date: new Date().toISOString(),
+            value: value
+          });
+          input.value = '';
+          savePlatforms(platforms);
+          updateCalendarEvents();
+          renderPlatformList(q);
+        });
+
+        const resetBtn = document.createElement('button');
+        resetBtn.textContent = 'Reinício';
+        resetBtn.style.background = '#ef4444';
+        resetBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          showResetModal(p, q);
+        });
+
+        actionButtons.appendChild(historyBtn);
+        actionButtons.appendChild(btn);
+        actionButtons.appendChild(resetBtn);
+        li.appendChild(actionButtons);
+
+        li.addEventListener('click', (e) => {
+          if (e.target === btn || e.target === input || e.target === resetBtn || e.target === historyBtn) return;
+          document.querySelectorAll('.platform-item').forEach(el => el.classList.remove('selected'));
+          li.classList.add('selected');
+          filterCalendarByPlatform(p.id);
+        });
+
+        listEl.appendChild(li);
+      });
+
+      const totalAll = platforms.reduce((s, pl) => s + getTotalDepositsSinceCycle(pl), 0);
+      countEl.textContent = `${items.length} plataformas • Total geral: R$ ${totalAll.toFixed(2)}`;
+    }
+
+    const historyModal = document.getElementById('historyModal');
+    const historyTitle = document.getElementById('historyTitle');
+    const historyList = document.getElementById('historyList');
+    const historyCloseBtn = document.getElementById('historyCloseBtn');
+    let currentHistoryPlatform = null;
+
+    function showHistoryModal(platform){
+      currentHistoryPlatform = platform;
+      historyTitle.textContent = `Histórico de Depósitos - ${platform.name}`;
+      historyList.innerHTML = '';
+
+      if (platform.deposits.length === 0) {
+        historyList.innerHTML = '<div class="history-empty">Nenhum depósito registrado</div>';
+      } else {
+        const sortedDeposits = [...platform.deposits].sort((a, b) => new Date(b.date) - new Date(a.date));
+        sortedDeposits.forEach((dep, index) => {
+          const depositDate = new Date(dep.date);
+          const dia = String(depositDate.getDate()).padStart(2, '0');
+          const mes = String(depositDate.getMonth() + 1).padStart(2, '0');
+          const ano = depositDate.getFullYear();
+          const horas = String(depositDate.getHours()).padStart(2, '0');
+          const minutos = String(depositDate.getMinutes()).padStart(2, '0');
+
+          const item = document.createElement('div');
+          item.className = 'history-item';
+          
+          const itemContent = document.createElement('div');
+          itemContent.className = 'history-item-content';
+          
+          const dateSpan = document.createElement('span');
+          dateSpan.className = 'history-date';
+          dateSpan.textContent = `${dia}/${mes}/${ano} ${horas}:${minutos}`;
+          
+          const valueSpan = document.createElement('span');
+          valueSpan.className = 'history-value';
+          valueSpan.textContent = `R$ ${Number(dep.value).toFixed(2)}`;
+          
+          itemContent.appendChild(dateSpan);
+          itemContent.appendChild(valueSpan);
+          item.appendChild(itemContent);
+
+          const deleteBtn = document.createElement('button');
+          deleteBtn.className = 'history-delete-btn';
+          deleteBtn.textContent = 'Excluir';
+          deleteBtn.addEventListener('click', () => {
+            if (confirm(`Deseja excluir este depósito de R$ ${Number(dep.value).toFixed(2)}?`)) {
+              platform.deposits.splice(platform.deposits.indexOf(dep), 1);
+              savePlatforms(platforms);
+              updateCalendarEvents();
+              renderPlatformList(document.getElementById('platformSearch').value);
+              showHistoryModal(platform);
+            }
+          });
+          item.appendChild(deleteBtn);
+
+          historyList.appendChild(item);
+        });
+      }
+
+      historyModal.style.display = 'flex';
+    }
+
+    historyCloseBtn.addEventListener('click', () => {
+      historyModal.style.display = 'none';
+      currentHistoryPlatform = null;
+    });
+
+    historyModal.addEventListener('click', (e) => {
+      if (e.target === historyModal) {
+        historyModal.style.display = 'none';
+        currentHistoryPlatform = null;
+      }
+    });
+
+    const resetModal = document.getElementById('resetModal');
+    const resetModalText = document.getElementById('resetModalText');
+    const resetDateInput = document.getElementById('resetDateInput');
+    const resetConfirmBtn = document.getElementById('resetConfirmBtn');
+    const resetCancelBtn = document.getElementById('resetCancelBtn');
+    let currentResetPlatform = null;
+    let currentResetFilter = '';
+
+    function showResetModal(platform, filter){
+      currentResetPlatform = platform;
+      currentResetFilter = filter;
+      resetModalText.textContent = `Reiniciar ciclo de ${platform.name}?`;
+      
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      resetDateInput.value = `${yyyy}-${mm}-${dd}`;
+      
+      resetModal.style.display = 'flex';
+    }
+
+    function closeResetModal(){
+      resetModal.style.display = 'none';
+      currentResetPlatform = null;
+    }
+
+    resetConfirmBtn.addEventListener('click', () => {
+      if (currentResetPlatform) {
+        const selectedDate = new Date(resetDateInput.value);
+        selectedDate.setHours(0, 0, 0, 0);
+        currentResetPlatform.lastResetDate = selectedDate.toISOString();
+        savePlatforms(platforms);
+        updateCalendarEvents();
+        renderPlatformList(currentResetFilter);
+      }
+      closeResetModal();
+    });
+
+    resetCancelBtn.addEventListener('click', () => {
+      closeResetModal();
+    });
+
+    resetModal.addEventListener('click', (e) => {
+      if (e.target === resetModal) closeResetModal();
+    });
+
+    let platforms = loadPlatforms();
+    renderPlatformList();
+
+    document.getElementById('platformSearch').addEventListener('input', (e) => {
+      renderPlatformList(e.target.value);
+    });
+
+    document.getElementById('allBonusBtn').addEventListener('click', () => {
+      document.querySelectorAll('.platform-item').forEach(el => el.classList.remove('selected'));
+      showAllBonusCalendar();
+    });
+
+    document.getElementById('resetAllBtn').addEventListener('click', () => {
+      if (!confirm('Resetar todos os depósitos de TODAS as plataformas?')) return;
+      platforms.forEach(p => p.deposits = []);
+      savePlatforms(platforms);
+      renderPlatformList();
+      updateCalendarEvents();
+    });
+
+    const toggleBtn = document.getElementById('togglePanelBtn');
+    const panel = document.getElementById('platformPanel');
+    const minimizeTab = document.getElementById('minimizeTab');
+
+    toggleBtn.addEventListener('click', () => {
+      panel.classList.toggle('minimized');
+      minimizeTab.classList.toggle('show');
+      toggleBtn.title = panel.classList.contains('minimized') ? 'Abrir painel' : 'Minimizar painel';
+      minimizeTab.textContent = panel.classList.contains('minimized') ? 'Abrir Painel' : 'Fechar Painel';
+    });
+
+    minimizeTab.addEventListener('click', () => {
+      panel.classList.remove('minimized');
+      minimizeTab.classList.remove('show');
+      toggleBtn.title = 'Minimizar painel';
+      minimizeTab.textContent = 'Abrir Painel';
+    });
+
+    const calendarEl = document.getElementById('calendar');
+
+    function updateCalendarEvents(){
+      if (!calendar) return;
+      calendar.removeAllEvents();
+
+      const now = new Date();
+      const windowFrom = new Date(now); windowFrom.setDate(windowFrom.getDate() - 10);
+      const windowTo = new Date(now); windowTo.setDate(windowTo.getDate() + 40);
+
+      platforms.forEach(platform => {
+        const emissionDates = computeEmissionDates(platform, now);
+        emissionDates.forEach(emDate => {
+          if (emDate >= windowFrom && emDate <= windowTo) {
+            const totalAtEmission = sumDepositsUpTo(platform, emDate);
+            const bg = colorForLevel(totalAtEmission);
+
+            calendar.addEvent({
+              id: `emit_${platform.id}_${emDate.toISOString().slice(0,10)}`,
+              title: platform.name,
+              start: emDate.toISOString().slice(0,10),
+              allDay: true,
+              display: 'block',
+              backgroundColor: bg,
+              borderColor: 'rgba(0,0,0,0.06)',
+              extendedProps: {
+                platformId: platform.id,
+                platformName: platform.name,
+                totalAtEmission: totalAtEmission
+              }
+            });
+          }
+        });
+      });
+    }
+
+    function filterCalendarByPlatform(platformId){
+      const allEvents = calendar.getEvents();
+      allEvents.forEach(event => {
+        const eventPlatformId = event.extendedProps.platformId;
+        event.setProp('display', eventPlatformId === platformId ? 'block' : 'none');
+      });
+      const p = platforms.find(x => x.id === platformId);
+      if (p) {
+        console.log(`Filtrando: ${p.name} | Dia do ciclo: ${getCurrentCycleDay(p)} | Total: R$ ${getTotalDepositsSinceCycle(p).toFixed(2)}`);
+      }
+    }
+
+    function showAllBonusCalendar(){
+      const allEvents = calendar.getEvents();
+      allEvents.forEach(event => {
+        event.setProp('display', 'block');
+      });
+      console.log('Exibindo todos os bônus do calendário');
+    }
+
+    const calendar = new FullCalendar.Calendar(calendarEl, {
+      initialView: 'dayGridMonth',
+      locale: 'pt-br',
+      selectable: true,
+      headerToolbar: {
+        left: 'prev,next today',
+        center: 'title',
+        right: 'dayGridMonth,timeGridWeek,timeGridDay'
+      },
+      events: [],
+      eventDisplay: 'block',
+      eventDidMount: function(info){
+        const bg = info.event.backgroundColor;
+        info.el.style.background = bg;
+        info.el.style.color = '#000000';
+        info.el.style.border = '1px solid rgba(0,0,0,0.06)';
+        info.el.style.borderRadius = '8px';
+        info.el.style.fontWeight = '700';
+        info.el.style.fontSize = '0.75rem';
+        info.el.style.padding = '2px';
+      }
+    });
+
+    calendar.render();
+    updateCalendarEvents();
+
+    function scheduleDailyUpdate(){
+      const now = new Date();
+      const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
+      const ms = nextMidnight - now;
+      setTimeout(() => {
+        updateCalendarEvents();
+        renderPlatformList(document.getElementById('platformSearch').value);
+        scheduleDailyUpdate();
+      }, ms);
+    }
+    scheduleDailyUpdate();
+  });
+  </script>
+</body>
+</html>
