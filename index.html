@@ -159,7 +159,9 @@
     .history-delete-btn:hover,
     .history-close:hover,
     .btn-confirm:hover,
-    .btn-cancel-modal:hover {
+    .btn-cancel-modal:hover,
+    .vip-inline-input button:hover,
+    .vip-inline-input button:focus-visible {
       transform: translateY(-1px);
       box-shadow: 0 10px 22px rgba(15, 23, 42, 0.12);
     }
@@ -412,14 +414,16 @@
 
     #platformPanel input[type="search"],
     .platform-deposit-form input,
-    .reset-date-picker input {
+    .reset-date-picker input,
+    .vip-inline-input input {
       outline: none;
       transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
 
     #platformPanel input[type="search"]:focus,
     .platform-deposit-form input:focus,
-    .reset-date-picker input:focus {
+    .reset-date-picker input:focus,
+    .vip-inline-input input:focus {
       border-color: rgba(37,99,235,0.45);
       box-shadow: 0 0 0 4px rgba(37,99,235,0.12);
     }
@@ -544,20 +548,65 @@
       box-shadow: inset 0 -2px 0 rgba(255,255,255,0.2);
     }
 
-    .platform-deposit-form {
+    .platform-vip-info {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.45rem;
+      font-size: 0.78rem;
+      color: #334155;
+      background: rgba(248,250,252,0.9);
+      border: 1px solid rgba(148,163,184,0.18);
+      border-radius: 12px;
+      padding: 0.7rem;
+    }
+
+    .platform-vip-info strong {
+      color: #0f172a;
+      display: block;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 0.15rem;
+    }
+
+    .vip-group-chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.2rem 0.5rem;
+      border-radius: 999px;
+      background: rgba(37,99,235,0.1);
+      color: #1d4ed8;
+      font-weight: 700;
+      font-size: 0.75rem;
+    }
+
+    .platform-deposit-form,
+    .vip-inline-input {
       display: flex;
       gap: 0.5rem;
       align-items: center;
       padding-top: 0.15rem;
     }
 
-    .platform-deposit-form input {
+    .platform-deposit-form input,
+    .vip-inline-input input {
       flex: 1;
       padding: 0.75rem 0.85rem;
       font-size: 0.9rem;
       border: 1px solid #e6e9ee;
       border-radius: 12px;
       background: #fff;
+    }
+
+    .vip-inline-input button {
+      padding: 0.7rem 0.9rem;
+      border: none;
+      border-radius: 12px;
+      background: #2563eb;
+      color: #fff;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.18s ease, box-shadow 0.18s ease;
     }
 
     .platform-actions-buttons {
@@ -580,7 +629,8 @@
       padding-top: 0.2rem;
     }
 
-    .tips-card {
+    .tips-card,
+    .vip-summary-card {
       padding: 1.05rem 1.1rem 1.1rem;
     }
 
@@ -591,6 +641,47 @@
       display: grid;
       gap: 0.55rem;
       font-size: 0.92rem;
+      line-height: 1.55;
+    }
+
+    .vip-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.75rem;
+      margin-top: 0.9rem;
+    }
+
+    .vip-summary-box {
+      padding: 0.9rem;
+      border-radius: 16px;
+      background: rgba(255,255,255,0.95);
+      border: 1px solid rgba(148,163,184,0.18);
+      box-shadow: 0 6px 16px rgba(15,23,42,0.05);
+    }
+
+    .vip-summary-box span {
+      display: block;
+    }
+
+    .vip-summary-box .label {
+      font-size: 0.76rem;
+      font-weight: 800;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.35rem;
+    }
+
+    .vip-summary-box .value {
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: #0f172a;
+    }
+
+    .vip-summary-note {
+      margin-top: 0.9rem;
+      color: var(--text-soft);
+      font-size: 0.88rem;
       line-height: 1.55;
     }
 
@@ -838,7 +929,8 @@
         padding: 1.2rem;
       }
 
-      .hero-summary {
+      .hero-summary,
+      .vip-summary-grid {
         grid-template-columns: 1fr 1fr;
       }
 
@@ -888,21 +980,26 @@
         font-size: 0.95rem;
       }
 
-      .hero-summary {
+      .hero-summary,
+      .vip-summary-grid,
+      .platform-vip-info {
         grid-template-columns: 1fr;
       }
 
       .hero-actions,
       .panel-actions,
       .platform-actions-buttons,
-      .reset-modal-buttons {
+      .reset-modal-buttons,
+      .platform-deposit-form,
+      .vip-inline-input {
         flex-direction: column;
       }
 
       .hero-actions button,
       .panel-actions button,
       .platform-actions-buttons button,
-      .reset-modal-buttons button {
+      .reset-modal-buttons button,
+      .vip-inline-input button {
         width: 100%;
       }
 
@@ -940,10 +1037,10 @@
       <div class="hero-content">
         <div>
           <span class="hero-badge">✨ Painel atualizado</span>
-          <h1>Gerencie ciclos, bônus e depósitos com mais clareza</h1>
+          <h1>Gerencie ciclos, bônus VIP e depósitos com mais clareza</h1>
           <p>
             Acompanhe suas plataformas em um layout mais moderno, organizado e fácil de usar.
-            O visual foi refinado para destacar informações importantes sem alterar as bolinhas do fundo.
+            Agora o calendário também considera bônus VIP diários, semanais e mensais com uma área de soma dedicada.
           </p>
           <div class="hero-actions">
             <button class="btn-primary" id="scrollToPanelBtn">Ver plataformas</button>
@@ -963,9 +1060,9 @@
             <span class="summary-note">Soma dos depósitos do ciclo atual.</span>
           </div>
           <div class="summary-card">
-            <span class="summary-label">Com bônus hoje</span>
-            <span class="summary-value" id="heroBonusToday">0</span>
-            <span class="summary-note">Plataformas com evento no dia atual.</span>
+            <span class="summary-label">Bônus hoje</span>
+            <span class="summary-value" id="heroBonusToday">R$ 0,00</span>
+            <span class="summary-note">Total de bônus previstos para a data atual.</span>
           </div>
           <div class="summary-card">
             <span class="summary-label">Status</span>
@@ -982,13 +1079,13 @@
           <div class="section-heading">
             <div>
               <h2>Calendário de bônus</h2>
-              <p>Veja os próximos eventos e acompanhe os ciclos por nível de depósito.</p>
+              <p>Veja os próximos eventos e acompanhe os ciclos por nível de depósito e bônus VIP.</p>
             </div>
           </div>
           <div class="calendar-toolbar">
             <span class="pill">📅 Visual mensal, semanal e diária</span>
             <span class="pill">🎯 Cores por nível automático</span>
-            <span class="pill">⚡ Atualização local instantânea</span>
+            <span class="pill">💎 VIP diário, semanal e mensal</span>
           </div>
           <div id="calendar"></div>
         </section>
@@ -1018,6 +1115,34 @@
           </div>
         </aside>
 
+        <section class="card-shell vip-summary-card" aria-label="Resumo dos bônus VIP">
+          <div class="section-heading" style="padding:0;">
+            <div>
+              <h3>Resumo VIP</h3>
+              <p>Soma automática dos bônus gerados pelas plataformas.</p>
+            </div>
+          </div>
+          <div class="vip-summary-grid">
+            <div class="vip-summary-box">
+              <span class="label">Diário hoje</span>
+              <span class="value" id="vipDailyToday">R$ 0,00</span>
+            </div>
+            <div class="vip-summary-box">
+              <span class="label">Semanal hoje</span>
+              <span class="value" id="vipWeeklyToday">R$ 0,00</span>
+            </div>
+            <div class="vip-summary-box">
+              <span class="label">Mensal hoje</span>
+              <span class="value" id="vipMonthlyToday">R$ 0,00</span>
+            </div>
+            <div class="vip-summary-box">
+              <span class="label">Total hoje</span>
+              <span class="value" id="vipGrandToday">R$ 0,00</span>
+            </div>
+          </div>
+          <p class="vip-summary-note" id="vipSummaryNote">Defina o volume de apostas em cada plataforma para calcular corretamente o VIP.</p>
+        </section>
+
         <section class="card-shell tips-card" aria-label="Dicas de uso">
           <div class="section-heading" style="padding:0;">
             <div>
@@ -1027,9 +1152,9 @@
           </div>
           <ul class="tips-list">
             <li>Use a busca para localizar uma plataforma rapidamente.</li>
-            <li>Abra o histórico para revisar depósitos recentes antes de resetar.</li>
+            <li>Informe o volume apostado para cada plataforma e liberar o cálculo VIP correto.</li>
             <li>Selecione uma plataforma para filtrar somente os bônus dela no calendário.</li>
-            <li>Os níveis mudam automaticamente conforme o total acumulado no ciclo.</li>
+            <li>Plataformas sem aposta mínima podem receber VIP mesmo com volume zerado em alguns níveis.</li>
           </ul>
         </section>
       </div>
@@ -1113,13 +1238,68 @@
       '93D', '93K', '988K'
     ];
 
+    const VIP_TABLE = {
+      0: { volume: 0, daily: 0, weekly: 0, monthly: 0 },
+      1: { volume: 100, daily: 0, weekly: 0, monthly: 1 },
+      2: { volume: 1000, daily: 0.5, weekly: 1, monthly: 1 },
+      3: { volume: 3000, daily: 0.6, weekly: 2, monthly: 3 },
+      4: { volume: 10000, daily: 0.8, weekly: 3, monthly: 5 },
+      5: { volume: 30000, daily: 1, weekly: 5, monthly: 8 }
+    };
+
+    const NO_BET_MINIMUM_VALUES = {
+      0: 0,
+      1: 0,
+      2: 10,
+      3: 12,
+      4: 16,
+      5: 20
+    };
+
+    const PLATFORM_CONFIG = {
+      'FXX': { vipLevel: 2, group: 'com_aposta_minima' },
+      '551X': { vipLevel: 3, group: 'com_aposta_minima' },
+      '838X': { vipLevel: 3, group: 'com_aposta_minima' },
+      'PP11': { vipLevel: 4, group: 'com_aposta_minima' },
+      '1UUU': { vipLevel: 3, group: 'com_aposta_minima' },
+      '11TT': { vipLevel: 3, group: 'com_aposta_minima' },
+      'DDUU': { vipLevel: 4, group: 'com_aposta_minima' },
+      '45T': { vipLevel: 2, group: 'com_aposta_minima' },
+      '7GGG': { vipLevel: 3, group: 'com_aposta_minima' },
+      '66GG': { vipLevel: 3, group: 'com_aposta_minima' },
+      '44MM': { vipLevel: 3, group: 'com_aposta_minima' },
+      'NNZZ': { vipLevel: 3, group: 'com_aposta_minima' },
+      '899V': { vipLevel: 3, group: 'com_aposta_minima' },
+      '83H': { vipLevel: 3, group: 'com_aposta_minima' },
+      '5TTT': { vipLevel: 3, group: 'com_aposta_minima' },
+      '84D': { vipLevel: 3, group: 'com_aposta_minima' },
+      '552X': { vipLevel: 3, group: 'com_aposta_minima' },
+      '35C': { vipLevel: 2, group: 'sem_aposta_minima' },
+      '63V': { vipLevel: 3, group: 'sem_aposta_minima' },
+      '68D': { vipLevel: 2, group: 'sem_aposta_minima' },
+      '61T': { vipLevel: 2, group: 'sem_aposta_minima' },
+      '72B': { vipLevel: 3, group: 'sem_aposta_minima' },
+      '36Q': { vipLevel: 4, group: 'sem_aposta_minima' },
+      '53D': { vipLevel: 2, group: 'sem_aposta_minima' },
+      '93K': { vipLevel: 3, group: 'sem_aposta_minima' },
+      '93D': { vipLevel: 3, group: 'sem_aposta_minima' },
+      'A73': { vipLevel: 3, group: 'sem_aposta_minima' },
+      'EE44': { vipLevel: 3, group: 'sem_aposta_minima' },
+      '7JJJ': { vipLevel: 3, group: 'sem_aposta_minima' },
+      '877X': { vipLevel: 3, group: 'sem_aposta_minima' },
+      '79C': { vipLevel: 3, group: 'sem_aposta_minima' },
+      '988K': { vipLevel: 3, group: 'sem_aposta_minima' },
+      'HHH5': { vipLevel: 2, group: 'sem_aposta_minima' }
+    };
+
     const DEFAULT_PLATFORMS = Array.from({length:33}, (_,i) => ({
       id: 'p' + (i+1),
       name: PLATFORM_NAMES[i],
       lastResetDate: null,
-      deposits: []
+      deposits: [],
+      bettingVolume: null
     }));
-    const PLAT_STORAGE_KEY = 'depositPlatforms_v3';
+    const PLAT_STORAGE_KEY = 'depositPlatforms_v4';
 
     function loadPlatforms(){
       try {
@@ -1131,7 +1311,8 @@
           id: p.id || ('p' + (i+1)),
           name: p.name || PLATFORM_NAMES[i],
           lastResetDate: p.lastResetDate || null,
-          deposits: Array.isArray(p.deposits) ? p.deposits : []
+          deposits: Array.isArray(p.deposits) ? p.deposits : [],
+          bettingVolume: p.bettingVolume === null || p.bettingVolume === undefined || p.bettingVolume === '' ? null : Number(p.bettingVolume)
         }));
       } catch (err) {
         console.error('Erro ao ler plataformas', err);
@@ -1148,6 +1329,10 @@
         style: 'currency',
         currency: 'BRL'
       }).format(Number(value) || 0);
+    }
+
+    function getPlatformConfig(platform){
+      return PLATFORM_CONFIG[platform.name] || { vipLevel: 0, group: 'com_aposta_minima' };
     }
 
     function getCycleStart(platform, refDate = new Date()){
@@ -1219,24 +1404,106 @@
       return lvlVars[0];
     }
 
+    function getVipBonusValues(platform){
+      const config = getPlatformConfig(platform);
+      const level = config.vipLevel || 0;
+      const volume = Number(platform.bettingVolume) || 0;
+      const tableEntry = VIP_TABLE[level] || VIP_TABLE[0];
+
+      if (config.group === 'sem_aposta_minima') {
+        return {
+          level,
+          group: config.group,
+          volume,
+          daily: NO_BET_MINIMUM_VALUES[level] || 0,
+          weekly: tableEntry.weekly || 0,
+          monthly: tableEntry.monthly || 0
+        };
+      }
+
+      const qualifies = volume >= tableEntry.volume;
+      return {
+        level,
+        group: config.group,
+        volume,
+        daily: qualifies ? tableEntry.daily : 0,
+        weekly: qualifies ? tableEntry.weekly : 0,
+        monthly: qualifies ? tableEntry.monthly : 0,
+        requiredVolume: tableEntry.volume,
+        qualifies
+      };
+    }
+
+    function isSameDate(a, b){
+      const first = new Date(a);
+      const second = new Date(b);
+      first.setHours(0,0,0,0);
+      second.setHours(0,0,0,0);
+      return first.getTime() === second.getTime();
+    }
+
+    function isMonday(date){
+      return new Date(date).getDay() === 1;
+    }
+
+    function isFirstDayOfMonth(date){
+      return new Date(date).getDate() === 1;
+    }
+
+    function getVipEventsForDate(targetDate){
+      const target = new Date(targetDate);
+      target.setHours(0,0,0,0);
+      const targetTime = target.getTime();
+      const results = [];
+
+      platforms.forEach(platform => {
+        const vip = getVipBonusValues(platform);
+
+        if (vip.daily > 0) {
+          results.push({ platformId: platform.id, platformName: platform.name, type: 'VIP Diário', amount: vip.daily, date: targetTime });
+        }
+        if (vip.weekly > 0 && isMonday(target)) {
+          results.push({ platformId: platform.id, platformName: platform.name, type: 'VIP Semanal', amount: vip.weekly, date: targetTime });
+        }
+        if (vip.monthly > 0 && isFirstDayOfMonth(target)) {
+          results.push({ platformId: platform.id, platformName: platform.name, type: 'VIP Mensal', amount: vip.monthly, date: targetTime });
+        }
+      });
+
+      return results;
+    }
+
+    function getVipSummaryForDate(targetDate){
+      const entries = getVipEventsForDate(targetDate);
+      return entries.reduce((acc, entry) => {
+        if (entry.type === 'VIP Diário') acc.daily += entry.amount;
+        if (entry.type === 'VIP Semanal') acc.weekly += entry.amount;
+        if (entry.type === 'VIP Mensal') acc.monthly += entry.amount;
+        acc.total += entry.amount;
+        return acc;
+      }, { daily: 0, weekly: 0, monthly: 0, total: 0, count: entries.length });
+    }
+
     function getEventsForDate(targetDate){
       const target = new Date(targetDate);
       target.setHours(0,0,0,0);
       const targetTime = target.getTime();
-      return platforms.filter(platform => computeEmissionDates(platform).some(date => date.getTime() === targetTime));
+      const cycleEntries = platforms.filter(platform => computeEmissionDates(platform).some(date => date.getTime() === targetTime)).length;
+      const vipSummary = getVipSummaryForDate(target);
+      return { cycleEntries, vipSummary };
     }
 
     function updateHeroSummary(){
       const totalPlatforms = platforms.length;
       const totalDeposits = platforms.reduce((sum, platform) => sum + getTotalDepositsSinceCycle(platform), 0);
-      const bonusToday = getEventsForDate(new Date()).length;
+      const bonusTodaySummary = getVipSummaryForDate(new Date());
       const activeCycles = platforms.filter(platform => getCurrentCycleDay(platform) > 0).length;
       const topPlatform = [...platforms]
         .sort((a, b) => getTotalDepositsSinceCycle(b) - getTotalDepositsSinceCycle(a))[0];
 
       document.getElementById('heroPlatformCount').textContent = String(totalPlatforms);
       document.getElementById('heroTotalDeposits').textContent = formatCurrency(totalDeposits);
-      document.getElementById('heroBonusToday').textContent = String(bonusToday);
+      document.getElementById('heroBonusToday').textContent = formatCurrency(bonusTodaySummary.total);
 
       const highlightEl = document.getElementById('heroNextHighlight');
       const highlightNoteEl = document.getElementById('heroNextHighlightNote');
@@ -1250,6 +1517,17 @@
           ? `${activeCycles} plataformas com ciclo em andamento.`
           : 'Adicione depósitos para começar a acompanhar os níveis.';
       }
+    }
+
+    function updateVipSummaryArea(){
+      const todaySummary = getVipSummaryForDate(new Date());
+      document.getElementById('vipDailyToday').textContent = formatCurrency(todaySummary.daily);
+      document.getElementById('vipWeeklyToday').textContent = formatCurrency(todaySummary.weekly);
+      document.getElementById('vipMonthlyToday').textContent = formatCurrency(todaySummary.monthly);
+      document.getElementById('vipGrandToday').textContent = formatCurrency(todaySummary.total);
+
+      const filledVolumes = platforms.filter(platform => platform.bettingVolume !== null && platform.bettingVolume !== undefined && platform.bettingVolume !== '').length;
+      document.getElementById('vipSummaryNote').textContent = `${filledVolumes} de ${platforms.length} plataformas com volume informado para cálculo VIP.`;
     }
 
     function renderPlatformList(filter = ''){
@@ -1267,6 +1545,7 @@
         const total = getTotalDepositsSinceCycle(p);
         const bgColor = colorForLevel(total);
         const cycleDay = getCurrentCycleDay(p);
+        const vip = getVipBonusValues(p);
 
         const header = document.createElement('div');
         header.className = 'platform-item-header';
@@ -1311,6 +1590,67 @@
         meta.appendChild(totalBadge);
         li.appendChild(meta);
 
+        const vipInfo = document.createElement('div');
+        vipInfo.className = 'platform-vip-info';
+        vipInfo.innerHTML = `
+          <div>
+            <strong>Nível VIP</strong>
+            VIP ${vip.level}
+          </div>
+          <div>
+            <strong>Grupo</strong>
+            <span class="vip-group-chip">${vip.group === 'sem_aposta_minima' ? 'Sem aposta mínima' : 'Com aposta mínima'}</span>
+          </div>
+          <div>
+            <strong>VIP diário</strong>
+            ${formatCurrency(vip.daily)}
+          </div>
+          <div>
+            <strong>VIP semanal</strong>
+            ${formatCurrency(vip.weekly)}
+          </div>
+          <div>
+            <strong>VIP mensal</strong>
+            ${formatCurrency(vip.monthly)}
+          </div>
+          <div>
+            <strong>Volume atual</strong>
+            ${formatCurrency(vip.volume)}
+          </div>
+        `;
+        li.appendChild(vipInfo);
+
+        const volumeForm = document.createElement('div');
+        volumeForm.className = 'vip-inline-input';
+
+        const volumeInput = document.createElement('input');
+        volumeInput.type = 'number';
+        volumeInput.placeholder = 'Volume de apostas';
+        volumeInput.min = '0';
+        volumeInput.step = '0.01';
+        volumeInput.value = p.bettingVolume ?? '';
+
+        const volumeBtn = document.createElement('button');
+        volumeBtn.textContent = 'Salvar volume';
+        volumeBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          const value = volumeInput.value === '' ? null : parseFloat(volumeInput.value);
+          if (value !== null && (isNaN(value) || value < 0)) {
+            alert('Digite um volume válido');
+            return;
+          }
+          p.bettingVolume = value;
+          savePlatforms(platforms);
+          updateCalendarEvents();
+          renderPlatformList(q);
+          updateHeroSummary();
+          updateVipSummaryArea();
+        });
+
+        volumeForm.appendChild(volumeInput);
+        volumeForm.appendChild(volumeBtn);
+        li.appendChild(volumeForm);
+
         const form = document.createElement('div');
         form.className = 'platform-deposit-form';
 
@@ -1353,6 +1693,7 @@
           updateCalendarEvents();
           renderPlatformList(q);
           updateHeroSummary();
+          updateVipSummaryArea();
         });
 
         const resetBtn = document.createElement('button');
@@ -1369,7 +1710,7 @@
         li.appendChild(actionButtons);
 
         li.addEventListener('click', (e) => {
-          if (e.target === btn || e.target === input || e.target === resetBtn || e.target === historyBtn) return;
+          if (e.target === btn || e.target === input || e.target === resetBtn || e.target === historyBtn || e.target === volumeBtn || e.target === volumeInput) return;
           document.querySelectorAll('.platform-item').forEach(el => el.classList.remove('selected'));
           li.classList.add('selected');
           filterCalendarByPlatform(p.id);
@@ -1381,6 +1722,7 @@
       const totalAll = platforms.reduce((s, pl) => s + getTotalDepositsSinceCycle(pl), 0);
       countEl.textContent = `${items.length} plataformas • Total geral: ${formatCurrency(totalAll)}`;
       updateHeroSummary();
+      updateVipSummaryArea();
     }
 
     const historyModal = document.getElementById('historyModal');
@@ -1435,6 +1777,7 @@
               renderPlatformList(document.getElementById('platformSearch').value);
               showHistoryModal(platform);
               updateHeroSummary();
+              updateVipSummaryArea();
             }
           });
           item.appendChild(deleteBtn);
@@ -1494,6 +1837,7 @@
         updateCalendarEvents();
         renderPlatformList(currentResetFilter);
         updateHeroSummary();
+        updateVipSummaryArea();
       }
       closeResetModal();
     });
@@ -1525,6 +1869,7 @@
       renderPlatformList();
       updateCalendarEvents();
       updateHeroSummary();
+      updateVipSummaryArea();
     });
 
     document.getElementById('scrollToPanelBtn').addEventListener('click', () => {
@@ -1555,6 +1900,74 @@
 
     const calendarEl = document.getElementById('calendar');
 
+    function addVipEventsToCalendar(windowFrom, windowTo){
+      const current = new Date(windowFrom);
+      current.setHours(0,0,0,0);
+
+      while (current <= windowTo) {
+        platforms.forEach(platform => {
+          const vip = getVipBonusValues(platform);
+          const dateKey = current.toISOString().slice(0,10);
+
+          if (vip.daily > 0) {
+            calendar.addEvent({
+              id: `vip_daily_${platform.id}_${dateKey}`,
+              title: `${platform.name} • VIP Diário`,
+              start: dateKey,
+              allDay: true,
+              display: 'block',
+              backgroundColor: '#bfdbfe',
+              borderColor: 'rgba(37,99,235,0.25)',
+              extendedProps: {
+                platformId: platform.id,
+                platformName: platform.name,
+                vipType: 'daily',
+                vipAmount: vip.daily
+              }
+            });
+          }
+
+          if (vip.weekly > 0 && isMonday(current)) {
+            calendar.addEvent({
+              id: `vip_weekly_${platform.id}_${dateKey}`,
+              title: `${platform.name} • VIP Semanal`,
+              start: dateKey,
+              allDay: true,
+              display: 'block',
+              backgroundColor: '#c7f9cc',
+              borderColor: 'rgba(21,128,61,0.25)',
+              extendedProps: {
+                platformId: platform.id,
+                platformName: platform.name,
+                vipType: 'weekly',
+                vipAmount: vip.weekly
+              }
+            });
+          }
+
+          if (vip.monthly > 0 && isFirstDayOfMonth(current)) {
+            calendar.addEvent({
+              id: `vip_monthly_${platform.id}_${dateKey}`,
+              title: `${platform.name} • VIP Mensal`,
+              start: dateKey,
+              allDay: true,
+              display: 'block',
+              backgroundColor: '#fde68a',
+              borderColor: 'rgba(217,119,6,0.25)',
+              extendedProps: {
+                platformId: platform.id,
+                platformName: platform.name,
+                vipType: 'monthly',
+                vipAmount: vip.monthly
+              }
+            });
+          }
+        });
+
+        current.setDate(current.getDate() + 1);
+      }
+    }
+
     function updateCalendarEvents(){
       if (!calendar) return;
       calendar.removeAllEvents();
@@ -1562,6 +1975,8 @@
       const now = new Date();
       const windowFrom = new Date(now); windowFrom.setDate(windowFrom.getDate() - 10);
       const windowTo = new Date(now); windowTo.setDate(windowTo.getDate() + 40);
+      windowFrom.setHours(0,0,0,0);
+      windowTo.setHours(0,0,0,0);
 
       platforms.forEach(platform => {
         const emissionDates = computeEmissionDates(platform, now);
@@ -1572,7 +1987,7 @@
 
             calendar.addEvent({
               id: `emit_${platform.id}_${emDate.toISOString().slice(0,10)}`,
-              title: platform.name,
+              title: `${platform.name} • Ciclo`,
               start: emDate.toISOString().slice(0,10),
               allDay: true,
               display: 'block',
@@ -1581,14 +1996,17 @@
               extendedProps: {
                 platformId: platform.id,
                 platformName: platform.name,
-                totalAtEmission: totalAtEmission
+                totalAtEmission: totalAtEmission,
+                vipType: 'cycle'
               }
             });
           }
         });
       });
 
+      addVipEventsToCalendar(windowFrom, windowTo);
       updateHeroSummary();
+      updateVipSummaryArea();
     }
 
     function filterCalendarByPlatform(platformId){
@@ -1637,6 +2055,7 @@
     calendar.render();
     updateCalendarEvents();
     updateHeroSummary();
+    updateVipSummaryArea();
 
     function scheduleDailyUpdate(){
       const now = new Date();
@@ -1646,6 +2065,7 @@
         updateCalendarEvents();
         renderPlatformList(document.getElementById('platformSearch').value);
         updateHeroSummary();
+        updateVipSummaryArea();
         scheduleDailyUpdate();
       }, ms);
     }
