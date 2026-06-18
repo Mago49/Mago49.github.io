@@ -1162,21 +1162,29 @@
       }
 
       function filterCalendarByPlatform(platformId) {
+        if (!calendar) return;
         calendar.getEvents().forEach((event) => {
           event.setProp('display', event.extendedProps.platformId === platformId ? 'block' : 'none');
         });
       }
-      function showAllBonusCalendar() { calendar.getEvents().forEach((event) => event.setProp('display', 'block')); }
+      function showAllBonusCalendar() {
+        if (!calendar) return;
+        calendar.getEvents().forEach((event) => event.setProp('display', 'block'));
+      }
 
-      calendar = new FullCalendar.Calendar(calendarEl, {
-        initialView: 'dayGridMonth',
-        locale: 'pt-br',
-        selectable: true,
-        headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' },
-        events: [],
-        eventDisplay: 'block'
-      });
-      calendar.render();
+      if (window.FullCalendar && typeof window.FullCalendar.Calendar === 'function') {
+        calendar = new FullCalendar.Calendar(calendarEl, {
+          initialView: 'dayGridMonth',
+          locale: 'pt-br',
+          selectable: true,
+          headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' },
+          events: [],
+          eventDisplay: 'block'
+        });
+        calendar.render();
+      } else {
+        calendarEl.innerHTML = '<div class="history-empty">Não foi possível carregar o calendário agora.</div>';
+      }
 
       document.getElementById('platformSearch').addEventListener('input', (e) => renderPlatformList(e.target.value));
       document.getElementById('allBonusBtn').addEventListener('click', () => { document.querySelectorAll('.platform-item').forEach((el) => el.classList.remove('selected')); showAllBonusCalendar(); });
