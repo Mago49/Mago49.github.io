@@ -38,7 +38,6 @@
     }
 
     * { box-sizing: border-box; }
-
     html, body {
       min-height: 100vh;
       margin: 0;
@@ -141,12 +140,13 @@
       margin-top: 1.25rem;
     }
 
-    .hero-actions button {
-      border: none;
-      border-radius: 999px;
-      padding: 0.8rem 1.1rem;
-      font-weight: 700;
-      cursor: pointer;
+    .hero-actions button,
+    #platformPanel button,
+    .vip-inline-input button,
+    .reset-modal-buttons button,
+    .history-close,
+    .history-delete-btn,
+    .minimize-tab {
       transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
     }
 
@@ -158,10 +158,10 @@
     .minimize-tab:focus-visible,
     .history-delete-btn:hover,
     .history-close:hover,
-    .btn-confirm:hover,
-    .btn-cancel-modal:hover,
     .vip-inline-input button:hover,
-    .vip-inline-input button:focus-visible {
+    .vip-inline-input button:focus-visible,
+    .btn-confirm:hover,
+    .btn-cancel-modal:hover {
       transform: translateY(-1px);
       box-shadow: 0 10px 22px rgba(15, 23, 42, 0.12);
     }
@@ -169,12 +169,21 @@
     .btn-primary {
       background: var(--primary);
       color: #fff;
+      border: none;
+      border-radius: 999px;
+      padding: 0.8rem 1.1rem;
+      font-weight: 700;
+      cursor: pointer;
     }
 
     .btn-secondary {
       background: rgba(255,255,255,0.86);
       color: var(--primary);
       border: 1px solid rgba(15,23,42,0.08);
+      border-radius: 999px;
+      padding: 0.8rem 1.1rem;
+      font-weight: 700;
+      cursor: pointer;
     }
 
     .hero-summary {
@@ -183,7 +192,8 @@
       gap: 0.85rem;
     }
 
-    .summary-card {
+    .summary-card,
+    .vip-summary-box {
       padding: 1rem;
       border-radius: var(--radius-lg);
       background: var(--surface-strong);
@@ -191,7 +201,8 @@
       box-shadow: var(--shadow-card);
     }
 
-    .summary-label {
+    .summary-label,
+    .vip-summary-box .label {
       display: block;
       font-size: 0.82rem;
       font-weight: 700;
@@ -201,14 +212,16 @@
       margin-bottom: 0.35rem;
     }
 
-    .summary-value {
+    .summary-value,
+    .vip-summary-box .value {
       display: block;
       font-size: clamp(1.1rem, 2vw, 1.6rem);
       font-weight: 800;
       color: var(--text-dark);
     }
 
-    .summary-note {
+    .summary-note,
+    .vip-summary-note {
       display: block;
       margin-top: 0.35rem;
       font-size: 0.88rem;
@@ -269,7 +282,8 @@
       padding: 0.9rem 1.2rem 0;
     }
 
-    .pill {
+    .pill,
+    .vip-group-chip {
       display: inline-flex;
       align-items: center;
       gap: 0.35rem;
@@ -288,7 +302,6 @@
       min-height: 520px;
       background: transparent;
       padding: 1rem 1.2rem 1.25rem;
-      flex-shrink: 0;
     }
 
     .fc .fc-toolbar-title {
@@ -329,14 +342,6 @@
       background: rgba(37, 99, 235, 0.08) !important;
     }
 
-    .fc .fc-daygrid-day-frame {
-      transition: background 0.2s ease;
-    }
-
-    .fc .fc-daygrid-day:hover .fc-daygrid-day-frame {
-      background: rgba(255,255,255,0.35);
-    }
-
     .fc-event {
       border-radius: 10px;
       padding: 3px 7px;
@@ -355,23 +360,17 @@
     }
 
     #platformPanel {
-      position: relative;
       width: 100%;
-      max-width: 100%;
       background: var(--surface);
       border: 1px solid var(--border-soft);
       border-radius: var(--radius-xl);
       box-shadow: var(--shadow-soft);
       padding: 1rem;
-      z-index: 20;
       display: flex;
       flex-direction: column;
       gap: 0.75rem;
-      font-family: inherit;
       overflow-y: auto;
-      max-height: none;
       transition: max-height 0.3s ease, padding 0.3s ease, opacity 0.3s ease;
-      flex-shrink: 0;
       backdrop-filter: blur(14px);
     }
 
@@ -390,10 +389,7 @@
       gap:0.75rem;
     }
 
-    #platformPanel h3 {
-      margin:0;
-      font-size:1.08rem;
-    }
+    #platformPanel h3 { margin:0; font-size:1.08rem; }
 
     #platformPanel .panel-controls {
       display:flex;
@@ -403,27 +399,23 @@
       justify-content: flex-end;
     }
 
-    #platformPanel input[type="search"] {
-      padding:0.7rem 0.85rem;
-      border-radius:999px;
-      border:1px solid #dbe2ea;
-      flex: 1;
-      min-width: 0;
-      background: rgba(255,255,255,0.95);
-    }
-
     #platformPanel input[type="search"],
     .platform-deposit-form input,
-    .reset-date-picker input,
-    .vip-inline-input input {
+    .vip-inline-input input,
+    .reset-date-picker input {
+      padding:0.75rem 0.85rem;
+      border-radius:12px;
+      border:1px solid #dbe2ea;
+      background: rgba(255,255,255,0.95);
       outline: none;
-      transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
+
+    #platformPanel input[type="search"] { flex: 1; min-width: 0; border-radius:999px; }
 
     #platformPanel input[type="search"]:focus,
     .platform-deposit-form input:focus,
-    .reset-date-picker input:focus,
-    .vip-inline-input input:focus {
+    .vip-inline-input input:focus,
+    .reset-date-picker input:focus {
       border-color: rgba(37,99,235,0.45);
       box-shadow: 0 0 0 4px rgba(37,99,235,0.12);
     }
@@ -437,33 +429,33 @@
       cursor:pointer;
       font-weight:700;
       font-size: 0.85rem;
-      transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
     }
 
     #platformPanel button[title] { background:#6b7280; }
 
-    .panel-actions {
+    .panel-actions,
+    .platform-actions-buttons,
+    .platform-deposit-form,
+    .vip-inline-input,
+    .reset-modal-buttons,
+    .hero-actions {
       display:flex;
       gap:0.6rem;
       flex-wrap: wrap;
+      align-items: center;
     }
 
     .panel-actions button {
       background:#15803d;
-      padding:0.7rem 0.85rem;
-      font-size:0.84rem;
       flex: 1;
       min-width: 140px;
     }
-
-    .panel-actions button[title] { background:#ef4444; }
 
     #platformList {
       list-style:none;
       margin:0;
       padding:0;
       overflow:auto;
-      flex:1;
       display:flex;
       flex-direction:column;
       gap:0.55rem;
@@ -494,19 +486,16 @@
       border: 2px solid #15803d;
     }
 
-    .platform-item-header {
+    .platform-item-header,
+    .platform-meta {
       display:flex;
       align-items:center;
-      gap:0.5rem;
       justify-content: space-between;
+      gap:0.75rem;
+      flex-wrap: wrap;
     }
 
-    .platform-item .name {
-      flex:1;
-      font-weight:700;
-      color:var(--text-dark);
-      font-size: 1rem;
-    }
+    .platform-item .name { font-weight:700; font-size: 1rem; }
 
     .platform-item .cycle-day {
       font-size:0.82rem;
@@ -523,14 +512,6 @@
       color: #991b1b;
     }
 
-    .platform-meta {
-      display: flex;
-      justify-content: space-between;
-      gap: 0.75rem;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-
     .platform-item .reset-date {
       font-size:0.8rem;
       color:#64748b;
@@ -545,7 +526,6 @@
       font-weight: 800;
       color: #0f172a;
       border: 1px solid rgba(15,23,42,0.06);
-      box-shadow: inset 0 -2px 0 rgba(255,255,255,0.2);
     }
 
     .platform-vip-info {
@@ -569,34 +549,8 @@
       margin-bottom: 0.15rem;
     }
 
-    .vip-group-chip {
-      display: inline-flex;
-      align-items: center;
-      padding: 0.2rem 0.5rem;
-      border-radius: 999px;
-      background: rgba(37,99,235,0.1);
-      color: #1d4ed8;
-      font-weight: 700;
-      font-size: 0.75rem;
-    }
-
-    .platform-deposit-form,
-    .vip-inline-input {
-      display: flex;
-      gap: 0.5rem;
-      align-items: center;
-      padding-top: 0.15rem;
-    }
-
     .platform-deposit-form input,
-    .vip-inline-input input {
-      flex: 1;
-      padding: 0.75rem 0.85rem;
-      font-size: 0.9rem;
-      border: 1px solid #e6e9ee;
-      border-radius: 12px;
-      background: #fff;
-    }
+    .vip-inline-input input { flex: 1; }
 
     .vip-inline-input button {
       padding: 0.7rem 0.9rem;
@@ -606,84 +560,13 @@
       color: #fff;
       font-weight: 700;
       cursor: pointer;
-      transition: transform 0.18s ease, box-shadow 0.18s ease;
     }
 
-    .platform-actions-buttons {
-      display: flex;
-      gap: 0.45rem;
-      flex-wrap: wrap;
-    }
-
-    .platform-actions-buttons button {
-      flex: 1;
-      padding: 0.65rem 0.75rem;
-      font-size: 0.78rem;
-      min-width: 92px;
-    }
-
-    .panel-footer {
-      text-align:left;
-      font-size:0.9rem;
-      color:#334155;
-      padding-top: 0.2rem;
-    }
-
-    .tips-card,
-    .vip-summary-card {
-      padding: 1.05rem 1.1rem 1.1rem;
-    }
-
-    .tips-list {
-      margin: 0.8rem 0 0;
-      padding-left: 1rem;
-      color: var(--text-soft);
-      display: grid;
-      gap: 0.55rem;
-      font-size: 0.92rem;
-      line-height: 1.55;
-    }
-
-    .vip-summary-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 0.75rem;
-      margin-top: 0.9rem;
-    }
-
-    .vip-summary-box {
-      padding: 0.9rem;
-      border-radius: 16px;
-      background: rgba(255,255,255,0.95);
-      border: 1px solid rgba(148,163,184,0.18);
-      box-shadow: 0 6px 16px rgba(15,23,42,0.05);
-    }
-
-    .vip-summary-box span {
-      display: block;
-    }
-
-    .vip-summary-box .label {
-      font-size: 0.76rem;
-      font-weight: 800;
-      color: #64748b;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin-bottom: 0.35rem;
-    }
-
-    .vip-summary-box .value {
-      font-size: 1.15rem;
-      font-weight: 800;
-      color: #0f172a;
-    }
-
-    .vip-summary-note {
-      margin-top: 0.9rem;
-      color: var(--text-soft);
-      font-size: 0.88rem;
-      line-height: 1.55;
-    }
+    .platform-actions-buttons button { flex: 1; min-width: 92px; }
+    .panel-footer { font-size:0.9rem; color:#334155; }
+    .tips-card, .vip-summary-card { padding: 1.05rem 1.1rem 1.1rem; }
+    .tips-list { margin: 0.8rem 0 0; padding-left: 1rem; color: var(--text-soft); display: grid; gap: 0.55rem; font-size: 0.92rem; line-height: 1.55; }
+    .vip-summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; margin-top: 0.9rem; }
 
     .minimize-tab {
       display: none;
@@ -699,21 +582,13 @@
       cursor: pointer;
       font-weight: 700;
       z-index: 19;
-      box-shadow: 0 12px 24px rgba(21,128,61,0.22);
     }
+    .minimize-tab.show { display: block; }
 
-    .minimize-tab.show {
-      display: block;
-    }
-
-    .modal,
     .reset-modal,
     .history-modal {
       position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
+      inset: 0;
       background: rgba(15,23,42,0.48);
       display: none;
       align-items: center;
@@ -723,148 +598,27 @@
       backdrop-filter: blur(4px);
     }
 
-    .modal-content,
     .reset-modal-content,
     .history-modal-content {
       background: #fff;
       padding: 1.5rem;
       border-radius: 20px;
       box-shadow: 0 20px 50px rgba(0,0,0,0.2);
-      width: min(100%, 520px);
+      width: min(100%, 560px);
       border: 1px solid rgba(15,23,42,0.08);
     }
 
-    .modal-content {
-      text-align: center;
-      max-width: 420px;
-    }
-
-    .reset-modal-content h2,
-    .history-modal-content h2 {
-      margin: 0 0 1rem 0;
-      font-size: 1.25rem;
-    }
-
-    .reset-modal-content p {
-      margin: 0.5rem 0;
-      font-size: 0.95rem;
-      color: #64748b;
-      line-height: 1.55;
-    }
-
-    .reset-date-picker {
-      margin: 1rem 0;
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-    }
-
-    .reset-date-picker label {
-      font-size: 0.9rem;
-      color: #334155;
-      text-align: left;
-      font-weight: 600;
-    }
-
-    .reset-date-picker input {
-      padding: 0.8rem 0.9rem;
-      border: 1px solid #e6e9ee;
-      border-radius: 12px;
-      font-size: 0.95rem;
-    }
-
-    .reset-modal-buttons {
-      display: flex;
-      gap: 0.6rem;
-      justify-content: center;
-      margin-top: 1.5rem;
-      flex-wrap: wrap;
-    }
-
-    .reset-modal-buttons button,
-    .history-close {
-      padding: 0.75rem 1rem;
-      border: none;
-      border-radius: 12px;
-      font-weight: 700;
-      cursor: pointer;
-      transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
-    }
-
-    .btn-confirm {
-      background: #15803d;
-      color: #fff;
-    }
-
-    .btn-cancel-modal,
-    .history-close {
-      background: #e5e7eb;
-      color: #1f2937;
-    }
-
-    .history-modal-content {
-      max-width: 560px;
-      max-height: 75vh;
-      overflow-y: auto;
-    }
-
-    .history-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 0.9rem;
-      border-bottom: 1px solid #e5e7eb;
-      font-size: 0.92rem;
-      gap: 0.65rem;
-    }
-
-    .history-item:last-child {
-      border-bottom: none;
-    }
-
-    .history-item-content {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex: 1;
-      gap: 0.65rem;
-      flex-wrap: wrap;
-    }
-
-    .history-date {
-      font-weight: 600;
-      color: #0f172a;
-    }
-
-    .history-value {
-      background: #15803d;
-      color: #fff;
-      padding: 0.3rem 0.55rem;
-      border-radius: 999px;
-      font-weight: 700;
-    }
-
-    .history-delete-btn {
-      background: #ef4444;
-      color: #fff;
-      border: none;
-      padding: 0.45rem 0.65rem;
-      border-radius: 10px;
-      cursor: pointer;
-      font-weight: 700;
-      font-size: 0.76rem;
-      transition: background 0.2s, transform 0.18s ease, box-shadow 0.18s ease;
-    }
-
-    .history-delete-btn:hover {
-      background: #dc2626;
-    }
-
-    .history-empty {
-      text-align: center;
-      color: #64748b;
-      padding: 1rem;
-    }
+    .history-modal-content { max-height: 75vh; overflow-y: auto; }
+    .history-item { display: flex; justify-content: space-between; align-items: center; padding: 0.9rem; border-bottom: 1px solid #e5e7eb; gap: 0.65rem; }
+    .history-item:last-child { border-bottom: none; }
+    .history-item-content { display: flex; justify-content: space-between; align-items: center; flex: 1; gap: 0.65rem; flex-wrap: wrap; }
+    .history-date { font-weight: 600; color: #0f172a; }
+    .history-value { background: #15803d; color: #fff; padding: 0.3rem 0.55rem; border-radius: 999px; font-weight: 700; }
+    .history-delete-btn { background: #ef4444; color: #fff; border: none; padding: 0.45rem 0.65rem; border-radius: 10px; cursor: pointer; font-weight: 700; font-size: 0.76rem; }
+    .history-empty { text-align: center; color: #64748b; padding: 1rem; }
+    .history-close, .btn-confirm, .btn-cancel-modal { padding: 0.75rem 1rem; border: none; border-radius: 12px; font-weight: 700; cursor: pointer; }
+    .btn-confirm { background: #15803d; color: #fff; }
+    .btn-cancel-modal, .history-close { background: #e5e7eb; color: #1f2937; }
 
     footer.legend {
       position: fixed;
@@ -884,146 +638,40 @@
       backdrop-filter: blur(14px);
     }
 
-    .legend-item {
-      display:flex;
-      gap:0.42rem;
-      align-items:center;
-      font-size:0.85rem;
-      color:var(--text-dark);
-      padding: 0.2rem 0.1rem;
-    }
-
-    .legend-swatch {
-      width:20px;
-      height:16px;
-      border-radius:5px;
-      border:1px solid var(--event-border);
-      box-shadow: inset 0 -2px 0 rgba(0,0,0,0.03);
-    }
-
-    .legend-label {
-      font-weight:700;
-      margin-right:0.15rem;
-      color:#0f172a;
-      font-size: 0.8rem;
-    }
+    .legend-item { display:flex; gap:0.42rem; align-items:center; font-size:0.85rem; color:var(--text-dark); }
+    .legend-swatch { width:20px; height:16px; border-radius:5px; border:1px solid var(--event-border); }
+    .legend-label { font-weight:700; margin-right:0.15rem; color:#0f172a; font-size: 0.8rem; }
 
     @media (max-width: 1100px){
-      .hero-content,
-      .layout-grid {
-        grid-template-columns: 1fr;
-      }
-
-      #platformList {
-        max-height: 500px;
-      }
+      .hero-content, .layout-grid { grid-template-columns: 1fr; }
+      #platformList { max-height: 500px; }
     }
 
     @media (max-width:900px){
-      .page-shell {
-        width: min(100% - 1rem, 1240px);
-        padding-bottom: 8.4rem;
-      }
-
-      .hero {
-        padding: 1.2rem;
-      }
-
-      .hero-summary,
-      .vip-summary-grid {
-        grid-template-columns: 1fr 1fr;
-      }
-
-      #calendar {
-        min-height: 420px;
-        padding: 0.9rem;
-      }
-
-      .fc .fc-toolbar {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 0.75rem;
-      }
-
-      .fc .fc-toolbar-title {
-        text-align: center;
-      }
-
-      .fc .fc-toolbar-chunk {
-        display: flex;
-        justify-content: center;
-        flex-wrap: wrap;
-        gap: 0.4rem;
-      }
-
-      #platformPanel .panel-header {
-        flex-direction: column;
-        align-items: stretch;
-      }
-
-      #platformPanel .panel-controls {
-        width: 100%;
-      }
+      .page-shell { width: min(100% - 1rem, 1240px); padding-bottom: 8.4rem; }
+      .hero { padding: 1.2rem; }
+      .hero-summary, .vip-summary-grid { grid-template-columns: 1fr 1fr; }
+      #calendar { min-height: 420px; padding: 0.9rem; }
+      .fc .fc-toolbar { flex-direction: column; align-items: stretch; gap: 0.75rem; }
+      .fc .fc-toolbar-title { text-align: center; }
+      .fc .fc-toolbar-chunk { display: flex; justify-content: center; flex-wrap: wrap; gap: 0.4rem; }
+      #platformPanel .panel-header { flex-direction: column; align-items: stretch; }
+      #platformPanel .panel-controls { width: 100%; }
     }
 
     @media (max-width:640px){
-      .page-shell {
-        width: calc(100% - 0.75rem);
-        padding-bottom: 9rem;
-      }
-
-      .hero h1 {
-        font-size: 1.8rem;
-      }
-
-      .hero p {
-        font-size: 0.95rem;
-      }
-
-      .hero-summary,
-      .vip-summary-grid,
-      .platform-vip-info {
-        grid-template-columns: 1fr;
-      }
-
-      .hero-actions,
-      .panel-actions,
-      .platform-actions-buttons,
-      .reset-modal-buttons,
-      .platform-deposit-form,
-      .vip-inline-input {
-        flex-direction: column;
-      }
-
-      .hero-actions button,
-      .panel-actions button,
-      .platform-actions-buttons button,
-      .reset-modal-buttons button,
-      .vip-inline-input button {
-        width: 100%;
-      }
-
-      .platform-meta,
-      .history-item,
-      .history-item-content {
-        flex-direction: column;
-        align-items: flex-start;
-      }
-
-      .minimize-tab {
-        bottom: 110px;
-        width: calc(100% - 2rem);
-        text-align: center;
-      }
-
-      footer.legend {
-        justify-content: flex-start;
-        padding-bottom: calc(0.8rem + env(safe-area-inset-bottom));
-      }
+      .page-shell { width: calc(100% - 0.75rem); padding-bottom: 9rem; }
+      .hero h1 { font-size: 1.8rem; }
+      .hero p { font-size: 0.95rem; }
+      .hero-summary, .vip-summary-grid, .platform-vip-info { grid-template-columns: 1fr; }
+      .hero-actions, .panel-actions, .platform-actions-buttons, .reset-modal-buttons, .platform-deposit-form, .vip-inline-input { flex-direction: column; }
+      .hero-actions button, .panel-actions button, .platform-actions-buttons button, .reset-modal-buttons button, .vip-inline-input button { width: 100%; }
+      .platform-meta, .history-item, .history-item-content { flex-direction: column; align-items: flex-start; }
+      .minimize-tab { bottom: 110px; width: calc(100% - 2rem); text-align: center; }
+      footer.legend { justify-content: flex-start; padding-bottom: calc(0.8rem + env(safe-area-inset-bottom)); }
     }
   </style>
 </head>
-
 <body>
   <svg class="background-svg" viewBox="0 0 1440 800" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <circle cx="280" cy="280" r="280" fill="#1e3a8a" />
@@ -1049,26 +697,10 @@
         </div>
 
         <div class="hero-summary" aria-label="Resumo geral">
-          <div class="summary-card">
-            <span class="summary-label">Plataformas</span>
-            <span class="summary-value" id="heroPlatformCount">0</span>
-            <span class="summary-note">Quantidade total monitorada no painel.</span>
-          </div>
-          <div class="summary-card">
-            <span class="summary-label">Total acumulado</span>
-            <span class="summary-value" id="heroTotalDeposits">R$ 0,00</span>
-            <span class="summary-note">Soma dos depósitos do ciclo atual.</span>
-          </div>
-          <div class="summary-card">
-            <span class="summary-label">Bônus hoje</span>
-            <span class="summary-value" id="heroBonusToday">R$ 0,00</span>
-            <span class="summary-note">Total de bônus previstos para a data atual.</span>
-          </div>
-          <div class="summary-card">
-            <span class="summary-label">Status</span>
-            <span class="summary-value" id="heroNextHighlight">Em dia</span>
-            <span class="summary-note" id="heroNextHighlightNote">Visualização rápida do momento atual.</span>
-          </div>
+          <div class="summary-card"><span class="summary-label">Plataformas</span><span class="summary-value" id="heroPlatformCount">0</span><span class="summary-note">Quantidade total monitorada no painel.</span></div>
+          <div class="summary-card"><span class="summary-label">Total acumulado</span><span class="summary-value" id="heroTotalDeposits">R$ 0,00</span><span class="summary-note">Soma dos depósitos do ciclo atual.</span></div>
+          <div class="summary-card"><span class="summary-label">Bônus hoje</span><span class="summary-value" id="heroBonusToday">R$ 0,00</span><span class="summary-note">Total de bônus previstos para a data atual.</span></div>
+          <div class="summary-card"><span class="summary-label">Status</span><span class="summary-value" id="heroNextHighlight">Em dia</span><span class="summary-note" id="heroNextHighlightNote">Visualização rápida do momento atual.</span></div>
         </div>
       </div>
     </section>
@@ -1076,12 +708,7 @@
     <section class="layout-grid" aria-label="Conteúdo principal">
       <div class="main-column">
         <section class="card-shell" aria-label="Calendário de bônus">
-          <div class="section-heading">
-            <div>
-              <h2>Calendário de bônus</h2>
-              <p>Veja os próximos eventos e acompanhe os ciclos por nível de depósito e bônus VIP.</p>
-            </div>
-          </div>
+          <div class="section-heading"><div><h2>Calendário de bônus</h2><p>Veja os próximos eventos e acompanhe os ciclos por nível de depósito e bônus VIP.</p></div></div>
           <div class="calendar-toolbar">
             <span class="pill">📅 Visual mensal, semanal e diária</span>
             <span class="pill">🎯 Cores por nível automático</span>
@@ -1093,7 +720,6 @@
 
       <div class="side-column">
         <button class="minimize-tab" id="minimizeTab">Abrir Painel</button>
-
         <aside id="platformPanel" aria-label="Painel de plataformas">
           <div class="panel-header">
             <h3>Plataformas</h3>
@@ -1102,60 +728,23 @@
               <button id="togglePanelBtn" aria-expanded="true" title="Minimizar painel">−</button>
             </div>
           </div>
-
           <div class="panel-actions">
             <button id="allBonusBtn" title="Ver todos os bônus">TODOS OS BÔNUS</button>
             <button id="resetAllBtn" title="Resetar todos os depósitos">Resetar</button>
           </div>
-
           <ul id="platformList" role="list" aria-live="polite"></ul>
-
-          <div class="panel-footer">
-            <small id="platformCount"></small>
-          </div>
+          <div class="panel-footer"><small id="platformCount"></small></div>
         </aside>
 
         <section class="card-shell vip-summary-card" aria-label="Resumo dos bônus VIP">
-          <div class="section-heading" style="padding:0;">
-            <div>
-              <h3>Resumo VIP</h3>
-              <p>Soma automática dos bônus gerados pelas plataformas.</p>
-            </div>
-          </div>
+          <div class="section-heading" style="padding:0;"><div><h3>Resumo VIP</h3><p>Soma automática dos bônus gerados pelas plataformas.</p></div></div>
           <div class="vip-summary-grid">
-            <div class="vip-summary-box">
-              <span class="label">Diário hoje</span>
-              <span class="value" id="vipDailyToday">R$ 0,00</span>
-            </div>
-            <div class="vip-summary-box">
-              <span class="label">Semanal hoje</span>
-              <span class="value" id="vipWeeklyToday">R$ 0,00</span>
-            </div>
-            <div class="vip-summary-box">
-              <span class="label">Mensal hoje</span>
-              <span class="value" id="vipMonthlyToday">R$ 0,00</span>
-            </div>
-            <div class="vip-summary-box">
-              <span class="label">Total hoje</span>
-              <span class="value" id="vipGrandToday">R$ 0,00</span>
-            </div>
+            <div class="vip-summary-box"><span class="label">Diário hoje</span><span class="value" id="vipDailyToday">R$ 0,00</span></div>
+            <div class="vip-summary-box"><span class="label">Semanal hoje</span><span class="value" id="vipWeeklyToday">R$ 0,00</span></div>
+            <div class="vip-summary-box"><span class="label">Mensal hoje</span><span class="value" id="vipMonthlyToday">R$ 0,00</span></div>
+            <div class="vip-summary-box"><span class="label">Total hoje</span><span class="value" id="vipGrandToday">R$ 0,00</span></div>
           </div>
           <p class="vip-summary-note" id="vipSummaryNote">Defina o volume de apostas em cada plataforma para calcular corretamente o VIP.</p>
-        </section>
-
-        <section class="card-shell tips-card" aria-label="Dicas de uso">
-          <div class="section-heading" style="padding:0;">
-            <div>
-              <h3>Dicas rápidas</h3>
-              <p>Use o painel com mais agilidade no dia a dia.</p>
-            </div>
-          </div>
-          <ul class="tips-list">
-            <li>Use a busca para localizar uma plataforma rapidamente.</li>
-            <li>Informe o volume apostado para cada plataforma e liberar o cálculo VIP correto.</li>
-            <li>Selecione uma plataforma para filtrar somente os bônus dela no calendário.</li>
-            <li>Plataformas sem aposta mínima podem receber VIP mesmo com volume zerado em alguns níveis.</li>
-          </ul>
         </section>
       </div>
     </section>
@@ -1194,883 +783,444 @@
   </footer>
 
   <script>
-  document.addEventListener('DOMContentLoaded', () => {
-    const svg = document.querySelector('svg.background-svg');
-    const circles = Array.from(svg.querySelectorAll('circle'));
-    const viewbox = svg.viewBox.baseVal;
-    const initialRadii = [280, 280, 280, 280];
+    document.addEventListener('DOMContentLoaded', () => {
+      const svg = document.querySelector('svg.background-svg');
+      const circles = Array.from(svg.querySelectorAll('circle'));
+      const viewbox = svg.viewBox.baseVal;
+      const initialRadii = [280, 280, 280, 280];
 
-    const data = circles.map((c, i) => {
-      const initR = initialRadii[i] * (0.28 + Math.random() * 0.12);
-      return {
-        el: c,
-        x: (Math.random() * viewbox.width) | 0,
-        y: (Math.random() * viewbox.height) | 0,
-        r: initR,
-        vx: (Math.random() * 0.6 + 0.1) * (Math.random() < 0.5 ? -1 : 1),
-        vy: (Math.random() * 0.6 + 0.1) * (Math.random() < 0.5 ? -1 : 1),
-        vr: (Math.random() * 0.04 + 0.01) * (Math.random() < 0.5 ? -1 : 1),
-        rmin: initR * 0.4,
-        rmax: initR * 1.3
+      const data = circles.map((c, i) => {
+        const initR = initialRadii[i] * (0.28 + Math.random() * 0.12);
+        return {
+          el: c,
+          x: (Math.random() * viewbox.width) | 0,
+          y: (Math.random() * viewbox.height) | 0,
+          r: initR,
+          vx: (Math.random() * 0.6 + 0.1) * (Math.random() < 0.5 ? -1 : 1),
+          vy: (Math.random() * 0.6 + 0.1) * (Math.random() < 0.5 ? -1 : 1),
+          vr: (Math.random() * 0.04 + 0.01) * (Math.random() < 0.5 ? -1 : 1),
+          rmin: initR * 0.4,
+          rmax: initR * 1.3
+        };
+      });
+
+      function animate() {
+        data.forEach((d) => {
+          d.x += d.vx;
+          d.y += d.vy;
+          d.r += d.vr;
+          if (d.x < -200 || d.x > viewbox.width + 200) d.vx *= -1;
+          if (d.y < -200 || d.y > viewbox.height + 200) d.vy *= -1;
+          if (d.r < d.rmin || d.r > d.rmax) d.vr *= -1;
+          d.el.setAttribute('cx', d.x);
+          d.el.setAttribute('cy', d.y);
+          d.el.setAttribute('r', Math.max(10, d.r));
+        });
+        requestAnimationFrame(animate);
+      }
+      animate();
+
+      const PLATFORM_NAMES = ['A73','DDUU','EE44','FXX','HHH5','NNZZ','PP11','1UUU','11TT','35C','36Q','44MM','45T','5TTT','53D','552X','551X','61T','63V','66GG','68D','7GGG','7JJJ','72B','79C','83H','838X','84D','877X','899V','93D','93K','988K'];
+      const VIP_TABLE = {
+        0: { volume: 0, daily: 0, weekly: 0, monthly: 0 },
+        1: { volume: 100, daily: 0, weekly: 0, monthly: 1 },
+        2: { volume: 1000, daily: 0.5, weekly: 1, monthly: 1 },
+        3: { volume: 3000, daily: 0.6, weekly: 2, monthly: 3 },
+        4: { volume: 10000, daily: 0.8, weekly: 3, monthly: 5 },
+        5: { volume: 30000, daily: 1, weekly: 5, monthly: 8 }
       };
-    });
+      const NO_BET_MINIMUM_VALUES = { 0: 0, 1: 0, 2: 10, 3: 12, 4: 16, 5: 20 };
+      const PLATFORM_CONFIG = {
+        'FXX': { vipLevel: 2, group: 'com_aposta_minima' }, '551X': { vipLevel: 3, group: 'com_aposta_minima' }, '838X': { vipLevel: 3, group: 'com_aposta_minima' }, 'PP11': { vipLevel: 4, group: 'com_aposta_minima' }, '1UUU': { vipLevel: 3, group: 'com_aposta_minima' }, '11TT': { vipLevel: 3, group: 'com_aposta_minima' }, 'DDUU': { vipLevel: 4, group: 'com_aposta_minima' }, '45T': { vipLevel: 2, group: 'com_aposta_minima' }, '7GGG': { vipLevel: 3, group: 'com_aposta_minima' }, '66GG': { vipLevel: 3, group: 'com_aposta_minima' }, '44MM': { vipLevel: 3, group: 'com_aposta_minima' }, 'NNZZ': { vipLevel: 3, group: 'com_aposta_minima' }, '899V': { vipLevel: 3, group: 'com_aposta_minima' }, '83H': { vipLevel: 3, group: 'com_aposta_minima' }, '5TTT': { vipLevel: 3, group: 'com_aposta_minima' }, '84D': { vipLevel: 3, group: 'com_aposta_minima' }, '552X': { vipLevel: 3, group: 'com_aposta_minima' },
+        '35C': { vipLevel: 2, group: 'sem_aposta_minima' }, '63V': { vipLevel: 3, group: 'sem_aposta_minima' }, '68D': { vipLevel: 2, group: 'sem_aposta_minima' }, '61T': { vipLevel: 2, group: 'sem_aposta_minima' }, '72B': { vipLevel: 3, group: 'sem_aposta_minima' }, '36Q': { vipLevel: 4, group: 'sem_aposta_minima' }, '53D': { vipLevel: 2, group: 'sem_aposta_minima' }, '93K': { vipLevel: 3, group: 'sem_aposta_minima' }, '93D': { vipLevel: 3, group: 'sem_aposta_minima' }, 'A73': { vipLevel: 3, group: 'sem_aposta_minima' }, 'EE44': { vipLevel: 3, group: 'sem_aposta_minima' }, '7JJJ': { vipLevel: 3, group: 'sem_aposta_minima' }, '877X': { vipLevel: 3, group: 'sem_aposta_minima' }, '79C': { vipLevel: 3, group: 'sem_aposta_minima' }, '988K': { vipLevel: 3, group: 'sem_aposta_minima' }, 'HHH5': { vipLevel: 2, group: 'sem_aposta_minima' }
+      };
 
-    function animate() {
-      data.forEach((d) => {
-        d.x += d.vx;
-        d.y += d.vy;
-        d.r += d.vr;
-        if (d.x < -200 || d.x > viewbox.width + 200) d.vx *= -1;
-        if (d.y < -200 || d.y > viewbox.height + 200) d.vy *= -1;
-        if (d.r < d.rmin || d.r > d.rmax) d.vr *= -1;
-        d.el.setAttribute('cx', d.x);
-        d.el.setAttribute('cy', d.y);
-        d.el.setAttribute('r', Math.max(10, d.r));
-      });
-      requestAnimationFrame(animate);
-    }
-    animate();
+      const DEFAULT_PLATFORMS = Array.from({ length: 33 }, (_, i) => ({ id: 'p' + (i + 1), name: PLATFORM_NAMES[i], lastResetDate: null, deposits: [], bettingVolume: null }));
+      const PLAT_STORAGE_KEY = 'depositPlatforms_v4';
 
-    const PLATFORM_NAMES = [
-      'A73', 'DDUU', 'EE44', 'FXX', 'HHH5', 'NNZZ', 'PP11', '1UUU', '11TT', '35C',
-      '36Q', '44MM', '45T', '5TTT', '53D', '552X', '551X', '61T', '63V', '66GG',
-      '68D', '7GGG', '7JJJ', '72B', '79C', '83H', '838X', '84D', '877X', '899V',
-      '93D', '93K', '988K'
-    ];
-
-    const VIP_TABLE = {
-      0: { volume: 0, daily: 0, weekly: 0, monthly: 0 },
-      1: { volume: 100, daily: 0, weekly: 0, monthly: 1 },
-      2: { volume: 1000, daily: 0.5, weekly: 1, monthly: 1 },
-      3: { volume: 3000, daily: 0.6, weekly: 2, monthly: 3 },
-      4: { volume: 10000, daily: 0.8, weekly: 3, monthly: 5 },
-      5: { volume: 30000, daily: 1, weekly: 5, monthly: 8 }
-    };
-
-    const NO_BET_MINIMUM_VALUES = {
-      0: 0,
-      1: 0,
-      2: 10,
-      3: 12,
-      4: 16,
-      5: 20
-    };
-
-    const PLATFORM_CONFIG = {
-      'FXX': { vipLevel: 2, group: 'com_aposta_minima' },
-      '551X': { vipLevel: 3, group: 'com_aposta_minima' },
-      '838X': { vipLevel: 3, group: 'com_aposta_minima' },
-      'PP11': { vipLevel: 4, group: 'com_aposta_minima' },
-      '1UUU': { vipLevel: 3, group: 'com_aposta_minima' },
-      '11TT': { vipLevel: 3, group: 'com_aposta_minima' },
-      'DDUU': { vipLevel: 4, group: 'com_aposta_minima' },
-      '45T': { vipLevel: 2, group: 'com_aposta_minima' },
-      '7GGG': { vipLevel: 3, group: 'com_aposta_minima' },
-      '66GG': { vipLevel: 3, group: 'com_aposta_minima' },
-      '44MM': { vipLevel: 3, group: 'com_aposta_minima' },
-      'NNZZ': { vipLevel: 3, group: 'com_aposta_minima' },
-      '899V': { vipLevel: 3, group: 'com_aposta_minima' },
-      '83H': { vipLevel: 3, group: 'com_aposta_minima' },
-      '5TTT': { vipLevel: 3, group: 'com_aposta_minima' },
-      '84D': { vipLevel: 3, group: 'com_aposta_minima' },
-      '552X': { vipLevel: 3, group: 'com_aposta_minima' },
-      '35C': { vipLevel: 2, group: 'sem_aposta_minima' },
-      '63V': { vipLevel: 3, group: 'sem_aposta_minima' },
-      '68D': { vipLevel: 2, group: 'sem_aposta_minima' },
-      '61T': { vipLevel: 2, group: 'sem_aposta_minima' },
-      '72B': { vipLevel: 3, group: 'sem_aposta_minima' },
-      '36Q': { vipLevel: 4, group: 'sem_aposta_minima' },
-      '53D': { vipLevel: 2, group: 'sem_aposta_minima' },
-      '93K': { vipLevel: 3, group: 'sem_aposta_minima' },
-      '93D': { vipLevel: 3, group: 'sem_aposta_minima' },
-      'A73': { vipLevel: 3, group: 'sem_aposta_minima' },
-      'EE44': { vipLevel: 3, group: 'sem_aposta_minima' },
-      '7JJJ': { vipLevel: 3, group: 'sem_aposta_minima' },
-      '877X': { vipLevel: 3, group: 'sem_aposta_minima' },
-      '79C': { vipLevel: 3, group: 'sem_aposta_minima' },
-      '988K': { vipLevel: 3, group: 'sem_aposta_minima' },
-      'HHH5': { vipLevel: 2, group: 'sem_aposta_minima' }
-    };
-
-    const DEFAULT_PLATFORMS = Array.from({length:33}, (_,i) => ({
-      id: 'p' + (i+1),
-      name: PLATFORM_NAMES[i],
-      lastResetDate: null,
-      deposits: [],
-      bettingVolume: null
-    }));
-    const PLAT_STORAGE_KEY = 'depositPlatforms_v4';
-
-    function loadPlatforms(){
-      try {
-        const raw = localStorage.getItem(PLAT_STORAGE_KEY);
-        if (!raw) return DEFAULT_PLATFORMS.slice();
-        const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed)) return DEFAULT_PLATFORMS.slice();
-        return parsed.map((p, i) => ({
-          id: p.id || ('p' + (i+1)),
-          name: p.name || PLATFORM_NAMES[i],
-          lastResetDate: p.lastResetDate || null,
-          deposits: Array.isArray(p.deposits) ? p.deposits : [],
-          bettingVolume: p.bettingVolume === null || p.bettingVolume === undefined || p.bettingVolume === '' ? null : Number(p.bettingVolume)
-        }));
-      } catch (err) {
-        console.error('Erro ao ler plataformas', err);
-        return DEFAULT_PLATFORMS.slice();
+      function loadPlatforms() {
+        try {
+          const raw = localStorage.getItem(PLAT_STORAGE_KEY);
+          if (!raw) return DEFAULT_PLATFORMS.slice();
+          const parsed = JSON.parse(raw);
+          if (!Array.isArray(parsed)) return DEFAULT_PLATFORMS.slice();
+          return parsed.map((p, i) => ({ id: p.id || ('p' + (i + 1)), name: p.name || PLATFORM_NAMES[i], lastResetDate: p.lastResetDate || null, deposits: Array.isArray(p.deposits) ? p.deposits : [], bettingVolume: p.bettingVolume === null || p.bettingVolume === undefined || p.bettingVolume === '' ? null : Number(p.bettingVolume) }));
+        } catch (err) {
+          console.error('Erro ao ler plataformas', err);
+          return DEFAULT_PLATFORMS.slice();
+        }
       }
-    }
 
-    function savePlatforms(list){
-      localStorage.setItem(PLAT_STORAGE_KEY, JSON.stringify(list));
-    }
-
-    function formatCurrency(value){
-      return new Intl.NumberFormat('pt-BR', {
-        style: 'currency',
-        currency: 'BRL'
-      }).format(Number(value) || 0);
-    }
-
-    function getPlatformConfig(platform){
-      return PLATFORM_CONFIG[platform.name] || { vipLevel: 0, group: 'com_aposta_minima' };
-    }
-
-    function getCycleStart(platform, refDate = new Date()){
-      if (platform.lastResetDate) {
-        const resetDate = new Date(platform.lastResetDate);
-        resetDate.setHours(0, 0, 0, 0);
-        return resetDate;
+      function savePlatforms(list) { localStorage.setItem(PLAT_STORAGE_KEY, JSON.stringify(list)); }
+      function formatCurrency(value) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value) || 0); }
+      function getPlatformConfig(platform) { return PLATFORM_CONFIG[platform.name] || { vipLevel: 0, group: 'com_aposta_minima' }; }
+      function getCycleStart(platform, refDate = new Date()) {
+        if (platform.lastResetDate) {
+          const resetDate = new Date(platform.lastResetDate);
+          resetDate.setHours(0, 0, 0, 0);
+          return resetDate;
+        }
+        return new Date(refDate.getFullYear(), refDate.getMonth(), 1, 0, 0, 0, 0);
       }
-      return new Date(refDate.getFullYear(), refDate.getMonth(), 1, 0, 0, 0, 0);
-    }
-
-    function getCurrentCycleDay(platform, refDate = new Date()){
-      const cycleStart = getCycleStart(platform, refDate);
-      const today = new Date(refDate);
-      today.setHours(0, 0, 0, 0);
-
-      const timeDiff = today - cycleStart;
-      const dayDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
-
-      if (dayDiff < 0) return 0;
-      return dayDiff;
-    }
-
-    function computeEmissionDates(platform, refDate = new Date()){
-      const cycleStart = getCycleStart(platform, refDate);
-      const offsets = [2, 3, 7, 15, 30];
-      return offsets.map(n => {
-        const d = new Date(cycleStart);
-        d.setDate(d.getDate() + n);
-        d.setHours(0,0,0,0);
-        return d;
-      });
-    }
-
-    function sumDepositsUpTo(platform, toDate){
-      const cycleStart = getCycleStart(platform, toDate);
-      return (platform.deposits || [])
-        .filter(d => {
+      function getCurrentCycleDay(platform, refDate = new Date()) {
+        const cycleStart = getCycleStart(platform, refDate);
+        const today = new Date(refDate);
+        today.setHours(0, 0, 0, 0);
+        const dayDiff = Math.floor((today - cycleStart) / (1000 * 60 * 60 * 24));
+        return dayDiff < 0 ? 0 : dayDiff;
+      }
+      function computeEmissionDates(platform, refDate = new Date()) {
+        const cycleStart = getCycleStart(platform, refDate);
+        return [2, 3, 7, 15, 30].map((n) => {
+          const d = new Date(cycleStart);
+          d.setDate(d.getDate() + n);
+          d.setHours(0, 0, 0, 0);
+          return d;
+        });
+      }
+      function sumDepositsUpTo(platform, toDate) {
+        const cycleStart = getCycleStart(platform, toDate);
+        return (platform.deposits || []).filter((d) => {
           const depositDate = new Date(d.date);
           return depositDate >= cycleStart && depositDate <= toDate;
-        })
-        .reduce((s, d) => s + (Number(d.value) || 0), 0);
-    }
-
-    function getTotalDepositsSinceCycle(platform){
-      return sumDepositsUpTo(platform, new Date());
-    }
-
-    function colorForLevel(valueOrLevel){
-      const root = getComputedStyle(document.documentElement);
-      const lvlVars = [
-        root.getPropertyValue('--level-0').trim(),
-        root.getPropertyValue('--level-1').trim(),
-        root.getPropertyValue('--level-2').trim(),
-        root.getPropertyValue('--level-3').trim(),
-        root.getPropertyValue('--level-4').trim()
-      ];
-
-      const v = Number(valueOrLevel);
-      if (Number.isInteger(v) && v >= 0 && v <= 4) {
-        return lvlVars[v];
+        }).reduce((s, d) => s + (Number(d.value) || 0), 0);
       }
-
-      const amount = isNaN(v) ? 0 : v;
-      if (amount >= 300) return lvlVars[4];
-      if (amount >= 150) return lvlVars[3];
-      if (amount >= 70)  return lvlVars[2];
-      if (amount >= 30)  return lvlVars[1];
-      return lvlVars[0];
-    }
-
-    function getVipBonusValues(platform){
-      const config = getPlatformConfig(platform);
-      const level = config.vipLevel || 0;
-      const volume = Number(platform.bettingVolume) || 0;
-      const tableEntry = VIP_TABLE[level] || VIP_TABLE[0];
-
-      if (config.group === 'sem_aposta_minima') {
-        return {
-          level,
-          group: config.group,
-          volume,
-          daily: NO_BET_MINIMUM_VALUES[level] || 0,
-          weekly: tableEntry.weekly || 0,
-          monthly: tableEntry.monthly || 0
-        };
+      function getTotalDepositsSinceCycle(platform) { return sumDepositsUpTo(platform, new Date()); }
+      function colorForLevel(valueOrLevel) {
+        const root = getComputedStyle(document.documentElement);
+        const lvlVars = [root.getPropertyValue('--level-0').trim(), root.getPropertyValue('--level-1').trim(), root.getPropertyValue('--level-2').trim(), root.getPropertyValue('--level-3').trim(), root.getPropertyValue('--level-4').trim()];
+        const v = Number(valueOrLevel);
+        if (Number.isInteger(v) && v >= 0 && v <= 4) return lvlVars[v];
+        const amount = isNaN(v) ? 0 : v;
+        if (amount >= 300) return lvlVars[4];
+        if (amount >= 150) return lvlVars[3];
+        if (amount >= 70) return lvlVars[2];
+        if (amount >= 30) return lvlVars[1];
+        return lvlVars[0];
       }
-
-      const qualifies = volume >= tableEntry.volume;
-      return {
-        level,
-        group: config.group,
-        volume,
-        daily: qualifies ? tableEntry.daily : 0,
-        weekly: qualifies ? tableEntry.weekly : 0,
-        monthly: qualifies ? tableEntry.monthly : 0,
-        requiredVolume: tableEntry.volume,
-        qualifies
-      };
-    }
-
-    function isSameDate(a, b){
-      const first = new Date(a);
-      const second = new Date(b);
-      first.setHours(0,0,0,0);
-      second.setHours(0,0,0,0);
-      return first.getTime() === second.getTime();
-    }
-
-    function isMonday(date){
-      return new Date(date).getDay() === 1;
-    }
-
-    function isFirstDayOfMonth(date){
-      return new Date(date).getDate() === 1;
-    }
-
-    function getVipEventsForDate(targetDate){
-      const target = new Date(targetDate);
-      target.setHours(0,0,0,0);
-      const targetTime = target.getTime();
-      const results = [];
-
-      platforms.forEach(platform => {
-        const vip = getVipBonusValues(platform);
-
-        if (vip.daily > 0) {
-          results.push({ platformId: platform.id, platformName: platform.name, type: 'VIP Diário', amount: vip.daily, date: targetTime });
+      function getVipBonusValues(platform) {
+        const config = getPlatformConfig(platform);
+        const level = config.vipLevel || 0;
+        const volume = Number(platform.bettingVolume) || 0;
+        const tableEntry = VIP_TABLE[level] || VIP_TABLE[0];
+        if (config.group === 'sem_aposta_minima') {
+          return { level, group: config.group, volume, daily: NO_BET_MINIMUM_VALUES[level] || 0, weekly: tableEntry.weekly || 0, monthly: tableEntry.monthly || 0 };
         }
-        if (vip.weekly > 0 && isMonday(target)) {
-          results.push({ platformId: platform.id, platformName: platform.name, type: 'VIP Semanal', amount: vip.weekly, date: targetTime });
-        }
-        if (vip.monthly > 0 && isFirstDayOfMonth(target)) {
-          results.push({ platformId: platform.id, platformName: platform.name, type: 'VIP Mensal', amount: vip.monthly, date: targetTime });
-        }
-      });
-
-      return results;
-    }
-
-    function getVipSummaryForDate(targetDate){
-      const entries = getVipEventsForDate(targetDate);
-      return entries.reduce((acc, entry) => {
-        if (entry.type === 'VIP Diário') acc.daily += entry.amount;
-        if (entry.type === 'VIP Semanal') acc.weekly += entry.amount;
-        if (entry.type === 'VIP Mensal') acc.monthly += entry.amount;
-        acc.total += entry.amount;
-        return acc;
-      }, { daily: 0, weekly: 0, monthly: 0, total: 0, count: entries.length });
-    }
-
-    function getEventsForDate(targetDate){
-      const target = new Date(targetDate);
-      target.setHours(0,0,0,0);
-      const targetTime = target.getTime();
-      const cycleEntries = platforms.filter(platform => computeEmissionDates(platform).some(date => date.getTime() === targetTime)).length;
-      const vipSummary = getVipSummaryForDate(target);
-      return { cycleEntries, vipSummary };
-    }
-
-    function updateHeroSummary(){
-      const totalPlatforms = platforms.length;
-      const totalDeposits = platforms.reduce((sum, platform) => sum + getTotalDepositsSinceCycle(platform), 0);
-      const bonusTodaySummary = getVipSummaryForDate(new Date());
-      const activeCycles = platforms.filter(platform => getCurrentCycleDay(platform) > 0).length;
-      const topPlatform = [...platforms]
-        .sort((a, b) => getTotalDepositsSinceCycle(b) - getTotalDepositsSinceCycle(a))[0];
-
-      document.getElementById('heroPlatformCount').textContent = String(totalPlatforms);
-      document.getElementById('heroTotalDeposits').textContent = formatCurrency(totalDeposits);
-      document.getElementById('heroBonusToday').textContent = formatCurrency(bonusTodaySummary.total);
-
-      const highlightEl = document.getElementById('heroNextHighlight');
-      const highlightNoteEl = document.getElementById('heroNextHighlightNote');
-
-      if (topPlatform && getTotalDepositsSinceCycle(topPlatform) > 0) {
-        highlightEl.textContent = topPlatform.name;
-        highlightNoteEl.textContent = `${formatCurrency(getTotalDepositsSinceCycle(topPlatform))} no ciclo atual • ${activeCycles} plataformas ativas.`;
-      } else {
-        highlightEl.textContent = activeCycles > 0 ? 'Em dia' : 'Sem depósitos';
-        highlightNoteEl.textContent = activeCycles > 0
-          ? `${activeCycles} plataformas com ciclo em andamento.`
-          : 'Adicione depósitos para começar a acompanhar os níveis.';
+        const qualifies = volume >= tableEntry.volume;
+        return { level, group: config.group, volume, daily: qualifies ? tableEntry.daily : 0, weekly: qualifies ? tableEntry.weekly : 0, monthly: qualifies ? tableEntry.monthly : 0 };
       }
-    }
-
-    function updateVipSummaryArea(){
-      const todaySummary = getVipSummaryForDate(new Date());
-      document.getElementById('vipDailyToday').textContent = formatCurrency(todaySummary.daily);
-      document.getElementById('vipWeeklyToday').textContent = formatCurrency(todaySummary.weekly);
-      document.getElementById('vipMonthlyToday').textContent = formatCurrency(todaySummary.monthly);
-      document.getElementById('vipGrandToday').textContent = formatCurrency(todaySummary.total);
-
-      const filledVolumes = platforms.filter(platform => platform.bettingVolume !== null && platform.bettingVolume !== undefined && platform.bettingVolume !== '').length;
-      document.getElementById('vipSummaryNote').textContent = `${filledVolumes} de ${platforms.length} plataformas com volume informado para cálculo VIP.`;
-    }
-
-    function renderPlatformList(filter = ''){
-      const listEl = document.getElementById('platformList');
-      const countEl = document.getElementById('platformCount');
-      listEl.innerHTML = '';
-      const q = filter.trim().toLowerCase();
-      const items = platforms.filter(p => p.name.toLowerCase().includes(q));
-
-      items.forEach(p => {
-        const li = document.createElement('li');
-        li.className = 'platform-item';
-        li.dataset.id = p.id;
-
-        const total = getTotalDepositsSinceCycle(p);
-        const bgColor = colorForLevel(total);
-        const cycleDay = getCurrentCycleDay(p);
-        const vip = getVipBonusValues(p);
-
-        const header = document.createElement('div');
-        header.className = 'platform-item-header';
-
-        const name = document.createElement('div');
-        name.className = 'name';
-        name.textContent = p.name;
-
-        const cycleInfo = document.createElement('div');
-        cycleInfo.className = 'cycle-day';
-        if (cycleDay === 0) {
-          cycleInfo.classList.add('no-bonus');
-          cycleInfo.textContent = 'Dia 0';
-        } else {
-          cycleInfo.textContent = `Dia ${cycleDay}`;
-        }
-
-        header.appendChild(name);
-        header.appendChild(cycleInfo);
-        li.appendChild(header);
-
-        const meta = document.createElement('div');
-        meta.className = 'platform-meta';
-
-        const resetInfo = document.createElement('div');
-        resetInfo.className = 'reset-date';
-        if (p.lastResetDate) {
-          const resetDateObj = new Date(p.lastResetDate);
-          const dia = String(resetDateObj.getDate()).padStart(2, '0');
-          const mes = String(resetDateObj.getMonth() + 1).padStart(2, '0');
-          resetInfo.textContent = `Ciclo iniciado: ${dia}/${mes}`;
-        } else {
-          resetInfo.textContent = 'Ciclo não iniciado';
-        }
-
-        const totalBadge = document.createElement('span');
-        totalBadge.className = 'platform-total-badge';
-        totalBadge.style.background = bgColor;
-        totalBadge.textContent = formatCurrency(total);
-
-        meta.appendChild(resetInfo);
-        meta.appendChild(totalBadge);
-        li.appendChild(meta);
-
-        const vipInfo = document.createElement('div');
-        vipInfo.className = 'platform-vip-info';
-        vipInfo.innerHTML = `
-          <div>
-            <strong>Nível VIP</strong>
-            VIP ${vip.level}
-          </div>
-          <div>
-            <strong>Grupo</strong>
-            <span class="vip-group-chip">${vip.group === 'sem_aposta_minima' ? 'Sem aposta mínima' : 'Com aposta mínima'}</span>
-          </div>
-          <div>
-            <strong>VIP diário</strong>
-            ${formatCurrency(vip.daily)}
-          </div>
-          <div>
-            <strong>VIP semanal</strong>
-            ${formatCurrency(vip.weekly)}
-          </div>
-          <div>
-            <strong>VIP mensal</strong>
-            ${formatCurrency(vip.monthly)}
-          </div>
-          <div>
-            <strong>Volume atual</strong>
-            ${formatCurrency(vip.volume)}
-          </div>
-        `;
-        li.appendChild(vipInfo);
-
-        const volumeForm = document.createElement('div');
-        volumeForm.className = 'vip-inline-input';
-
-        const volumeInput = document.createElement('input');
-        volumeInput.type = 'number';
-        volumeInput.placeholder = 'Volume de apostas';
-        volumeInput.min = '0';
-        volumeInput.step = '0.01';
-        volumeInput.value = p.bettingVolume ?? '';
-
-        const volumeBtn = document.createElement('button');
-        volumeBtn.textContent = 'Salvar volume';
-        volumeBtn.addEventListener('click', (ev) => {
-          ev.stopPropagation();
-          const value = volumeInput.value === '' ? null : parseFloat(volumeInput.value);
-          if (value !== null && (isNaN(value) || value < 0)) {
-            alert('Digite um volume válido');
-            return;
-          }
-          p.bettingVolume = value;
-          savePlatforms(platforms);
-          updateCalendarEvents();
-          renderPlatformList(q);
-          updateHeroSummary();
-          updateVipSummaryArea();
+      function isMonday(date) { return new Date(date).getDay() === 1; }
+      function isFirstDayOfMonth(date) { return new Date(date).getDate() === 1; }
+      function getVipEventsForDate(targetDate) {
+        const target = new Date(targetDate); target.setHours(0, 0, 0, 0);
+        const results = [];
+        platforms.forEach((platform) => {
+          const vip = getVipBonusValues(platform);
+          if (vip.daily > 0) results.push({ platformId: platform.id, platformName: platform.name, type: 'VIP Diário', amount: vip.daily });
+          if (vip.weekly > 0 && isMonday(target)) results.push({ platformId: platform.id, platformName: platform.name, type: 'VIP Semanal', amount: vip.weekly });
+          if (vip.monthly > 0 && isFirstDayOfMonth(target)) results.push({ platformId: platform.id, platformName: platform.name, type: 'VIP Mensal', amount: vip.monthly });
         });
+        return results;
+      }
+      function getVipSummaryForDate(targetDate) {
+        return getVipEventsForDate(targetDate).reduce((acc, entry) => {
+          if (entry.type === 'VIP Diário') acc.daily += entry.amount;
+          if (entry.type === 'VIP Semanal') acc.weekly += entry.amount;
+          if (entry.type === 'VIP Mensal') acc.monthly += entry.amount;
+          acc.total += entry.amount;
+          return acc;
+        }, { daily: 0, weekly: 0, monthly: 0, total: 0 });
+      }
 
-        volumeForm.appendChild(volumeInput);
-        volumeForm.appendChild(volumeBtn);
-        li.appendChild(volumeForm);
+      function updateHeroSummary() {
+        const totalPlatforms = platforms.length;
+        const totalDeposits = platforms.reduce((sum, platform) => sum + getTotalDepositsSinceCycle(platform), 0);
+        const bonusTodaySummary = getVipSummaryForDate(new Date());
+        const activeCycles = platforms.filter((platform) => getCurrentCycleDay(platform) > 0).length;
+        const topPlatform = [...platforms].sort((a, b) => getTotalDepositsSinceCycle(b) - getTotalDepositsSinceCycle(a))[0];
+        document.getElementById('heroPlatformCount').textContent = String(totalPlatforms);
+        document.getElementById('heroTotalDeposits').textContent = formatCurrency(totalDeposits);
+        document.getElementById('heroBonusToday').textContent = formatCurrency(bonusTodaySummary.total);
+        const highlightEl = document.getElementById('heroNextHighlight');
+        const highlightNoteEl = document.getElementById('heroNextHighlightNote');
+        if (topPlatform && getTotalDepositsSinceCycle(topPlatform) > 0) {
+          highlightEl.textContent = topPlatform.name;
+          highlightNoteEl.textContent = `${formatCurrency(getTotalDepositsSinceCycle(topPlatform))} no ciclo atual • ${activeCycles} plataformas ativas.`;
+        } else {
+          highlightEl.textContent = activeCycles > 0 ? 'Em dia' : 'Sem depósitos';
+          highlightNoteEl.textContent = activeCycles > 0 ? `${activeCycles} plataformas com ciclo em andamento.` : 'Adicione depósitos para começar a acompanhar os níveis.';
+        }
+      }
 
-        const form = document.createElement('div');
-        form.className = 'platform-deposit-form';
+      function updateVipSummaryArea() {
+        const todaySummary = getVipSummaryForDate(new Date());
+        document.getElementById('vipDailyToday').textContent = formatCurrency(todaySummary.daily);
+        document.getElementById('vipWeeklyToday').textContent = formatCurrency(todaySummary.weekly);
+        document.getElementById('vipMonthlyToday').textContent = formatCurrency(todaySummary.monthly);
+        document.getElementById('vipGrandToday').textContent = formatCurrency(todaySummary.total);
+        const filledVolumes = platforms.filter((platform) => platform.bettingVolume !== null && platform.bettingVolume !== undefined && platform.bettingVolume !== '').length;
+        document.getElementById('vipSummaryNote').textContent = `${filledVolumes} de ${platforms.length} plataformas com volume informado para cálculo VIP.`;
+      }
 
-        const input = document.createElement('input');
-        input.type = 'number';
-        input.placeholder = 'Valor do depósito';
-        input.min = '0';
-        input.step = '0.01';
-        input.value = '';
+      function renderPlatformList(filter = '') {
+        const listEl = document.getElementById('platformList');
+        const countEl = document.getElementById('platformCount');
+        listEl.innerHTML = '';
+        const q = filter.trim().toLowerCase();
+        const items = platforms.filter((p) => p.name.toLowerCase().includes(q));
 
-        form.appendChild(input);
-        li.appendChild(form);
+        items.forEach((p) => {
+          const li = document.createElement('li');
+          li.className = 'platform-item';
+          li.dataset.id = p.id;
+          const total = getTotalDepositsSinceCycle(p);
+          const bgColor = colorForLevel(total);
+          const cycleDay = getCurrentCycleDay(p);
+          const vip = getVipBonusValues(p);
 
-        const actionButtons = document.createElement('div');
-        actionButtons.className = 'platform-actions-buttons';
+          li.innerHTML = `
+            <div class="platform-item-header">
+              <div class="name">${p.name}</div>
+              <div class="cycle-day ${cycleDay === 0 ? 'no-bonus' : ''}">${cycleDay === 0 ? 'Dia 0' : `Dia ${cycleDay}`}</div>
+            </div>
+            <div class="platform-meta">
+              <div class="reset-date">${p.lastResetDate ? `Ciclo iniciado: ${String(new Date(p.lastResetDate).getDate()).padStart(2,'0')}/${String(new Date(p.lastResetDate).getMonth()+1).padStart(2,'0')}` : 'Ciclo não iniciado'}</div>
+              <span class="platform-total-badge" style="background:${bgColor}">${formatCurrency(total)}</span>
+            </div>
+            <div class="platform-vip-info">
+              <div><strong>Nível VIP</strong>VIP ${vip.level}</div>
+              <div><strong>Grupo</strong><span class="vip-group-chip">${vip.group === 'sem_aposta_minima' ? 'Sem aposta mínima' : 'Com aposta mínima'}</span></div>
+              <div><strong>VIP diário</strong>${formatCurrency(vip.daily)}</div>
+              <div><strong>VIP semanal</strong>${formatCurrency(vip.weekly)}</div>
+              <div><strong>VIP mensal</strong>${formatCurrency(vip.monthly)}</div>
+              <div><strong>Volume atual</strong>${formatCurrency(vip.volume)}</div>
+            </div>
+          `;
 
-        const historyBtn = document.createElement('button');
-        historyBtn.textContent = 'Histórico';
-        historyBtn.style.background = '#2563eb';
-        historyBtn.addEventListener('click', (ev) => {
-          ev.stopPropagation();
-          showHistoryModal(p);
-        });
-
-        const btn = document.createElement('button');
-        btn.textContent = 'Adicionar';
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const value = parseFloat(input.value);
-          if (isNaN(value) || value <= 0) {
-            alert('Digite um valor válido');
-            return;
-          }
-          p.deposits.push({
-            date: new Date().toISOString(),
-            value: value
+          const volumeForm = document.createElement('div');
+          volumeForm.className = 'vip-inline-input';
+          const volumeInput = document.createElement('input');
+          volumeInput.type = 'number'; volumeInput.placeholder = 'Volume de apostas'; volumeInput.min = '0'; volumeInput.step = '0.01'; volumeInput.value = p.bettingVolume ?? '';
+          const volumeBtn = document.createElement('button');
+          volumeBtn.textContent = 'Salvar volume';
+          volumeBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const value = volumeInput.value === '' ? null : parseFloat(volumeInput.value);
+            if (value !== null && (isNaN(value) || value < 0)) { alert('Digite um volume válido'); return; }
+            p.bettingVolume = value;
+            savePlatforms(platforms);
+            updateCalendarEvents();
+            renderPlatformList(q);
           });
-          input.value = '';
+          volumeForm.appendChild(volumeInput); volumeForm.appendChild(volumeBtn); li.appendChild(volumeForm);
+
+          const depositForm = document.createElement('div');
+          depositForm.className = 'platform-deposit-form';
+          const depositInput = document.createElement('input');
+          depositInput.type = 'number'; depositInput.placeholder = 'Valor do depósito'; depositInput.min = '0'; depositInput.step = '0.01';
+          depositForm.appendChild(depositInput); li.appendChild(depositForm);
+
+          const actions = document.createElement('div');
+          actions.className = 'platform-actions-buttons';
+          const historyBtn = document.createElement('button'); historyBtn.textContent = 'Histórico'; historyBtn.style.background = '#2563eb';
+          historyBtn.addEventListener('click', (ev) => { ev.stopPropagation(); showHistoryModal(p); });
+          const addBtn = document.createElement('button'); addBtn.textContent = 'Adicionar';
+          addBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const value = parseFloat(depositInput.value);
+            if (isNaN(value) || value <= 0) { alert('Digite um valor válido'); return; }
+            p.deposits.push({ date: new Date().toISOString(), value });
+            depositInput.value = '';
+            savePlatforms(platforms);
+            updateCalendarEvents();
+            renderPlatformList(q);
+          });
+          const resetBtn = document.createElement('button'); resetBtn.textContent = 'Reinício'; resetBtn.style.background = '#ef4444';
+          resetBtn.addEventListener('click', (ev) => { ev.stopPropagation(); showResetModal(p, q); });
+          actions.appendChild(historyBtn); actions.appendChild(addBtn); actions.appendChild(resetBtn); li.appendChild(actions);
+
+          li.addEventListener('click', (e) => {
+            if ([volumeBtn, volumeInput, historyBtn, addBtn, resetBtn, depositInput].includes(e.target)) return;
+            document.querySelectorAll('.platform-item').forEach((el) => el.classList.remove('selected'));
+            li.classList.add('selected');
+            filterCalendarByPlatform(p.id);
+          });
+          listEl.appendChild(li);
+        });
+
+        const totalAll = platforms.reduce((s, pl) => s + getTotalDepositsSinceCycle(pl), 0);
+        countEl.textContent = `${items.length} plataformas • Total geral: ${formatCurrency(totalAll)}`;
+        updateHeroSummary();
+        updateVipSummaryArea();
+      }
+
+      const historyModal = document.getElementById('historyModal');
+      const historyTitle = document.getElementById('historyTitle');
+      const historyList = document.getElementById('historyList');
+      const historyCloseBtn = document.getElementById('historyCloseBtn');
+
+      function showHistoryModal(platform) {
+        historyTitle.textContent = `Histórico de Depósitos - ${platform.name}`;
+        historyList.innerHTML = '';
+        if (platform.deposits.length === 0) {
+          historyList.innerHTML = '<div class="history-empty">Nenhum depósito registrado</div>';
+        } else {
+          [...platform.deposits].sort((a, b) => new Date(b.date) - new Date(a.date)).forEach((dep) => {
+            const depositDate = new Date(dep.date);
+            const item = document.createElement('div');
+            item.className = 'history-item';
+            item.innerHTML = `<div class="history-item-content"><span class="history-date">${String(depositDate.getDate()).padStart(2,'0')}/${String(depositDate.getMonth()+1).padStart(2,'0')}/${depositDate.getFullYear()} ${String(depositDate.getHours()).padStart(2,'0')}:${String(depositDate.getMinutes()).padStart(2,'0')}</span><span class="history-value">${formatCurrency(dep.value)}</span></div>`;
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'history-delete-btn';
+            deleteBtn.textContent = 'Excluir';
+            deleteBtn.addEventListener('click', () => {
+              if (confirm(`Deseja excluir este depósito de ${formatCurrency(dep.value)}?`)) {
+                platform.deposits.splice(platform.deposits.indexOf(dep), 1);
+                savePlatforms(platforms);
+                updateCalendarEvents();
+                renderPlatformList(document.getElementById('platformSearch').value);
+                showHistoryModal(platform);
+              }
+            });
+            item.appendChild(deleteBtn);
+            historyList.appendChild(item);
+          });
+        }
+        historyModal.style.display = 'flex';
+      }
+
+      historyCloseBtn.addEventListener('click', () => { historyModal.style.display = 'none'; });
+      historyModal.addEventListener('click', (e) => { if (e.target === historyModal) historyModal.style.display = 'none'; });
+
+      const resetModal = document.getElementById('resetModal');
+      const resetModalText = document.getElementById('resetModalText');
+      const resetDateInput = document.getElementById('resetDateInput');
+      const resetConfirmBtn = document.getElementById('resetConfirmBtn');
+      const resetCancelBtn = document.getElementById('resetCancelBtn');
+      let currentResetPlatform = null;
+      let currentResetFilter = '';
+
+      function showResetModal(platform, filter) {
+        currentResetPlatform = platform;
+        currentResetFilter = filter;
+        resetModalText.textContent = `Reiniciar ciclo de ${platform.name}?`;
+        const today = new Date();
+        resetDateInput.value = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+        resetModal.style.display = 'flex';
+      }
+      function closeResetModal() { resetModal.style.display = 'none'; currentResetPlatform = null; }
+      resetConfirmBtn.addEventListener('click', () => {
+        if (currentResetPlatform) {
+          const selectedDate = new Date(resetDateInput.value);
+          selectedDate.setHours(0, 0, 0, 0);
+          currentResetPlatform.lastResetDate = selectedDate.toISOString();
           savePlatforms(platforms);
           updateCalendarEvents();
-          renderPlatformList(q);
-          updateHeroSummary();
-          updateVipSummaryArea();
-        });
-
-        const resetBtn = document.createElement('button');
-        resetBtn.textContent = 'Reinício';
-        resetBtn.style.background = '#ef4444';
-        resetBtn.addEventListener('click', (ev) => {
-          ev.stopPropagation();
-          showResetModal(p, q);
-        });
-
-        actionButtons.appendChild(historyBtn);
-        actionButtons.appendChild(btn);
-        actionButtons.appendChild(resetBtn);
-        li.appendChild(actionButtons);
-
-        li.addEventListener('click', (e) => {
-          if (e.target === btn || e.target === input || e.target === resetBtn || e.target === historyBtn || e.target === volumeBtn || e.target === volumeInput) return;
-          document.querySelectorAll('.platform-item').forEach(el => el.classList.remove('selected'));
-          li.classList.add('selected');
-          filterCalendarByPlatform(p.id);
-        });
-
-        listEl.appendChild(li);
+          renderPlatformList(currentResetFilter);
+        }
+        closeResetModal();
       });
+      resetCancelBtn.addEventListener('click', closeResetModal);
+      resetModal.addEventListener('click', (e) => { if (e.target === resetModal) closeResetModal(); });
 
-      const totalAll = platforms.reduce((s, pl) => s + getTotalDepositsSinceCycle(pl), 0);
-      countEl.textContent = `${items.length} plataformas • Total geral: ${formatCurrency(totalAll)}`;
-      updateHeroSummary();
-      updateVipSummaryArea();
-    }
+      let platforms = loadPlatforms();
+      const calendarEl = document.getElementById('calendar');
+      let calendar;
 
-    const historyModal = document.getElementById('historyModal');
-    const historyTitle = document.getElementById('historyTitle');
-    const historyList = document.getElementById('historyList');
-    const historyCloseBtn = document.getElementById('historyCloseBtn');
-    let currentHistoryPlatform = null;
+      function addVipEventsToCalendar(windowFrom, windowTo) {
+        const current = new Date(windowFrom);
+        current.setHours(0, 0, 0, 0);
+        while (current <= windowTo) {
+          platforms.forEach((platform) => {
+            const vip = getVipBonusValues(platform);
+            const dateKey = current.toISOString().slice(0, 10);
+            if (vip.daily > 0) calendar.addEvent({ id: `vip_daily_${platform.id}_${dateKey}`, title: `${platform.name} • VIP Diário`, start: dateKey, allDay: true, backgroundColor: '#bfdbfe', borderColor: 'rgba(37,99,235,0.25)', extendedProps: { platformId: platform.id } });
+            if (vip.weekly > 0 && isMonday(current)) calendar.addEvent({ id: `vip_weekly_${platform.id}_${dateKey}`, title: `${platform.name} • VIP Semanal`, start: dateKey, allDay: true, backgroundColor: '#c7f9cc', borderColor: 'rgba(21,128,61,0.25)', extendedProps: { platformId: platform.id } });
+            if (vip.monthly > 0 && isFirstDayOfMonth(current)) calendar.addEvent({ id: `vip_monthly_${platform.id}_${dateKey}`, title: `${platform.name} • VIP Mensal`, start: dateKey, allDay: true, backgroundColor: '#fde68a', borderColor: 'rgba(217,119,6,0.25)', extendedProps: { platformId: platform.id } });
+          });
+          current.setDate(current.getDate() + 1);
+        }
+      }
 
-    function showHistoryModal(platform){
-      currentHistoryPlatform = platform;
-      historyTitle.textContent = `Histórico de Depósitos - ${platform.name}`;
-      historyList.innerHTML = '';
-
-      if (platform.deposits.length === 0) {
-        historyList.innerHTML = '<div class="history-empty">Nenhum depósito registrado</div>';
-      } else {
-        const sortedDeposits = [...platform.deposits].sort((a, b) => new Date(b.date) - new Date(a.date));
-        sortedDeposits.forEach((dep) => {
-          const depositDate = new Date(dep.date);
-          const dia = String(depositDate.getDate()).padStart(2, '0');
-          const mes = String(depositDate.getMonth() + 1).padStart(2, '0');
-          const ano = depositDate.getFullYear();
-          const horas = String(depositDate.getHours()).padStart(2, '0');
-          const minutos = String(depositDate.getMinutes()).padStart(2, '0');
-
-          const item = document.createElement('div');
-          item.className = 'history-item';
-
-          const itemContent = document.createElement('div');
-          itemContent.className = 'history-item-content';
-
-          const dateSpan = document.createElement('span');
-          dateSpan.className = 'history-date';
-          dateSpan.textContent = `${dia}/${mes}/${ano} ${horas}:${minutos}`;
-
-          const valueSpan = document.createElement('span');
-          valueSpan.className = 'history-value';
-          valueSpan.textContent = formatCurrency(dep.value);
-
-          itemContent.appendChild(dateSpan);
-          itemContent.appendChild(valueSpan);
-          item.appendChild(itemContent);
-
-          const deleteBtn = document.createElement('button');
-          deleteBtn.className = 'history-delete-btn';
-          deleteBtn.textContent = 'Excluir';
-          deleteBtn.addEventListener('click', () => {
-            if (confirm(`Deseja excluir este depósito de ${formatCurrency(dep.value)}?`)) {
-              platform.deposits.splice(platform.deposits.indexOf(dep), 1);
-              savePlatforms(platforms);
-              updateCalendarEvents();
-              renderPlatformList(document.getElementById('platformSearch').value);
-              showHistoryModal(platform);
-              updateHeroSummary();
-              updateVipSummaryArea();
+      function updateCalendarEvents() {
+        if (!calendar) return;
+        calendar.removeAllEvents();
+        const now = new Date();
+        const windowFrom = new Date(now); windowFrom.setDate(windowFrom.getDate() - 10); windowFrom.setHours(0,0,0,0);
+        const windowTo = new Date(now); windowTo.setDate(windowTo.getDate() + 40); windowTo.setHours(0,0,0,0);
+        platforms.forEach((platform) => {
+          computeEmissionDates(platform, now).forEach((emDate) => {
+            if (emDate >= windowFrom && emDate <= windowTo) {
+              const totalAtEmission = sumDepositsUpTo(platform, emDate);
+              calendar.addEvent({ id: `emit_${platform.id}_${emDate.toISOString().slice(0,10)}`, title: `${platform.name} • Ciclo`, start: emDate.toISOString().slice(0,10), allDay: true, backgroundColor: colorForLevel(totalAtEmission), borderColor: 'rgba(0,0,0,0.06)', extendedProps: { platformId: platform.id } });
             }
           });
-          item.appendChild(deleteBtn);
-
-          historyList.appendChild(item);
         });
-      }
-
-      historyModal.style.display = 'flex';
-    }
-
-    historyCloseBtn.addEventListener('click', () => {
-      historyModal.style.display = 'none';
-      currentHistoryPlatform = null;
-    });
-
-    historyModal.addEventListener('click', (e) => {
-      if (e.target === historyModal) {
-        historyModal.style.display = 'none';
-        currentHistoryPlatform = null;
-      }
-    });
-
-    const resetModal = document.getElementById('resetModal');
-    const resetModalText = document.getElementById('resetModalText');
-    const resetDateInput = document.getElementById('resetDateInput');
-    const resetConfirmBtn = document.getElementById('resetConfirmBtn');
-    const resetCancelBtn = document.getElementById('resetCancelBtn');
-    let currentResetPlatform = null;
-    let currentResetFilter = '';
-
-    function showResetModal(platform, filter){
-      currentResetPlatform = platform;
-      currentResetFilter = filter;
-      resetModalText.textContent = `Reiniciar ciclo de ${platform.name}?`;
-
-      const today = new Date();
-      const yyyy = today.getFullYear();
-      const mm = String(today.getMonth() + 1).padStart(2, '0');
-      const dd = String(today.getDate()).padStart(2, '0');
-      resetDateInput.value = `${yyyy}-${mm}-${dd}`;
-
-      resetModal.style.display = 'flex';
-    }
-
-    function closeResetModal(){
-      resetModal.style.display = 'none';
-      currentResetPlatform = null;
-    }
-
-    resetConfirmBtn.addEventListener('click', () => {
-      if (currentResetPlatform) {
-        const selectedDate = new Date(resetDateInput.value);
-        selectedDate.setHours(0, 0, 0, 0);
-        currentResetPlatform.lastResetDate = selectedDate.toISOString();
-        savePlatforms(platforms);
-        updateCalendarEvents();
-        renderPlatformList(currentResetFilter);
+        addVipEventsToCalendar(windowFrom, windowTo);
         updateHeroSummary();
         updateVipSummaryArea();
       }
-      closeResetModal();
-    });
 
-    resetCancelBtn.addEventListener('click', () => {
-      closeResetModal();
-    });
+      function filterCalendarByPlatform(platformId) {
+        calendar.getEvents().forEach((event) => {
+          event.setProp('display', event.extendedProps.platformId === platformId ? 'block' : 'none');
+        });
+      }
+      function showAllBonusCalendar() { calendar.getEvents().forEach((event) => event.setProp('display', 'block')); }
 
-    resetModal.addEventListener('click', (e) => {
-      if (e.target === resetModal) closeResetModal();
-    });
+      calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        locale: 'pt-br',
+        selectable: true,
+        headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' },
+        events: [],
+        eventDisplay: 'block'
+      });
+      calendar.render();
 
-    let platforms = loadPlatforms();
-    renderPlatformList();
+      document.getElementById('platformSearch').addEventListener('input', (e) => renderPlatformList(e.target.value));
+      document.getElementById('allBonusBtn').addEventListener('click', () => { document.querySelectorAll('.platform-item').forEach((el) => el.classList.remove('selected')); showAllBonusCalendar(); });
+      document.getElementById('resetAllBtn').addEventListener('click', () => {
+        if (!confirm('Resetar todos os depósitos de TODAS as plataformas?')) return;
+        platforms.forEach((p) => { p.deposits = []; });
+        savePlatforms(platforms);
+        renderPlatformList();
+        updateCalendarEvents();
+      });
+      document.getElementById('scrollToPanelBtn').addEventListener('click', () => document.getElementById('platformPanel').scrollIntoView({ behavior: 'smooth', block: 'start' }));
+      document.getElementById('scrollToCalendarBtn').addEventListener('click', () => document.getElementById('calendar').scrollIntoView({ behavior: 'smooth', block: 'start' }));
 
-    document.getElementById('platformSearch').addEventListener('input', (e) => {
-      renderPlatformList(e.target.value);
-    });
+      const toggleBtn = document.getElementById('togglePanelBtn');
+      const panel = document.getElementById('platformPanel');
+      const minimizeTab = document.getElementById('minimizeTab');
+      toggleBtn.addEventListener('click', () => {
+        panel.classList.toggle('minimized');
+        minimizeTab.classList.toggle('show');
+        toggleBtn.title = panel.classList.contains('minimized') ? 'Abrir painel' : 'Minimizar painel';
+        minimizeTab.textContent = panel.classList.contains('minimized') ? 'Abrir Painel' : 'Fechar Painel';
+      });
+      minimizeTab.addEventListener('click', () => {
+        panel.classList.remove('minimized');
+        minimizeTab.classList.remove('show');
+        toggleBtn.title = 'Minimizar painel';
+        minimizeTab.textContent = 'Abrir Painel';
+      });
 
-    document.getElementById('allBonusBtn').addEventListener('click', () => {
-      document.querySelectorAll('.platform-item').forEach(el => el.classList.remove('selected'));
-      showAllBonusCalendar();
-    });
-
-    document.getElementById('resetAllBtn').addEventListener('click', () => {
-      if (!confirm('Resetar todos os depósitos de TODAS as plataformas?')) return;
-      platforms.forEach(p => p.deposits = []);
-      savePlatforms(platforms);
       renderPlatformList();
       updateCalendarEvents();
-      updateHeroSummary();
-      updateVipSummaryArea();
-    });
 
-    document.getElementById('scrollToPanelBtn').addEventListener('click', () => {
-      document.getElementById('platformPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-
-    document.getElementById('scrollToCalendarBtn').addEventListener('click', () => {
-      document.getElementById('calendar').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-
-    const toggleBtn = document.getElementById('togglePanelBtn');
-    const panel = document.getElementById('platformPanel');
-    const minimizeTab = document.getElementById('minimizeTab');
-
-    toggleBtn.addEventListener('click', () => {
-      panel.classList.toggle('minimized');
-      minimizeTab.classList.toggle('show');
-      toggleBtn.title = panel.classList.contains('minimized') ? 'Abrir painel' : 'Minimizar painel';
-      minimizeTab.textContent = panel.classList.contains('minimized') ? 'Abrir Painel' : 'Fechar Painel';
-    });
-
-    minimizeTab.addEventListener('click', () => {
-      panel.classList.remove('minimized');
-      minimizeTab.classList.remove('show');
-      toggleBtn.title = 'Minimizar painel';
-      minimizeTab.textContent = 'Abrir Painel';
-    });
-
-    const calendarEl = document.getElementById('calendar');
-
-    function addVipEventsToCalendar(windowFrom, windowTo){
-      const current = new Date(windowFrom);
-      current.setHours(0,0,0,0);
-
-      while (current <= windowTo) {
-        platforms.forEach(platform => {
-          const vip = getVipBonusValues(platform);
-          const dateKey = current.toISOString().slice(0,10);
-
-          if (vip.daily > 0) {
-            calendar.addEvent({
-              id: `vip_daily_${platform.id}_${dateKey}`,
-              title: `${platform.name} • VIP Diário`,
-              start: dateKey,
-              allDay: true,
-              display: 'block',
-              backgroundColor: '#bfdbfe',
-              borderColor: 'rgba(37,99,235,0.25)',
-              extendedProps: {
-                platformId: platform.id,
-                platformName: platform.name,
-                vipType: 'daily',
-                vipAmount: vip.daily
-              }
-            });
-          }
-
-          if (vip.weekly > 0 && isMonday(current)) {
-            calendar.addEvent({
-              id: `vip_weekly_${platform.id}_${dateKey}`,
-              title: `${platform.name} • VIP Semanal`,
-              start: dateKey,
-              allDay: true,
-              display: 'block',
-              backgroundColor: '#c7f9cc',
-              borderColor: 'rgba(21,128,61,0.25)',
-              extendedProps: {
-                platformId: platform.id,
-                platformName: platform.name,
-                vipType: 'weekly',
-                vipAmount: vip.weekly
-              }
-            });
-          }
-
-          if (vip.monthly > 0 && isFirstDayOfMonth(current)) {
-            calendar.addEvent({
-              id: `vip_monthly_${platform.id}_${dateKey}`,
-              title: `${platform.name} • VIP Mensal`,
-              start: dateKey,
-              allDay: true,
-              display: 'block',
-              backgroundColor: '#fde68a',
-              borderColor: 'rgba(217,119,6,0.25)',
-              extendedProps: {
-                platformId: platform.id,
-                platformName: platform.name,
-                vipType: 'monthly',
-                vipAmount: vip.monthly
-              }
-            });
-          }
-        });
-
-        current.setDate(current.getDate() + 1);
+      function scheduleDailyUpdate() {
+        const now = new Date();
+        const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
+        const ms = nextMidnight - now;
+        setTimeout(() => {
+          updateCalendarEvents();
+          renderPlatformList(document.getElementById('platformSearch').value);
+          scheduleDailyUpdate();
+        }, ms);
       }
-    }
-
-    function updateCalendarEvents(){
-      if (!calendar) return;
-      calendar.removeAllEvents();
-
-      const now = new Date();
-      const windowFrom = new Date(now); windowFrom.setDate(windowFrom.getDate() - 10);
-      const windowTo = new Date(now); windowTo.setDate(windowTo.getDate() + 40);
-      windowFrom.setHours(0,0,0,0);
-      windowTo.setHours(0,0,0,0);
-
-      platforms.forEach(platform => {
-        const emissionDates = computeEmissionDates(platform, now);
-        emissionDates.forEach(emDate => {
-          if (emDate >= windowFrom && emDate <= windowTo) {
-            const totalAtEmission = sumDepositsUpTo(platform, emDate);
-            const bg = colorForLevel(totalAtEmission);
-
-            calendar.addEvent({
-              id: `emit_${platform.id}_${emDate.toISOString().slice(0,10)}`,
-              title: `${platform.name} • Ciclo`,
-              start: emDate.toISOString().slice(0,10),
-              allDay: true,
-              display: 'block',
-              backgroundColor: bg,
-              borderColor: 'rgba(0,0,0,0.06)',
-              extendedProps: {
-                platformId: platform.id,
-                platformName: platform.name,
-                totalAtEmission: totalAtEmission,
-                vipType: 'cycle'
-              }
-            });
-          }
-        });
-      });
-
-      addVipEventsToCalendar(windowFrom, windowTo);
-      updateHeroSummary();
-      updateVipSummaryArea();
-    }
-
-    function filterCalendarByPlatform(platformId){
-      const allEvents = calendar.getEvents();
-      allEvents.forEach(event => {
-        const eventPlatformId = event.extendedProps.platformId;
-        event.setProp('display', eventPlatformId === platformId ? 'block' : 'none');
-      });
-      const p = platforms.find(x => x.id === platformId);
-      if (p) {
-        console.log(`Filtrando: ${p.name} | Dia do ciclo: ${getCurrentCycleDay(p)} | Total: ${formatCurrency(getTotalDepositsSinceCycle(p))}`);
-      }
-    }
-
-    function showAllBonusCalendar(){
-      const allEvents = calendar.getEvents();
-      allEvents.forEach(event => {
-        event.setProp('display', 'block');
-      });
-      console.log('Exibindo todos os bônus do calendário');
-    }
-
-    const calendar = new FullCalendar.Calendar(calendarEl, {
-      initialView: 'dayGridMonth',
-      locale: 'pt-br',
-      selectable: true,
-      headerToolbar: {
-        left: 'prev,next today',
-        center: 'title',
-        right: 'dayGridMonth,timeGridWeek,timeGridDay'
-      },
-      events: [],
-      eventDisplay: 'block',
-      eventDidMount: function(info){
-        const bg = info.event.backgroundColor;
-        info.el.style.background = bg;
-        info.el.style.color = '#000000';
-        info.el.style.border = '1px solid rgba(0,0,0,0.06)';
-        info.el.style.borderRadius = '10px';
-        info.el.style.fontWeight = '700';
-        info.el.style.fontSize = '0.75rem';
-        info.el.style.padding = '2px';
-      }
+      scheduleDailyUpdate();
     });
-
-    calendar.render();
-    updateCalendarEvents();
-    updateHeroSummary();
-    updateVipSummaryArea();
-
-    function scheduleDailyUpdate(){
-      const now = new Date();
-      const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
-      const ms = nextMidnight - now;
-      setTimeout(() => {
-        updateCalendarEvents();
-        renderPlatformList(document.getElementById('platformSearch').value);
-        updateHeroSummary();
-        updateVipSummaryArea();
-        scheduleDailyUpdate();
-      }, ms);
-    }
-    scheduleDailyUpdate();
-  });
   </script>
 </body>
 </html>
