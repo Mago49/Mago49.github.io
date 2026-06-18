@@ -785,40 +785,42 @@
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       const svg = document.querySelector('svg.background-svg');
-      const circles = Array.from(svg.querySelectorAll('circle'));
-      const viewbox = svg.viewBox.baseVal;
-      const initialRadii = [280, 280, 280, 280];
+      if (svg && svg.viewBox) {
+        const circles = Array.from(svg.querySelectorAll('circle'));
+        const viewbox = svg.viewBox.baseVal;
+        const initialRadii = [280, 280, 280, 280];
 
-      const data = circles.map((c, i) => {
-        const initR = initialRadii[i] * (0.28 + Math.random() * 0.12);
-        return {
-          el: c,
-          x: (Math.random() * viewbox.width) | 0,
-          y: (Math.random() * viewbox.height) | 0,
-          r: initR,
-          vx: (Math.random() * 0.6 + 0.1) * (Math.random() < 0.5 ? -1 : 1),
-          vy: (Math.random() * 0.6 + 0.1) * (Math.random() < 0.5 ? -1 : 1),
-          vr: (Math.random() * 0.04 + 0.01) * (Math.random() < 0.5 ? -1 : 1),
-          rmin: initR * 0.4,
-          rmax: initR * 1.3
-        };
-      });
-
-      function animate() {
-        data.forEach((d) => {
-          d.x += d.vx;
-          d.y += d.vy;
-          d.r += d.vr;
-          if (d.x < -200 || d.x > viewbox.width + 200) d.vx *= -1;
-          if (d.y < -200 || d.y > viewbox.height + 200) d.vy *= -1;
-          if (d.r < d.rmin || d.r > d.rmax) d.vr *= -1;
-          d.el.setAttribute('cx', d.x);
-          d.el.setAttribute('cy', d.y);
-          d.el.setAttribute('r', Math.max(10, d.r));
+        const data = circles.map((c, i) => {
+          const initR = initialRadii[i] * (0.28 + Math.random() * 0.12);
+          return {
+            el: c,
+            x: (Math.random() * viewbox.width) | 0,
+            y: (Math.random() * viewbox.height) | 0,
+            r: initR,
+            vx: (Math.random() * 0.6 + 0.1) * (Math.random() < 0.5 ? -1 : 1),
+            vy: (Math.random() * 0.6 + 0.1) * (Math.random() < 0.5 ? -1 : 1),
+            vr: (Math.random() * 0.04 + 0.01) * (Math.random() < 0.5 ? -1 : 1),
+            rmin: initR * 0.4,
+            rmax: initR * 1.3
+          };
         });
-        requestAnimationFrame(animate);
+
+        function animate() {
+          data.forEach((d) => {
+            d.x += d.vx;
+            d.y += d.vy;
+            d.r += d.vr;
+            if (d.x < -200 || d.x > viewbox.width + 200) d.vx *= -1;
+            if (d.y < -200 || d.y > viewbox.height + 200) d.vy *= -1;
+            if (d.r < d.rmin || d.r > d.rmax) d.vr *= -1;
+            d.el.setAttribute('cx', d.x);
+            d.el.setAttribute('cy', d.y);
+            d.el.setAttribute('r', Math.max(10, d.r));
+          });
+          requestAnimationFrame(animate);
+        }
+        animate();
       }
-      animate();
 
       const PLATFORM_NAMES = ['A73','DDUU','EE44','FXX','HHH5','NNZZ','PP11','1UUU','11TT','35C','36Q','44MM','45T','5TTT','53D','552X','551X','61T','63V','66GG','68D','7GGG','7JJJ','72B','79C','83H','838X','84D','877X','899V','93D','93K','988K'];
       const VIP_TABLE = {
@@ -1128,6 +1130,7 @@
       let calendar;
 
       function addVipEventsToCalendar(windowFrom, windowTo) {
+        if (!calendar) return;
         const current = new Date(windowFrom);
         current.setHours(0, 0, 0, 0);
         while (current <= windowTo) {
@@ -1162,49 +1165,61 @@
       }
 
       function filterCalendarByPlatform(platformId) {
+        if (!calendar) return;
         calendar.getEvents().forEach((event) => {
           event.setProp('display', event.extendedProps.platformId === platformId ? 'block' : 'none');
         });
       }
-      function showAllBonusCalendar() { calendar.getEvents().forEach((event) => event.setProp('display', 'block')); }
+      function showAllBonusCalendar() { if (!calendar) return; calendar.getEvents().forEach((event) => event.setProp('display', 'block')); }
 
-      calendar = new FullCalendar.Calendar(calendarEl, {
-        initialView: 'dayGridMonth',
-        locale: 'pt-br',
-        selectable: true,
-        headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' },
-        events: [],
-        eventDisplay: 'block'
-      });
-      calendar.render();
+      if (typeof FullCalendar === 'undefined' || !calendarEl) {
+        console.error('FullCalendar não disponível ou elemento #calendar não encontrado.');
+      } else {
+        calendar = new FullCalendar.Calendar(calendarEl, {
+          initialView: 'dayGridMonth',
+          locale: 'pt-br',
+          selectable: true,
+          headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' },
+          events: [],
+          eventDisplay: 'block'
+        });
+        calendar.render();
+      }
 
-      document.getElementById('platformSearch').addEventListener('input', (e) => renderPlatformList(e.target.value));
-      document.getElementById('allBonusBtn').addEventListener('click', () => { document.querySelectorAll('.platform-item').forEach((el) => el.classList.remove('selected')); showAllBonusCalendar(); });
-      document.getElementById('resetAllBtn').addEventListener('click', () => {
+      const platformSearchEl = document.getElementById('platformSearch');
+      if (platformSearchEl) platformSearchEl.addEventListener('input', (e) => renderPlatformList(e.target.value));
+      const allBonusBtnEl = document.getElementById('allBonusBtn');
+      if (allBonusBtnEl) allBonusBtnEl.addEventListener('click', () => { document.querySelectorAll('.platform-item').forEach((el) => el.classList.remove('selected')); showAllBonusCalendar(); });
+      const resetAllBtnEl = document.getElementById('resetAllBtn');
+      if (resetAllBtnEl) resetAllBtnEl.addEventListener('click', () => {
         if (!confirm('Resetar todos os depósitos de TODAS as plataformas?')) return;
         platforms.forEach((p) => { p.deposits = []; });
         savePlatforms(platforms);
         renderPlatformList();
         updateCalendarEvents();
       });
-      document.getElementById('scrollToPanelBtn').addEventListener('click', () => document.getElementById('platformPanel').scrollIntoView({ behavior: 'smooth', block: 'start' }));
-      document.getElementById('scrollToCalendarBtn').addEventListener('click', () => document.getElementById('calendar').scrollIntoView({ behavior: 'smooth', block: 'start' }));
+      const scrollToPanelBtnEl = document.getElementById('scrollToPanelBtn');
+      if (scrollToPanelBtnEl) scrollToPanelBtnEl.addEventListener('click', () => document.getElementById('platformPanel').scrollIntoView({ behavior: 'smooth', block: 'start' }));
+      const scrollToCalendarBtnEl = document.getElementById('scrollToCalendarBtn');
+      if (scrollToCalendarBtnEl) scrollToCalendarBtnEl.addEventListener('click', () => document.getElementById('calendar').scrollIntoView({ behavior: 'smooth', block: 'start' }));
 
       const toggleBtn = document.getElementById('togglePanelBtn');
       const panel = document.getElementById('platformPanel');
       const minimizeTab = document.getElementById('minimizeTab');
-      toggleBtn.addEventListener('click', () => {
-        panel.classList.toggle('minimized');
-        minimizeTab.classList.toggle('show');
-        toggleBtn.title = panel.classList.contains('minimized') ? 'Abrir painel' : 'Minimizar painel';
-        minimizeTab.textContent = panel.classList.contains('minimized') ? 'Abrir Painel' : 'Fechar Painel';
-      });
-      minimizeTab.addEventListener('click', () => {
-        panel.classList.remove('minimized');
-        minimizeTab.classList.remove('show');
-        toggleBtn.title = 'Minimizar painel';
-        minimizeTab.textContent = 'Abrir Painel';
-      });
+      if (toggleBtn && panel && minimizeTab) {
+        toggleBtn.addEventListener('click', () => {
+          panel.classList.toggle('minimized');
+          minimizeTab.classList.toggle('show');
+          toggleBtn.title = panel.classList.contains('minimized') ? 'Abrir painel' : 'Minimizar painel';
+          minimizeTab.textContent = panel.classList.contains('minimized') ? 'Abrir Painel' : 'Fechar Painel';
+        });
+        minimizeTab.addEventListener('click', () => {
+          panel.classList.remove('minimized');
+          minimizeTab.classList.remove('show');
+          toggleBtn.title = 'Minimizar painel';
+          minimizeTab.textContent = 'Abrir Painel';
+        });
+      }
 
       renderPlatformList();
       updateCalendarEvents();
