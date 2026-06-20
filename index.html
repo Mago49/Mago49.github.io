@@ -1279,15 +1279,34 @@ function formatVipCurrency(value) {
 }
 
 function getVipBonus(platform) {
+  const hoje = new Date();
+  const diasNoMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).getDate();
+  const semanasNoMes = Math.ceil(diasNoMes / 7);
+
   if (platform.group === 'com') {
     const cfg = vipBonusTable.com[platform.level];
+    const daily = Number(cfg.daily) || 0;
+    const weekly = Number(cfg.weekly) || 0;
+    const monthly = Number(cfg.monthly) || 0;
+
     return {
-      daily: Number(cfg.daily) || 0,
-      weekly: Number(cfg.weekly) || 0,
-      monthly: Number(cfg.monthly) || 0,
-      total: (Number(cfg.daily) || 0) + (Number(cfg.weekly) || 0) + (Number(cfg.monthly) || 0)
+      daily: daily * diasNoMes,
+      weekly: weekly * semanasNoMes,
+      monthly,
+      total: (daily * diasNoMes) + (weekly * semanasNoMes) + monthly
     };
   }
+
+  const cfg = vipBonusTable.sem[platform.level];
+  const totalSem = Number(cfg.total) || 0;
+
+  return {
+    daily: 0,
+    weekly: 0,
+    monthly: totalSem,
+    total: totalSem
+  };
+}
 
   const cfg = vipBonusTable.sem[platform.level];
   return {
