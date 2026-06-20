@@ -1310,13 +1310,15 @@ function getVipBonus(platform) {
   }
 
   const cfg = vipBonusTable.sem[platform.level];
-  const totalSem = Number(cfg.total) || 0;
+    const daily   = Number(cfg.daily)   || 0;
+    const weekly  = Number(cfg.weekly)  || 0;
+    const monthly = Number(cfg.monthly) || 0;
 
-  return {
-    daily: 0,
-    weekly: 0,
-    monthly: totalSem,
-    total: totalSem
+    return {
+      daily:   daily * diasNoMes,
+      weekly:  weekly * segundasNoMes,
+      monthly,
+      total:   (daily * diasNoMes) + (weekly * segundasNoMes) + monthly
   };
 }
 
