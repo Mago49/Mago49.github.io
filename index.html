@@ -1279,22 +1279,44 @@ function formatVipCurrency(value) {
 }
 
 function getVipBonus(platform) {
+  const hoje = new Date();
+  const ano = hoje.getFullYear();
+  const mes = hoje.getMonth(); // 0 = janeiro
+
+  // Dias no mês — acompanha o calendário automaticamente
+  const diasNoMes = new Date(ano, mes + 1, 0).getDate();
+
+  // Conta quantas segundas-feiras (dia 1 da semana) existem no mês
+  // pois o bônus semanal é pago toda segunda-feira
+  let segundasNoMes = 0;
+  for (let d = 1; d <= diasNoMes; d++) {
+    if (new Date(ano, mes, d).getDay() === 1) segundasNoMes++;
+  }
+
+  // Mensal: sempre pago no dia 1, então é sempre × 1 (já está correto)
+
   if (platform.group === 'com') {
     const cfg = vipBonusTable.com[platform.level];
+    const daily   = Number(cfg.daily)   || 0;
+    const weekly  = Number(cfg.weekly)  || 0;
+    const monthly = Number(cfg.monthly) || 0;
+
     return {
-      daily: Number(cfg.daily) || 0,
-      weekly: Number(cfg.weekly) || 0,
-      monthly: Number(cfg.monthly) || 0,
-      total: (Number(cfg.daily) || 0) + (Number(cfg.weekly) || 0) + (Number(cfg.monthly) || 0)
+      daily:   daily * diasNoMes,
+      weekly:  weekly * segundasNoMes,
+      monthly,
+      total:   (daily * diasNoMes) + (weekly * segundasNoMes) + monthly
     };
   }
 
   const cfg = vipBonusTable.sem[platform.level];
+  const totalSem = Number(cfg.total) || 0;
+
   return {
     daily: 0,
     weekly: 0,
-    monthly: 0,
-    total: Number(cfg.total) || 0
+    monthly: totalSem,
+    total: totalSem
   };
 }
 
