@@ -1215,6 +1215,164 @@
 
   <script>
   document.addEventListener('DOMContentLoaded', () => {
+    const vipBonusTable = {
+  com: {
+    0: { daily: 0, weekly: 0, monthly: 0 },
+    1: { daily: 0, weekly: 0, monthly: 1 },
+    2: { daily: 0.5, weekly: 1, monthly: 1 },
+    3: { daily: 0.6, weekly: 2, monthly: 3 },
+    4: { daily: 0.8, weekly: 3, monthly: 5 },
+    5: { daily: 1, weekly: 5, monthly: 8 }
+  },
+  sem: {
+    0: { total: 0 },
+    1: { total: 0 },
+    2: { total: 10 },
+    3: { total: 12 },
+    4: { total: 16 },
+    5: { total: 20 }
+  }
+};
+
+const vipPlatforms = [
+  { code: 'FXX', level: 2, group: 'com' },
+  { code: '551X', level: 3, group: 'com' },
+  { code: '838X', level: 3, group: 'com' },
+  { code: 'PP11', level: 4, group: 'com' },
+  { code: '1UUU', level: 3, group: 'com' },
+  { code: '11TT', level: 3, group: 'com' },
+  { code: 'DDUU', level: 4, group: 'com' },
+  { code: '45T', level: 2, group: 'com' },
+  { code: '7GGG', level: 3, group: 'com' },
+  { code: '66GG', level: 3, group: 'com' },
+  { code: '44MM', level: 3, group: 'com' },
+  { code: 'NNZZ', level: 3, group: 'com' },
+  { code: '899V', level: 3, group: 'com' },
+  { code: '83H', level: 3, group: 'com' },
+  { code: '5TTT', level: 3, group: 'com' },
+  { code: '84D', level: 3, group: 'com' },
+  { code: '552X', level: 3, group: 'com' },
+
+  { code: '35C', level: 2, group: 'sem' },
+  { code: '63V', level: 3, group: 'sem' },
+  { code: '68D', level: 2, group: 'sem' },
+  { code: '61T', level: 2, group: 'sem' },
+  { code: '72B', level: 3, group: 'sem' },
+  { code: '36Q', level: 4, group: 'sem' },
+  { code: '53D', level: 2, group: 'sem' },
+  { code: '93K', level: 3, group: 'sem' },
+  { code: '93D', level: 3, group: 'sem' },
+  { code: 'A73', level: 3, group: 'sem' },
+  { code: 'EE44', level: 3, group: 'sem' },
+  { code: '7JJJ', level: 3, group: 'sem' },
+  { code: '877X', level: 3, group: 'sem' },
+  { code: '79C', level: 3, group: 'sem' },
+  { code: '988K', level: 3, group: 'sem' },
+  { code: 'HHH5', level: 2, group: 'sem' }
+];
+
+function formatVipCurrency(value) {
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL'
+  }).format(Number(value || 0));
+}
+
+function getVipBonus(platform) {
+  if (platform.group === 'com') {
+    const cfg = vipBonusTable.com[platform.level];
+    return {
+      daily: Number(cfg.daily) || 0,
+      weekly: Number(cfg.weekly) || 0,
+      monthly: Number(cfg.monthly) || 0,
+      total: (Number(cfg.daily) || 0) + (Number(cfg.weekly) || 0) + (Number(cfg.monthly) || 0)
+    };
+  }
+
+  const cfg = vipBonusTable.sem[platform.level];
+  return {
+    daily: 0,
+    weekly: 0,
+    monthly: 0,
+    total: Number(cfg.total) || 0
+  };
+}
+
+function renderVipPanel() {
+  const totalsEl = document.getElementById('vipTotals');
+  const summaryEl = document.getElementById('vipSummary');
+
+  if (!totalsEl || !summaryEl) return;
+
+  const totals = vipPlatforms.reduce((acc, platform) => {
+    const bonus = getVipBonus(platform);
+    acc.daily += bonus.daily;
+    acc.weekly += bonus.weekly;
+    acc.monthly += bonus.monthly;
+    acc.total += bonus.total;
+    return acc;
+  }, { daily: 0, weekly: 0, monthly: 0, total: 0 });
+
+  totalsEl.innerHTML = `
+    <div class="vip-total-box">
+      <span class="vip-total-label">Diário</span>
+      <span class="vip-total-value">${formatVipCurrency(totals.daily)}</span>
+    </div>
+    <div class="vip-total-box">
+      <span class="vip-total-label">Semanal</span>
+      <span class="vip-total-value">${formatVipCurrency(totals.weekly)}</span>
+    </div>
+    <div class="vip-total-box">
+      <span class="vip-total-label">Mensal</span>
+      <span class="vip-total-value">${formatVipCurrency(totals.monthly)}</span>
+    </div>
+    <div class="vip-total-box">
+      <span class="vip-total-label">Total</span>
+      <span class="vip-total-value">${formatVipCurrency(totals.total)}</span>
+    </div>
+  `;
+
+  summaryEl.innerHTML = vipPlatforms.map((platform) => {
+    const bonus = getVipBonus(platform);
+    const groupLabel = platform.group === 'com' ? 'Com aposta' : 'Sem aposta';
+    const groupClass = platform.group === 'com' ? 'group-com' : 'group-sem';
+
+    return `
+      <article class="vip-item">
+        <div class="vip-item-header">
+          <div class="vip-code">${platform.code}</div>
+          <div class="vip-badges">
+            <span class="vip-badge level">VIP ${platform.level}</span>
+            <span class="vip-badge ${groupClass}">${groupLabel}</span>
+          </div>
+        </div>
+
+        <div class="vip-breakdown">
+          <div class="vip-box">
+            <span class="vip-box-title">Diário</span>
+            <span class="vip-box-value">${formatVipCurrency(bonus.daily)}</span>
+          </div>
+          <div class="vip-box">
+            <span class="vip-box-title">Semanal</span>
+            <span class="vip-box-value">${formatVipCurrency(bonus.weekly)}</span>
+          </div>
+          <div class="vip-box">
+            <span class="vip-box-title">Mensal</span>
+            <span class="vip-box-value">${formatVipCurrency(bonus.monthly)}</span>
+          </div>
+          <div class="vip-box">
+            <span class="vip-box-title">Total</span>
+            <span class="vip-box-value">${formatVipCurrency(bonus.total)}</span>
+          </div>
+        </div>
+
+        <div class="vip-total-line">
+          Soma do bônus: ${formatVipCurrency(bonus.total)}
+        </div>
+      </article>
+    `;
+  }).join('');
+}
     const svg = document.querySelector('svg.background-svg');
     const circles = Array.from(svg.querySelectorAll('circle'));
     const viewbox = svg.viewBox.baseVal;
