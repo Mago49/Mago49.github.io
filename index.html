@@ -1546,19 +1546,6 @@ function getVipBonus(platform) {
     total: (daily * diasNoMes) + (weekly * segundasNoMes) + monthly
   };
 }
-  // Grupo 'sem': usa dias/semanas do mês normalmente
-  const cfg = vipBonusTable.sem[platform.level];
-    const daily   = Number(cfg.daily)   || 0;
-    const weekly  = Number(cfg.weekly)  || 0;
-    const monthly = Number(cfg.monthly) || 0;
-
-    return {
-      daily:   daily * diasNoMes,
-      weekly:  weekly * segundasNoMes,
-      monthly,
-      total:   (daily * diasNoMes) + (weekly * segundasNoMes) + monthly
-  };
-}
 
   function renderVipPanel() {
   const totalsEl = document.getElementById('vipTotals');
@@ -1597,7 +1584,7 @@ function getVipBonus(platform) {
 
   summaryEl.innerHTML = vipPlatforms.map((platform) => {
     const merged = getMergedVipPlatform(platform);
-    const bonus = getVipBonus(platform);
+    const bonus = getVipBonus(merged);
     const groupLabel = platform.group === 'com' ? 'Com aposta' : 'Sem aposta';
     const groupClass = platform.group === 'com' ? 'group-com' : 'group-sem';
 
@@ -2227,6 +2214,17 @@ betModal.addEventListener('click', e => {
   }
 });
     let platforms = loadPlatforms();
+
+    function getMergedVipPlatform(vipPlatform) {
+      const storedPlatform = platforms.find((platform) => platform.name === vipPlatform.code);
+      return {
+        ...vipPlatform,
+        lastResetDate: storedPlatform?.lastResetDate || null,
+        deposits: Array.isArray(storedPlatform?.deposits) ? storedPlatform.deposits : [],
+        betDays: Array.isArray(storedPlatform?.betDays) ? storedPlatform.betDays : []
+      };
+    }
+
     renderPlatformList();
 
     document.getElementById('platformSearch').addEventListener('input', (e) => {
