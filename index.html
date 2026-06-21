@@ -1480,9 +1480,58 @@ function formatVipCurrency(value) {
 
 function getVipBonus(platform) {
   const hoje = new Date();
+  hoje.setHours(23, 59, 59, 999);
+
+  const cfg = vipBonusTable[platform.group]?.[platform.level] || {};
+  const daily = Number(cfg.daily) || 0;
+  const weekly = Number(cfg.weekly) || 0;
+  const monthly = Number(cfg.monthly) || 0;
+
+  const cycleStart = getCycleStart(platform, hoje);
+  const start = new Date(cycleStart);
+  start.setHours(0, 0, 0, 0);
+
+  if (platform.group === 'com') {
+    const uniqueBetDays = new Set(
+      (platform.betDays || [])
+        .filter(dateStr => {
+          const d = new Date(dateStr);
+          return d >= start && d <= hoje;
+        })
+        .map(dateStr => dateStr.slice(0, 10))
+    );
+
+    const dailyTotal = daily * uniqueBetDays.size;
+
+    let mondaysCount = 0;
+    const mondayCursor = new Date(start);
+    while (mondayCursor <= hoje) {
+      if (mondayCursor.getDay() === 1) mondaysCount++;
+      mondayCursor.setDate(mondayCursor.getDate() + 1);
+    }
+    const weeklyTotal = weekly * mondaysCount;
+
+    let monthlyCount = 0;
+    const monthCursor = new Date(start.getFullYear(), start.getMonth(), 1);
+    while (monthCursor <= hoje) {
+      const firstDayOfMonth = new Date(monthCursor.getFullYear(), monthCursor.getMonth(), 1);
+      if (firstDayOfMonth >= start && firstDayOfMonth <= hoje) {
+        monthlyCount++;
+      }
+      monthCursor.setMonth(monthCursor.getMonth() + 1);
+    }
+    const monthlyTotal = monthly * monthlyCount;
+
+    return {
+      daily: dailyTotal,
+      weekly: weeklyTotal,
+      monthly: monthlyTotal,
+      total: dailyTotal + weeklyTotal + monthlyTotal
+    };
+  }
+
   const ano = hoje.getFullYear();
   const mes = hoje.getMonth();
-
   const diasNoMes = new Date(ano, mes + 1, 0).getDate();
 
   let segundasNoMes = 0;
@@ -1490,35 +1539,13 @@ function getVipBonus(platform) {
     if (new Date(ano, mes, d).getDay() === 1) segundasNoMes++;
   }
 
-  if (platform.group === 'com') {
-    const cfg = vipBonusTable.com[platform.level];
-    const daily   = Number(cfg.daily)   || 0;
-    const weekly  = Number(cfg.weekly)  || 0;
-    const monthly = Number(cfg.monthly) || 0;
-
-    // Bônus diário: 1 por dia apostado (dentro do ciclo atual)
-    const cycleStart = getCycleStart(platform, hoje);
-    const betDaysInCycle = (platform.betDays || []).filter(dateStr => {
-      const d = new Date(dateStr);
-      return d >= cycleStart && d <= hoje;
-    });
-
-    // Dias únicos apostados
-    const uniqueBetDays = new Set(betDaysInCycle.map(d => d.slice(0, 10)));
-
- const dailyTotal = daily * uniqueBetDays.size;
-
-// semanal garantido
-const weeklyTotal = weekly;
-
-return {
-  daily: dailyTotal,
-  weekly: weeklyTotal,
-  monthly,
-  total: dailyTotal + weeklyTotal + monthly
+  return {
+    daily: daily * diasNoMes,
+    weekly: weekly * segundasNoMes,
+    monthly: monthly,
+    total: (daily * diasNoMes) + (weekly * segundasNoMes) + monthly
   };
 }
-
   // Grupo 'sem': usa dias/semanas do mês normalmente
   const cfg = vipBonusTable.sem[platform.level];
     const daily   = Number(cfg.daily)   || 0;
