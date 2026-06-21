@@ -1537,19 +1537,6 @@ function getVipBonus(platform) {
   };
 }
 
-  const cfg = vipBonusTable.sem[platform.level];
-    const daily   = Number(cfg.daily)   || 0;
-    const weekly  = Number(cfg.weekly)  || 0;
-    const monthly = Number(cfg.monthly) || 0;
-
-    return {
-      daily:   daily * diasNoMes,
-      weekly:  weekly * segundasNoMes,
-      monthly,
-      total:   (daily * diasNoMes) + (weekly * segundasNoMes) + monthly
-  };
-}
-
 function renderVipPanel() {
   const totalsEl = document.getElementById('vipTotals');
   const summaryEl = document.getElementById('vipSummary');
@@ -1672,7 +1659,7 @@ function renderVipPanel() {
       id: 'p' + (i+1),
       name: PLATFORM_NAMES[i],
       lastResetDate: null,
-      deposits: []
+      deposits: [],
       betDays: []
     }));
     const PLAT_STORAGE_KEY = 'depositPlatforms_v3';
@@ -1687,7 +1674,7 @@ function renderVipPanel() {
           id: p.id || ('p' + (i+1)),
           name: p.name || PLATFORM_NAMES[i],
           lastResetDate: p.lastResetDate || null,
-          deposits: Array.isArray(p.deposits) ? p.deposits : []
+          deposits: Array.isArray(p.deposits) ? p.deposits : [],
           betDays: Array.isArray(p.betDays) ? p.betDays : []
         }));
       } catch (err) {
