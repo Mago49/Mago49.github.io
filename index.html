@@ -1569,6 +1569,7 @@ function renderVipPanel() {
   `;
 
   summaryEl.innerHTML = vipPlatforms.map((platform) => {
+    const merged = getMergedVipPlatform(platform);
     const bonus = getVipBonus(platform);
     const groupLabel = platform.group === 'com' ? 'Com aposta' : 'Sem aposta';
     const groupClass = platform.group === 'com' ? 'group-com' : 'group-sem';
