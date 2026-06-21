@@ -1506,22 +1506,18 @@ function getVipBonus(platform) {
     // Dias únicos apostados
     const uniqueBetDays = new Set(betDaysInCycle.map(d => d.slice(0, 10)));
 
-    // Segundas-feiras apostadas (para bônus semanal)
-    let mondaysBet = 0;
-    uniqueBetDays.forEach(dateStr => {
-      if (new Date(dateStr).getDay() === 1) mondaysBet++;
-    });
+ const dailyTotal = daily * uniqueBetDays.size;
 
-    const dailyTotal  = daily  * uniqueBetDays.size;
-    const weeklyTotal = weekly * mondaysBet;
+// semanal garantido
+const weeklyTotal = weekly;
 
-    return {
-      daily:   dailyTotal,
-      weekly:  weeklyTotal,
-      monthly,
-      total:   dailyTotal + weeklyTotal + monthly
-    };
-  }
+return {
+  daily: dailyTotal,
+  weekly: weeklyTotal,
+  monthly,
+  total: dailyTotal + weeklyTotal + monthly
+  };
+}
 
   // Grupo 'sem': usa dias/semanas do mês normalmente
   const cfg = vipBonusTable.sem[platform.level];
