@@ -1540,7 +1540,8 @@ function renderVipPanel() {
   if (!totalsEl || !summaryEl) return;
 
   const totals = vipPlatforms.reduce((acc, platform) => {
-    const bonus = getVipBonus(platform);
+  const merged = getMergedVipPlatform(platform);
+    const bonus = getVipBonus(merged);
     acc.daily += bonus.daily;
     acc.weekly += bonus.weekly;
     acc.monthly += bonus.monthly;
