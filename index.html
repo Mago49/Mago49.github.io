@@ -1546,19 +1546,6 @@ function getVipBonus(platform) {
     total: (daily * diasNoMes) + (weekly * segundasNoMes) + monthly
   };
 }
-  // Grupo 'sem': usa dias/semanas do mês normalmente
-  const cfg = vipBonusTable.sem[platform.level];
-    const daily   = Number(cfg.daily)   || 0;
-    const weekly  = Number(cfg.weekly)  || 0;
-    const monthly = Number(cfg.monthly) || 0;
-
-    return {
-      daily:   daily * diasNoMes,
-      weekly:  weekly * segundasNoMes,
-      monthly,
-      total:   (daily * diasNoMes) + (weekly * segundasNoMes) + monthly
-  };
-}
 
   function renderVipPanel() {
   const totalsEl = document.getElementById('vipTotals');
