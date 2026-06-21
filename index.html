@@ -1659,7 +1659,7 @@ function renderVipPanel() {
       id: 'p' + (i+1),
       name: PLATFORM_NAMES[i],
       lastResetDate: null,
-      deposits: []
+      deposits: [],
       betDays: []
     }));
     const PLAT_STORAGE_KEY = 'depositPlatforms_v3';
@@ -1674,7 +1674,7 @@ function renderVipPanel() {
           id: p.id || ('p' + (i+1)),
           name: p.name || PLATFORM_NAMES[i],
           lastResetDate: p.lastResetDate || null,
-          deposits: Array.isArray(p.deposits) ? p.deposits : []
+          deposits: Array.isArray(p.deposits) ? p.deposits : [],
           betDays: Array.isArray(p.betDays) ? p.betDays : []
         }));
       } catch (err) {
