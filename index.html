@@ -2214,6 +2214,16 @@ betModal.addEventListener('click', e => {
   }
 });
     let platforms = loadPlatforms();
+function getMergedVipPlatform(vipPlatform) {
+      const storedPlatform = platforms.find((platform) => platform.name === vipPlatform.code);
+      return {
+        ...vipPlatform,
+        lastResetDate: storedPlatform?.lastResetDate || null,
+        deposits: Array.isArray(storedPlatform?.deposits) ? storedPlatform.deposits : [],
+        betDays: Array.isArray(storedPlatform?.betDays) ? storedPlatform.betDays : []
+      };
+    }
+
     renderPlatformList();
 
     document.getElementById('platformSearch').addEventListener('input', (e) => {
