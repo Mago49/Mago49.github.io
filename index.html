@@ -1482,7 +1482,12 @@ function getVipBonus(platform) {
   const hoje = new Date();
   hoje.setHours(23, 59, 59, 999);
 
-  const cfg = vipBonusTable[platform.group]?.[platform.level] || {};
+  const cfg = vipBonusTable[platform.group]?.[platform.level] || {
+    daily: 0,
+    weekly: 0,
+    monthly: 0
+  };
+
   const daily = Number(cfg.daily) || 0;
   const weekly = Number(cfg.weekly) || 0;
   const monthly = Number(cfg.monthly) || 0;
@@ -1491,59 +1496,43 @@ function getVipBonus(platform) {
   const start = new Date(cycleStart);
   start.setHours(0, 0, 0, 0);
 
-  if (platform.group === 'com') {
-    const uniqueBetDays = new Set(
-      (platform.betDays || [])
-        .filter(dateStr => {
-          const d = new Date(dateStr);
-          return d >= start && d <= hoje;
-        })
-        .map(dateStr => dateStr.slice(0, 10))
-    );
-
-    const dailyTotal = daily * uniqueBetDays.size;
-
-    let mondaysCount = 0;
-    const mondayCursor = new Date(start);
-    while (mondayCursor <= hoje) {
-      if (mondayCursor.getDay() === 1) mondaysCount++;
-      mondayCursor.setDate(mondayCursor.getDate() + 1);
-    }
-    const weeklyTotal = weekly * mondaysCount;
-
-    let monthlyCount = 0;
-    const monthCursor = new Date(start.getFullYear(), start.getMonth(), 1);
-    while (monthCursor <= hoje) {
-      const firstDayOfMonth = new Date(monthCursor.getFullYear(), monthCursor.getMonth(), 1);
-      if (firstDayOfMonth >= start && firstDayOfMonth <= hoje) {
-        monthlyCount++;
-      }
-      monthCursor.setMonth(monthCursor.getMonth() + 1);
-    }
-    const monthlyTotal = monthly * monthlyCount;
-
-    return {
-      daily: dailyTotal,
-      weekly: weeklyTotal,
-      monthly: monthlyTotal,
-      total: dailyTotal + weeklyTotal + monthlyTotal
-    };
-  }
-
+  // semanal e mensal seguem a mesma lógica para "com" e "sem"
   const ano = hoje.getFullYear();
   const mes = hoje.getMonth();
   const diasNoMes = new Date(ano, mes + 1, 0).getDate();
 
   let segundasNoMes = 0;
   for (let d = 1; d <= diasNoMes; d++) {
-    if (new Date(ano, mes, d).getDay() === 1) segundasNoMes++;
+    if (new Date(ano, mes, d).getDay() === 1) {
+      segundasNoMes++;
+    }
+  }
+
+  const weeklyTotal = weekly * segundasNoMes;
+  const monthlyTotal = monthly;
+
+  let dailyTotal = daily * diasNoMes;
+
+  // apenas o diário das plataformas "com" depende do botão "Apostei hoje"
+  if (platform.group === 'com') {
+    const uniqueBetDays = new Set(
+      (platform.betDays || [])
+        .filter(dateStr => {
+          const d = new Date(dateStr);
+          d.setHours(0, 0, 0, 0);
+          return d >= start && d <= hoje;
+        })
+        .map(dateStr => dateStr.slice(0, 10))
+    );
+
+    dailyTotal = daily * uniqueBetDays.size;
   }
 
   return {
-    daily: daily * diasNoMes,
-    weekly: weekly * segundasNoMes,
-    monthly: monthly,
-    total: (daily * diasNoMes) + (weekly * segundasNoMes) + monthly
+    daily: dailyTotal,
+    weekly: weeklyTotal,
+    monthly: monthlyTotal,
+    total: dailyTotal + weeklyTotal + monthlyTotal
   };
 }
 
