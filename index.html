@@ -2085,9 +2085,7 @@ if (vipMeta && vipMeta.group === 'com') {
 
     resetConfirmBtn.addEventListener('click', () => {
       if (currentResetPlatform) {
-        const selectedDate = new Date(resetDateInput.value);
-        selectedDate.setHours(0, 0, 0, 0);
-        currentResetPlatform.lastResetDate = selectedDate.toISOString();
+        currentResetPlatform.lastResetDate = `${resetDateInput.value}T00:00:00`;
         savePlatforms(platforms);
         updateCalendarEvents();
         renderPlatformList(currentResetFilter);
