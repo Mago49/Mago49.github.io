@@ -1481,6 +1481,20 @@ function formatVipCurrency(value) {
   }).format(Number(value || 0));
 }
 
+function toLocalDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function parseDateKeyAsLocal(dateValue) {
+  const key = String(dateValue || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return null;
+  const [year, month, day] = key.split('-').map(Number);
+  return new Date(year, month - 1, day, 0, 0, 0, 0);
+}
+
 function getVipBonus(platform) {
   const hoje = new Date();
   hoje.setHours(23, 59, 59, 999);
@@ -1521,9 +1535,8 @@ function getVipBonus(platform) {
     const uniqueBetDays = new Set(
       (platform.betDays || [])
         .filter(dateStr => {
-          const d = new Date(dateStr);
-          d.setHours(0, 0, 0, 0);
-          return d >= start && d <= hoje;
+          const d = parseDateKeyAsLocal(dateStr);
+          return d && d >= start && d <= hoje;
         })
         .map(dateStr => dateStr.slice(0, 10))
     );
@@ -1926,10 +1939,11 @@ if (vipMeta && vipMeta.group === 'com') {
   betRow.className = 'bet-row';
 
   // Verifica se já apostou hoje
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = toLocalDateKey(new Date());
   const cycleStart = getCycleStart(p, new Date());
   const betDaysInCycle = (p.betDays || []).filter(d => {
-    return new Date(d) >= cycleStart;
+    const day = parseDateKeyAsLocal(d);
+    return day && day >= cycleStart;
   });
   const alreadyBetToday = betDaysInCycle.some(d => d.slice(0, 10) === todayStr);
 
@@ -2137,7 +2151,10 @@ function renderBetList() {
 
   const cycleStart = getCycleStart(currentBetPlatform, new Date());
   const days = (currentBetPlatform.betDays || [])
-    .filter(d => new Date(d) >= cycleStart)
+    .filter(d => {
+      const day = parseDateKeyAsLocal(d);
+      return day && day >= cycleStart;
+    })
     .map(d => d.slice(0, 10))
     .filter((v, i, arr) => arr.indexOf(v) === i) // únicos
     .sort((a, b) => b.localeCompare(a)); // mais recentes primeiro
