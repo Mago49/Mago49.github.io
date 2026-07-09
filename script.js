@@ -14,7 +14,7 @@
     2: { daily: 0.5, weekly: 1, monthly: 1 },
     3: { daily: 0.6, weekly: 2, monthly: 3 },
     4: { daily: 0.8, weekly: 3, monthly: 5 },
-    5: { daily: 1, weekly: 5, monthly: 8 }
+    5: { daily: 1, weekly: 5, monthly: 8 },
   }
 };
 
