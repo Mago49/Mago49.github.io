@@ -19,7 +19,6 @@
 };
 
 const vipPlatforms = [
-  { code: 'FXX', level: 2, group: 'com' },
   { code: '551X', level: 3, group: 'com' },
   { code: '838X', level: 3, group: 'com' },
   { code: 'PP11', level: 4, group: 'com' },
@@ -52,7 +51,8 @@ const vipPlatforms = [
   { code: '877X', level: 3, group: 'sem' },
   { code: '79C', level: 3, group: 'sem' },
   { code: '988K', level: 3, group: 'sem' },
-  { code: '84D', level: 3, group: 'sem' }
+  { code: '84D', level: 3, group: 'sem' },
+  { code: 'FXX', level: 2, group: 'sem' },
 ];
 
 function formatVipCurrency(value) {
