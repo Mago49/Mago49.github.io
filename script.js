@@ -34,7 +34,7 @@ const vipPlatforms = [
   { code: '899V', level: 3, group: 'com' },
   { code: '83H', level: 3, group: 'com' },
   { code: '5TTT', level: 3, group: 'com' },
-  { code: '552X', level: 3, group: 'com' },
+  { code: '552X', level: 3, group: 'com' }
 
   { code: '35C', level: 2, group: 'sem' },
   { code: '63V', level: 3, group: 'sem' },
