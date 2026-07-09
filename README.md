@@ -1,4 +1,4 @@
-# Calendário de Bônus
+## Calendário de Bônus
 
 Aplicação web single-page para gerenciar ciclos de depósitos, bônus e apostas em plataformas, com um calendário visual integrado.
 
