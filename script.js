@@ -234,7 +234,7 @@ function getVipBonus(platform) {
     animate();
 
     const PLATFORM_NAMES = [
-      'A73', 'DDUU', 'EE44', 'FXX','NNZZ', 'PP11', '1UUU', '11TT', '35C',
+      'A73', 'DDUU', 'EE44', 'FXX','NNZZ', 'HHH5', 'PP11', '1UUU', '11TT', '35C',
       '36Q', '44MM', '45T', '5TTT', '53D', '552X', '551X', '61T', '63V', '66GG',
       '68D', '7GGG', '7JJJ', '72B', '79C', '83H', '838X', '84D', '877X', '899V',
       '93D', '93K', '988K'
