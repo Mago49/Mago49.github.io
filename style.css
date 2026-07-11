@@ -918,4 +918,301 @@
       right: 0;
       z-index: 30;
       background: var(--footer-bg);
-      border-top: 1
+      border-top: 1px solid rgba(15,23,42,0.06);
+      display:flex;
+      gap:0.75rem;
+      align-items:center;
+      justify-content: center;
+      padding: 0.7rem 1rem;
+      box-shadow: 0 -10px 24px rgba(2,6,23,0.05);
+      flex-wrap:wrap;
+      backdrop-filter: blur(14px);
+    }
+
+    .legend-item {
+      display:flex;
+      gap:0.42rem;
+      align-items:center;
+      font-size:0.85rem;
+      color:var(--text-dark);
+      padding: 0.2rem 0.1rem;
+    }
+
+    .legend-swatch {
+      width:20px;
+      height:16px;
+      border-radius:5px;
+      border:1px solid var(--event-border);
+      box-shadow: inset 0 -2px 0 rgba(0,0,0,0.03);
+    }
+
+    .legend-label {
+      font-weight:700;
+      margin-right:0.15rem;
+      color:var(--text-dark);
+      font-size: 0.8rem;
+    }
+
+    @media (max-width: 1100px){
+      .hero-content,
+      .layout-grid {
+        grid-template-columns: 1fr;
+      }
+
+      #platformList {
+        max-height: 500px;
+      }
+    }
+
+    @media (max-width:900px){
+      .page-shell {
+        width: min(100% - 1rem, 1240px);
+        padding-bottom: 8.4rem;
+      }
+
+      .hero {
+        padding: 1.2rem;
+      }
+
+      .hero-summary {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      #calendar {
+        min-height: 420px;
+        padding: 0.9rem;
+      }
+
+      .fc .fc-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+      }
+
+      .fc .fc-toolbar-title {
+        text-align: center;
+      }
+
+      .fc .fc-toolbar-chunk {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+      }
+
+      #platformPanel .panel-header {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      #platformPanel .panel-controls {
+        width: 100%;
+      }
+    }
+
+    @media (max-width:640px){
+      .page-shell {
+        width: calc(100% - 0.75rem);
+        padding-bottom: 9rem;
+      }
+
+      .hero h1 {
+        font-size: 1.8rem;
+      }
+
+      .hero p {
+        font-size: 0.95rem;
+      }
+
+      .hero-summary {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-actions,
+      .panel-actions,
+      .platform-actions-buttons,
+      .reset-modal-buttons {
+        flex-direction: column;
+      }
+
+      .hero-actions button,
+      .panel-actions button,
+      .platform-actions-buttons button,
+      .reset-modal-buttons button {
+        width: 100%;
+      }
+
+      .platform-meta,
+      .history-item,
+      .history-item-content {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .minimize-tab {
+        bottom: 110px;
+        width: calc(100% - 2rem);
+        text-align: center;
+      }
+
+      footer.legend {
+        justify-content: flex-start;
+        padding-bottom: calc(0.8rem + env(safe-area-inset-bottom));
+      }
+    }
+  /* === APOSTAS (COM aposta) === */
+.bet-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding-top: 0.1rem;
+}
+
+.bet-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.bet-today-btn {
+  flex: 1;
+  min-width: 120px;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  background: var(--accent);
+  color: #fff;
+}
+
+.bet-today-btn.already-bet {
+  background: #166534;
+  opacity: 0.75;
+  cursor: default;
+}
+
+.bet-manage-btn {
+  padding: 0.6rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  background: var(--blue);
+  color: #fff;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+
+.bet-count-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #166534;
+  background: #dcfce7;
+  border: 1px solid #bbf7d0;
+  border-radius: 999px;
+  padding: 0.25rem 0.6rem;
+}
+
+/* Modal de gerenciar apostas */
+.bet-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.bet-modal-header h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.bet-modal-close {
+  border: none;
+  border-radius: 10px;
+  padding: 0.45rem 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.bet-add-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.bet-add-row input[type="date"] {
+  flex: 1;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.bet-add-row input[type="date"]:focus {
+  border-color: rgba(37,99,235,0.45);
+  box-shadow: 0 0 0 4px rgba(37,99,235,0.12);
+}
+
+.bet-add-confirm {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 0.7rem 1rem;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.bet-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.bet-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.65rem 0.85rem;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  font-size: 0.9rem;
+  gap: 0.5rem;
+}
+
+.bet-list-item span {
+  font-weight: 600;
+  color: var(--text-dark);
+}
+
+.bet-list-remove {
+  background: var(--danger);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.3rem 0.6rem;
+  font-weight: 700;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.bet-empty {
+  text-align: center;
+  color: #64748b;
+  font-size: 0.9rem;
+  padding: 0.5rem 0;
+}
