@@ -14,11 +14,12 @@
     2: { daily: 0.5, weekly: 1, monthly: 1 },
     3: { daily: 0.6, weekly: 2, monthly: 3 },
     4: { daily: 0.8, weekly: 3, monthly: 5 },
-    5: { daily: 1, weekly: 5, monthly: 8 },
+    5: { daily: 1, weekly: 5, monthly: 8 }
   }
 };
 
 const vipPlatforms = [
+  { code: 'FXX', level: 2, group: 'com' },
   { code: '551X', level: 3, group: 'com' },
   { code: '838X', level: 3, group: 'com' },
   { code: 'PP11', level: 4, group: 'com' },
@@ -33,7 +34,7 @@ const vipPlatforms = [
   { code: '899V', level: 3, group: 'com' },
   { code: '83H', level: 3, group: 'com' },
   { code: '5TTT', level: 3, group: 'com' },
-  { code: 'HHH5', level: 1, group: 'com' },
+  { code: '84D', level: 3, group: 'com' },
   { code: '552X', level: 3, group: 'com' },
 
   { code: '35C', level: 2, group: 'sem' },
@@ -51,15 +52,41 @@ const vipPlatforms = [
   { code: '877X', level: 3, group: 'sem' },
   { code: '79C', level: 3, group: 'sem' },
   { code: '988K', level: 3, group: 'sem' },
-  { code: '84D', level: 3, group: 'sem' },
-  { code: 'FXX', level: 2, group: 'sem' },
+  { code: 'HHH5', level: 0, group: 'sem' }
 ];
 
-function formatVipCurrency(value) {
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL'
-  }).format(Number(value || 0));
+// Modal genérico de alerta/confirmação (substitui alert()/confirm() nativos do navegador)
+function showAppModal(message, showCancel) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('appModal');
+    const messageEl = document.getElementById('appModalMessage');
+    const confirmBtn = document.getElementById('appModalConfirmBtn');
+    const cancelBtn = document.getElementById('appModalCancelBtn');
+
+    messageEl.textContent = message;
+    cancelBtn.style.display = showCancel ? 'inline-block' : 'none';
+    modal.style.display = 'flex';
+
+    function cleanup(result) {
+      modal.style.display = 'none';
+      confirmBtn.removeEventListener('click', onConfirm);
+      cancelBtn.removeEventListener('click', onCancel);
+      resolve(result);
+    }
+    function onConfirm() { cleanup(true); }
+    function onCancel() { cleanup(false); }
+
+    confirmBtn.addEventListener('click', onConfirm);
+    cancelBtn.addEventListener('click', onCancel);
+  });
+}
+
+function showAppAlert(message) {
+  return showAppModal(message, false);
+}
+
+function showAppConfirm(message) {
+  return showAppModal(message, true);
 }
 
 function getVipBonus(platform) {
@@ -139,19 +166,19 @@ function getVipBonus(platform) {
   totalsEl.innerHTML = `
     <div class="vip-total-box">
       <span class="vip-total-label">Diário</span>
-      <span class="vip-total-value">${formatVipCurrency(totals.daily)}</span>
+      <span class="vip-total-value">${formatCurrency(totals.daily)}</span>
     </div>
     <div class="vip-total-box">
       <span class="vip-total-label">Semanal</span>
-      <span class="vip-total-value">${formatVipCurrency(totals.weekly)}</span>
+      <span class="vip-total-value">${formatCurrency(totals.weekly)}</span>
     </div>
     <div class="vip-total-box">
       <span class="vip-total-label">Mensal</span>
-      <span class="vip-total-value">${formatVipCurrency(totals.monthly)}</span>
+      <span class="vip-total-value">${formatCurrency(totals.monthly)}</span>
     </div>
     <div class="vip-total-box">
       <span class="vip-total-label">Total</span>
-      <span class="vip-total-value">${formatVipCurrency(totals.total)}</span>
+      <span class="vip-total-value">${formatCurrency(totals.total)}</span>
     </div>
   `;
 
@@ -174,24 +201,24 @@ function getVipBonus(platform) {
         <div class="vip-breakdown">
           <div class="vip-box">
             <span class="vip-box-title">Diário</span>
-            <span class="vip-box-value">${formatVipCurrency(bonus.daily)}</span>
+            <span class="vip-box-value">${formatCurrency(bonus.daily)}</span>
           </div>
           <div class="vip-box">
             <span class="vip-box-title">Semanal</span>
-            <span class="vip-box-value">${formatVipCurrency(bonus.weekly)}</span>
+            <span class="vip-box-value">${formatCurrency(bonus.weekly)}</span>
           </div>
           <div class="vip-box">
             <span class="vip-box-title">Mensal</span>
-            <span class="vip-box-value">${formatVipCurrency(bonus.monthly)}</span>
+            <span class="vip-box-value">${formatCurrency(bonus.monthly)}</span>
           </div>
           <div class="vip-box">
             <span class="vip-box-title">Total</span>
-            <span class="vip-box-value">${formatVipCurrency(bonus.total)}</span>
+            <span class="vip-box-value">${formatCurrency(bonus.total)}</span>
           </div>
         </div>
 
         <div class="vip-total-line">
-          Soma do bônus: ${formatVipCurrency(bonus.total)}
+          Soma do bônus: ${formatCurrency(bonus.total)}
         </div>
       </article>
     `;
@@ -234,7 +261,7 @@ function getVipBonus(platform) {
     animate();
 
     const PLATFORM_NAMES = [
-      'A73', 'DDUU', 'EE44', 'FXX','NNZZ', 'HHH5', 'PP11', '1UUU', '11TT', '35C',
+      'A73', 'DDUU', 'EE44', 'FXX', 'HHH5','NNZZ', 'PP11', '1UUU', '11TT', '35C',
       '36Q', '44MM', '45T', '5TTT', '53D', '552X', '551X', '61T', '63V', '66GG',
       '68D', '7GGG', '7JJJ', '72B', '79C', '83H', '838X', '84D', '877X', '899V',
       '93D', '93K', '988K'
@@ -466,11 +493,11 @@ function getVipBonus(platform) {
 
         const btn = document.createElement('button');
         btn.textContent = 'Adicionar';
-        btn.addEventListener('click', (e) => {
+        btn.addEventListener('click', async (e) => {
           e.stopPropagation();
           const value = parseFloat(input.value);
           if (isNaN(value) || value <= 0) {
-            alert('Digite um valor válido');
+            await showAppAlert('Digite um valor válido');
             return;
           }
           p.deposits.push({
@@ -609,12 +636,13 @@ if (vipMeta && vipMeta.group === 'com') {
           const deleteBtn = document.createElement('button');
           deleteBtn.className = 'history-delete-btn';
           deleteBtn.textContent = 'Excluir';
-          deleteBtn.addEventListener('click', () => {
-            if (confirm(`Deseja excluir este depósito de ${formatCurrency(dep.value)}?`)) {
+          deleteBtn.addEventListener('click', async () => {
+            const ok = await showAppConfirm(`Deseja excluir este depósito de ${formatCurrency(dep.value)}?`);
+            if (ok) {
               platform.deposits.splice(platform.deposits.indexOf(dep), 1);
               savePlatforms(platforms);
               updateCalendarEvents();
-              renderPlatformList(document.getElementById('platformSearch').value);
+              renderPlatformList(platformSearchEl.value);
               showHistoryModal(platform);
               updateHeroSummary();
             }
@@ -754,7 +782,7 @@ function renderBetList() {
   });
 }
 
-betAddConfirm.addEventListener('click', () => {
+betAddConfirm.addEventListener('click', async () => {
   if (!currentBetPlatform || !betDateInput.value) return;
   const dateStr = betDateInput.value; // 'YYYY-MM-DD'
   if (!currentBetPlatform.betDays) currentBetPlatform.betDays = [];
@@ -762,7 +790,7 @@ betAddConfirm.addEventListener('click', () => {
   // Não duplica
   const already = currentBetPlatform.betDays.some(d => d.slice(0, 10) === dateStr);
   if (already) {
-    alert('Este dia já está registrado.');
+    await showAppAlert('Este dia já está registrado.');
     return;
   }
 
@@ -797,7 +825,11 @@ function getMergedVipPlatform(vipPlatform) {
 
     renderPlatformList();
 
-    document.getElementById('platformSearch').addEventListener('input', (e) => {
+    const platformPanelEl = document.getElementById('platformPanel');
+    const calendarEl = document.getElementById('calendar');
+    const platformSearchEl = document.getElementById('platformSearch');
+
+    platformSearchEl.addEventListener('input', (e) => {
       renderPlatformList(e.target.value);
     });
 
@@ -806,8 +838,9 @@ function getMergedVipPlatform(vipPlatform) {
       showAllBonusCalendar();
     });
 
-    document.getElementById('resetAllBtn').addEventListener('click', () => {
-      if (!confirm('Resetar todos os depósitos de TODAS as plataformas?')) return;
+    document.getElementById('resetAllBtn').addEventListener('click', async () => {
+      const ok = await showAppConfirm('Resetar todos os depósitos de TODAS as plataformas?');
+      if (!ok) return;
       platforms.forEach(p => p.deposits = []);
       savePlatforms(platforms);
       renderPlatformList();
@@ -816,32 +849,29 @@ function getMergedVipPlatform(vipPlatform) {
     });
 
     document.getElementById('scrollToPanelBtn').addEventListener('click', () => {
-      document.getElementById('platformPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      platformPanelEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
 
     document.getElementById('scrollToCalendarBtn').addEventListener('click', () => {
-      document.getElementById('calendar').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      calendarEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
 
     const toggleBtn = document.getElementById('togglePanelBtn');
-    const panel = document.getElementById('platformPanel');
     const minimizeTab = document.getElementById('minimizeTab');
 
     toggleBtn.addEventListener('click', () => {
-      panel.classList.toggle('minimized');
+      platformPanelEl.classList.toggle('minimized');
       minimizeTab.classList.toggle('show');
-      toggleBtn.title = panel.classList.contains('minimized') ? 'Abrir painel' : 'Minimizar painel';
-      minimizeTab.textContent = panel.classList.contains('minimized') ? 'Abrir Painel' : 'Fechar Painel';
+      toggleBtn.title = platformPanelEl.classList.contains('minimized') ? 'Abrir painel' : 'Minimizar painel';
+      minimizeTab.textContent = platformPanelEl.classList.contains('minimized') ? 'Abrir Painel' : 'Fechar Painel';
     });
 
     minimizeTab.addEventListener('click', () => {
-      panel.classList.remove('minimized');
+      platformPanelEl.classList.remove('minimized');
       minimizeTab.classList.remove('show');
       toggleBtn.title = 'Minimizar painel';
       minimizeTab.textContent = 'Abrir Painel';
     });
-
-    const calendarEl = document.getElementById('calendar');
 
     function updateCalendarEvents(){
       if (!calendar) return;
@@ -885,10 +915,6 @@ function getMergedVipPlatform(vipPlatform) {
         const eventPlatformId = event.extendedProps.platformId;
         event.setProp('display', eventPlatformId === platformId ? 'block' : 'none');
       });
-      const p = platforms.find(x => x.id === platformId);
-      if (p) {
-        console.log(`Filtrando: ${p.name} | Dia do ciclo: ${getCurrentCycleDay(p)} | Total: ${formatCurrency(getTotalDepositsSinceCycle(p))}`);
-      }
     }
 
     function showAllBonusCalendar(){
@@ -896,7 +922,6 @@ function getMergedVipPlatform(vipPlatform) {
       allEvents.forEach(event => {
         event.setProp('display', 'block');
       });
-      console.log('Exibindo todos os bônus do calendário');
     }
 
     const calendar = new FullCalendar.Calendar(calendarEl, {
@@ -932,7 +957,7 @@ function getMergedVipPlatform(vipPlatform) {
       const ms = nextMidnight - now;
       setTimeout(() => {
         updateCalendarEvents();
-        renderPlatformList(document.getElementById('platformSearch').value);
+        renderPlatformList(platformSearchEl.value);
         updateHeroSummary();
         scheduleDailyUpdate();
       }, ms);
