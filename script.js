@@ -316,27 +316,27 @@ function getVipBonus(platform) {
     }
 
     function getCurrentCycleDay(platform, refDate = new Date()){
-      const cycleStart = getCycleStart(platform, refDate);
-      const today = new Date(refDate);
-      today.setHours(0, 0, 0, 0);
+  const cycleStart = getCycleStart(platform, refDate);
+  const today = new Date(refDate);
+  today.setHours(0, 0, 0, 0);
 
-      const timeDiff = today - cycleStart;
-      const dayDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+  const daysSinceCycleStart = Math.floor((today - cycleStart) / (1000 * 60 * 60 * 24));
 
-      if (dayDiff < 0) return 0;
-      return dayDiff;
-    }
-
-    function computeEmissionDates(platform, refDate = new Date()){
-      const cycleStart = getCycleStart(platform, refDate);
-      const offsets = [1, 2, 6, 14, 29];
-      return offsets.map(n => {
-        const d = new Date(cycleStart);
-        d.setDate(d.getDate() + n);
-        d.setHours(0,0,0,0);
-        return d;
-      });
-    }
+  if (daysSinceCycleStart < 0) return 0;
+  return daysSinceCycleStart + 1;
+}
+ // Dias do ciclo em que o bônus é emitido (2°, 3°, 7°, 15°, 30°)
+// cycleStart = Dia 1, por isso subtraímos 1 pra achar o deslocamento em dias.
+function computeEmissionDates(platform, refDate = new Date()){
+  const cycleStart = getCycleStart(platform, refDate);
+  const EMISSION_DAYS = [2, 3, 7, 15, 30];
+  return EMISSION_DAYS.map(day => {
+    const d = new Date(cycleStart);
+    d.setDate(d.getDate() + (day - 1));
+    d.setHours(0,0,0,0);
+    return d;
+  });
+}
 
     function sumDepositsUpTo(platform, toDate){
       const cycleStart = getCycleStart(platform, toDate);
