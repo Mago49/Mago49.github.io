@@ -624,6 +624,8 @@
   padding: 0 1.1rem 1rem;
   overflow-y: auto;
   max-height: 320px; /* ajuste esse valor pra controlar quanto ele reduz */
+  -webkit-overflow-scrolling: touch; /* rolagem mais suave no mobile */
+  scrollbar-width: thin; /* barra de rolagem mais discreta */
 }
 
 .vip-item {
