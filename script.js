@@ -129,7 +129,7 @@ function getVipBonus(platform) {
     const uniqueBetDays = new Set(
       (platform.betDays || [])
         .filter(dateStr => {
-          const d = new Date(dateStr);
+          const d = parseLocalDateOnly(dateStr);
           d.setHours(0, 0, 0, 0);
           return d >= start && d <= hoje;
         })
@@ -306,6 +306,18 @@ function getVipBonus(platform) {
       }).format(Number(value) || 0);
     }
 
+    function toLocalDateStr(date = new Date()){
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+    function parseLocalDateOnly(dateStr){
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
     function getCycleStart(platform, refDate = new Date()){
       if (platform.lastResetDate) {
         const resetDate = new Date(platform.lastResetDate);
@@ -327,7 +339,7 @@ function getVipBonus(platform) {
 }
  // Dias do ciclo em que o bônus é emitido (2°, 3°, 7°, 15°, 30°)
 // cycleStart = Dia 1, por isso subtraímos 1 pra achar o deslocamento em dias.
-function computeEmissionDates(platform, refDate = new Date()){
+    function computeEmissionDates(platform, refDate = new Date()){
   const cycleStart = getCycleStart(platform, refDate);
   const EMISSION_DAYS = [2, 3, 7, 15, 30];
   return EMISSION_DAYS.map(day => {
@@ -525,7 +537,7 @@ actionButtons.appendChild(resetBtn);
 li.appendChild(actionButtons);
 
 // Seção de apostas — só para plataformas 'com aposta'
-const vipMeta = vipPlatforms.find(v => v.code === p.name);
+  const vipMeta = vipPlatforms.find(v => v.code === p.name);
 if (vipMeta && vipMeta.group === 'com') {
   const betSection = document.createElement('div');
   betSection.className = 'bet-section';
@@ -534,11 +546,11 @@ if (vipMeta && vipMeta.group === 'com') {
   betRow.className = 'bet-row';
 
   // Verifica se já apostou hoje
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = toLocalDateStr();
   const cycleStart = getCycleStart(p, new Date());
   const betDaysInCycle = (p.betDays || []).filter(d => {
-    return new Date(d) >= cycleStart;
-  });
+  return parseLocalDateOnly(d) >= cycleStart;
+});
   const alreadyBetToday = betDaysInCycle.some(d => d.slice(0, 10) === todayStr);
 
   // Botão "Apostei hoje"
@@ -746,7 +758,7 @@ function renderBetList() {
 
   const cycleStart = getCycleStart(currentBetPlatform, new Date());
   const days = (currentBetPlatform.betDays || [])
-    .filter(d => new Date(d) >= cycleStart)
+    .filter(d => parseLocalDateOnly(d) >= cycleStart)
     .map(d => d.slice(0, 10))
     .filter((v, i, arr) => arr.indexOf(v) === i) // únicos
     .sort((a, b) => b.localeCompare(a)); // mais recentes primeiro
