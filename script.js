@@ -1,4 +1,4 @@
-  document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', () => {
     const vipBonusTable = {
   com: {
     0: { daily: 0, weekly: 0, monthly: 0 },
@@ -129,7 +129,7 @@ function getVipBonus(platform) {
     const uniqueBetDays = new Set(
       (platform.betDays || [])
         .filter(dateStr => {
-          const d = parseLocalDateOnly(dateStr);
+          const d = new Date(dateStr);
           d.setHours(0, 0, 0, 0);
           return d >= start && d <= hoje;
         })
@@ -210,7 +210,7 @@ function getVipBonus(platform) {
           <div class="vip-box">
             <span class="vip-box-title">Mensal</span>
             <span class="vip-box-value">${formatCurrency(bonus.monthly)}</span>
-          </div>
+</div>
           <div class="vip-box">
             <span class="vip-box-title">Total</span>
             <span class="vip-box-value">${formatCurrency(bonus.total)}</span>
@@ -272,8 +272,7 @@ function getVipBonus(platform) {
       name: PLATFORM_NAMES[i],
       lastResetDate: null,
       deposits: [],
-      betDays: [],
-      cycleEnded: false
+      betDays: []
     }));
     const PLAT_STORAGE_KEY = 'depositPlatforms_v3';
 
@@ -288,8 +287,7 @@ function getVipBonus(platform) {
           name: p.name || PLATFORM_NAMES[i],
           lastResetDate: p.lastResetDate || null,
           deposits: Array.isArray(p.deposits) ? p.deposits : [],
-          betDays: Array.isArray(p.betDays) ? p.betDays : [],
-          cycleEnded: p.cycleEnded === true
+          betDays: Array.isArray(p.betDays) ? p.betDays : []
         }));
       } catch (err) {
         console.error('Erro ao ler plataformas', err);
@@ -307,18 +305,6 @@ function getVipBonus(platform) {
         currency: 'BRL'
       }).format(Number(value) || 0);
     }
-
-    function toLocalDateStr(date = new Date()){
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
-    function parseLocalDateOnly(dateStr){
-  const [y, m, d] = dateStr.split('-').map(Number);
-  return new Date(y, m - 1, d);
-}
 
     function getCycleStart(platform, refDate = new Date()){
       if (platform.lastResetDate) {
@@ -341,7 +327,7 @@ function getVipBonus(platform) {
 }
  // Dias do ciclo em que o bônus é emitido (2°, 3°, 7°, 15°, 30°)
 // cycleStart = Dia 1, por isso subtraímos 1 pra achar o deslocamento em dias.
-    function computeEmissionDates(platform, refDate = new Date()){
+function computeEmissionDates(platform, refDate = new Date()){
   const cycleStart = getCycleStart(platform, refDate);
   const EMISSION_DAYS = [2, 3, 7, 15, 30];
   return EMISSION_DAYS.map(day => {
@@ -393,16 +379,15 @@ function getVipBonus(platform) {
       const target = new Date(targetDate);
       target.setHours(0,0,0,0);
       const targetTime = target.getTime();
-      return platforms.filter(platform => !platform.cycleEnded && computeEmissionDates(platform).some(date => date.getTime() === targetTime));
+      return platforms.filter(platform => computeEmissionDates(platform).some(date => date.getTime() === targetTime));
     }
 
     function updateHeroSummary(){
       const totalPlatforms = platforms.length;
       const totalDeposits = platforms.reduce((sum, platform) => sum + getTotalDepositsSinceCycle(platform), 0);
       const bonusToday = getEventsForDate(new Date()).length;
-      const activeCycles = platforms.filter(platform => !platform.cycleEnded && platform.lastResetDate && getCurrentCycleDay(platform) > 0).length;
+      const activeCycles = platforms.filter(platform => platform.lastResetDate && getCurrentCycleDay(platform) > 0).length;
       const topPlatform = [...platforms]
-        .filter(platform => !platform.cycleEnded)
         .sort((a, b) => getTotalDepositsSinceCycle(b) - getTotalDepositsSinceCycle(a))[0];
 
       document.getElementById('heroPlatformCount').textContent = String(totalPlatforms);
@@ -432,7 +417,7 @@ function getVipBonus(platform) {
 
       items.forEach(p => {
         const li = document.createElement('li');
-        li.className = 'platform-item' + (p.cycleEnded ? ' ended' : '');
+        li.className = 'platform-item';
         li.dataset.id = p.id;
 
         const total = getTotalDepositsSinceCycle(p);
@@ -448,10 +433,7 @@ function getVipBonus(platform) {
 
         const cycleInfo = document.createElement('div');
         cycleInfo.className = 'cycle-day';
-        if (p.cycleEnded) {
-          cycleInfo.classList.add('cycle-ended');
-          cycleInfo.textContent = '⏸ Encerrado';
-        } else if (cycleDay === 0) {
+        if (cycleDay === 0) {
           cycleInfo.classList.add('no-bonus');
           cycleInfo.textContent = 'Dia 0';
         } else {
@@ -461,13 +443,6 @@ function getVipBonus(platform) {
         header.appendChild(name);
         header.appendChild(cycleInfo);
         li.appendChild(header);
-
-        if (p.cycleEnded) {
-          const alertBanner = document.createElement('div');
-          alertBanner.className = 'ended-badge';
-          alertBanner.textContent = '⚠️ Ciclo encerrado — aguardando reinício';
-          li.appendChild(alertBanner);
-        }
 
         const meta = document.createElement('div');
         meta.className = 'platform-meta';
@@ -497,11 +472,10 @@ function getVipBonus(platform) {
 
         const input = document.createElement('input');
         input.type = 'number';
-        input.placeholder = p.cycleEnded ? 'Ciclo encerrado — aguardando reinício' : 'Valor do depósito';
+        input.placeholder = 'Valor do depósito';
         input.min = '0';
         input.step = '0.01';
         input.value = '';
-        input.disabled = p.cycleEnded;
 
         form.appendChild(input);
         li.appendChild(form);
@@ -519,10 +493,8 @@ function getVipBonus(platform) {
 
         const btn = document.createElement('button');
         btn.textContent = 'Adicionar';
-        btn.disabled = p.cycleEnded;
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
-          if (p.cycleEnded) return;
           const value = parseFloat(input.value);
           if (isNaN(value) || value <= 0) {
             await showAppAlert('Digite um valor válido');
@@ -537,7 +509,344 @@ function getVipBonus(platform) {
           updateCalendarEvents();
           renderPlatformList(q);
           updateHeroSummary();
+        });
+
+        const resetBtn = document.createElement('button');
+        resetBtn.textContent = 'Reinício';
+        resetBtn.style.background = '#ef4444';
+        resetBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          showResetModal(p, q);
+        });
+
+        actionButtons.appendChild(historyBtn);
+actionButtons.appendChild(btn);
+actionButtons.appendChild(resetBtn);
+li.appendChild(actionButtons);
+
+// Seção de apostas — só para plataformas 'com aposta'
+const vipMeta = vipPlatforms.find(v => v.code === p.name);
+if (vipMeta && vipMeta.group === 'com') {
+  const betSection = document.createElement('div');
+  betSection.className = 'bet-section';
+
+  const betRow = document.createElement('div');
+  betRow.className = 'bet-row';
+
+  // Verifica se já apostou hoje
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const cycleStart = getCycleStart(p, new Date());
+  const betDaysInCycle = (p.betDays || []).filter(d => {
+    return new Date(d) >= cycleStart;
+  });
+  const alreadyBetToday = betDaysInCycle.some(d => d.slice(0, 10) === todayStr);
+
+  // Botão "Apostei hoje"
+  const betTodayBtn = document.createElement('button');
+  betTodayBtn.className = 'bet-today-btn' + (alreadyBetToday ? ' already-bet' : '');
+  betTodayBtn.textContent = alreadyBetToday ? '✓ Apostei hoje' : '🎯 Apostei hoje';
+  betTodayBtn.disabled = alreadyBetToday;
+  betTodayBtn.addEventListener('click', ev => {
+    ev.stopPropagation();
+    if (alreadyBetToday) return;
+    if (!p.betDays) p.betDays = [];
+    p.betDays.push(todayStr);
+    savePlatforms(platforms);
+    renderPlatformList(q);
+renderVipPanel();
+  });
+
+  // Badge de contagem
+  const betCount = document.createElement('span');
+  betCount.className = 'bet-count-badge';
+  betCount.textContent = `🎲 ${betDaysInCycle.length} dia(s)`;
+
+  // Botão gerenciar
+  const betManageBtn = document.createElement('button');
+  betManageBtn.className = 'bet-manage-btn';
+  betManageBtn.textContent = 'Gerenciar';
+  betManageBtn.addEventListener('click', ev => {
+    ev.stopPropagation();
+    showBetModal(p, q);
+  });
+
+  betRow.appendChild(betTodayBtn);
+  betRow.appendChild(betCount);
+  betRow.appendChild(betManageBtn);
+  betSection.appendChild(betRow);
+  li.appendChild(betSection);
+}
+
+        li.addEventListener('click', (e) => {
+          if (e.target === btn || e.target === input || e.target === resetBtn || e.target === historyBtn) return;
+          document.querySelectorAll('.platform-item').forEach(el => el.classList.remove('selected'));
+          li.classList.add('selected');
+          filterCalendarByPlatform(p.id);
+        });
+
+        listEl.appendChild(li);
+      });
+
+      const totalAll = platforms.reduce((s, pl) => s + getTotalDepositsSinceCycle(pl), 0);
+      countEl.textContent = `${items.length} plataformas • Total geral: ${formatCurrency(totalAll)}`;
+      updateHeroSummary();
+    }
+
+    const historyModal = document.getElementById('historyModal');
+    const historyTitle = document.getElementById('historyTitle');
+    const historyList = document.getElementById('historyList');
+    const historyCloseBtn = document.getElementById('historyCloseBtn');
+    let currentHistoryPlatform = null;
+
+    function showHistoryModal(platform){
+      currentHistoryPlatform = platform;
+      historyTitle.textContent = `Histórico de Depósitos - ${platform.name}`;
+      historyList.innerHTML = '';
+
+      if (platform.deposits.length === 0) {
+        historyList.innerHTML = '<div class="history-empty">Nenhum depósito registrado</div>';
+      } else {
+        const sortedDeposits = [...platform.deposits].sort((a, b) => new Date(b.date) - new Date(a.date));
+        sortedDeposits.forEach((dep) => {
+          const depositDate = new Date(dep.date);
+          const dia = String(depositDate.getDate()).padStart(2, '0');
+          const mes = String(depositDate.getMonth() + 1).padStart(2, '0');
+          const ano = depositDate.getFullYear();
+          const horas = String(depositDate.getHours()).padStart(2, '0');
+          const minutos = String(depositDate.getMinutes()).padStart(2, '0');
+
+          const item = document.createElement('div');
+          item.className = 'history-item';
+
+          const itemContent = document.createElement('div');
+          itemContent.className = 'history-item-content';
+
+          const dateSpan = document.createElement('span');
+          dateSpan.className = 'history-date';
+          dateSpan.textContent = `${dia}/${mes}/${ano} ${horas}:${minutos}`;
+
+          const valueSpan = document.createElement('span');
+          valueSpan.className = 'history-value';
+          valueSpan.textContent = formatCurrency(dep.value);
+
+          itemContent.appendChild(dateSpan);
+          itemContent.appendChild(valueSpan);
+          item.appendChild(itemContent);
+
+          const deleteBtn = document.createElement('button');
+          deleteBtn.className = 'history-delete-btn';
+          deleteBtn.textContent = 'Excluir';
+          deleteBtn.addEventListener('click', async () => {
+            const ok = await showAppConfirm(`Deseja excluir este depósito de ${formatCurrency(dep.value)}?`);
+            if (ok) {
+              platform.deposits.splice(platform.deposits.indexOf(dep), 1);
+              savePlatforms(platforms);
+              updateCalendarEvents();
+              renderPlatformList(platformSearchEl.value);
+              showHistoryModal(platform);
+              updateHeroSummary();
+            }
+          });
+          item.appendChild(deleteBtn);
+
+          historyList.appendChild(item);
+        });
+      }
+
+      historyModal.style.display = 'flex';
+    }
+
+historyCloseBtn.addEventListener('click', () => {
+      historyModal.style.display = 'none';
+      currentHistoryPlatform = null;
     });
+
+    historyModal.addEventListener('click', (e) => {
+      if (e.target === historyModal) {
+        historyModal.style.display = 'none';
+        currentHistoryPlatform = null;
+      }
+    });
+
+    const resetModal = document.getElementById('resetModal');
+    const resetModalText = document.getElementById('resetModalText');
+    const resetDateInput = document.getElementById('resetDateInput');
+    const resetConfirmBtn = document.getElementById('resetConfirmBtn');
+    const resetCancelBtn = document.getElementById('resetCancelBtn');
+    let currentResetPlatform = null;
+    let currentResetFilter = '';
+
+    function showResetModal(platform, filter){
+      currentResetPlatform = platform;
+      currentResetFilter = filter;
+      resetModalText.textContent = `Reiniciar ciclo de ${platform.name}?`;
+
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      resetDateInput.value = `${yyyy}-${mm}-${dd}`;
+
+      resetModal.style.display = 'flex';
+    }
+
+    function closeResetModal(){
+      resetModal.style.display = 'none';
+      currentResetPlatform = null;
+    }
+
+    resetConfirmBtn.addEventListener('click', () => {
+      if (currentResetPlatform) {
+        currentResetPlatform.lastResetDate = `${resetDateInput.value}T00:00:00`;
+        savePlatforms(platforms);
+        updateCalendarEvents();
+        renderPlatformList(currentResetFilter);
+        updateHeroSummary();
+      }
+      closeResetModal();
+    });
+
+    resetCancelBtn.addEventListener('click', () => {
+      closeResetModal();
+    });
+
+    resetModal.addEventListener('click', (e) => {
+      if (e.target === resetModal) closeResetModal();
+    });
+
+// === MODAL GERENCIAR APOSTAS ===
+const betModal       = document.getElementById('betModal');
+const betModalTitle  = document.getElementById('betModalTitle');
+const betModalClose  = document.getElementById('betModalClose');
+const betDateInput   = document.getElementById('betDateInput');
+const betAddConfirm  = document.getElementById('betAddConfirm');
+const betList        = document.getElementById('betList');
+let currentBetPlatform   = null;
+let currentBetFilter     = '';
+
+function showBetModal(platform, filter) {
+  currentBetPlatform = platform;
+  currentBetFilter   = filter || '';
+  betModalTitle.textContent = `Apostas — ${platform.name}`;
+
+  // Pré-preenche com hoje
+  const today = new Date();
+  const yyyy  = today.getFullYear();
+  const mm    = String(today.getMonth() + 1).padStart(2, '0');
+  const dd    = String(today.getDate()).padStart(2, '0');
+  betDateInput.value = `${yyyy}-${mm}-${dd}`;
+
+  renderBetList();
+  betModal.style.display = 'flex';
+}
+
+function renderBetList() {
+  betList.innerHTML = '';
+  if (!currentBetPlatform) return;
+
+  const cycleStart = getCycleStart(currentBetPlatform, new Date());
+  const days = (currentBetPlatform.betDays || [])
+    .filter(d => new Date(d) >= cycleStart)
+    .map(d => d.slice(0, 10))
+    .filter((v, i, arr) => arr.indexOf(v) === i) // únicos
+    .sort((a, b) => b.localeCompare(a)); // mais recentes primeiro
+
+  if (days.length === 0) {
+    betList.innerHTML = '<div class="bet-empty">Nenhuma aposta registrada neste ciclo.</div>';
+    return;
+  }
+
+  days.forEach(dateStr => {
+    const [y, m, d] = dateStr.split('-');
+    const item = document.createElement('div');
+    item.className = 'bet-list-item';
+
+    const label = document.createElement('span');
+    label.textContent = `${d}/${m}/${y}`;
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'bet-list-remove';
+    removeBtn.textContent = 'Remover';
+    removeBtn.addEventListener('click', () => {
+      currentBetPlatform.betDays = (currentBetPlatform.betDays || [])
+        .filter(dd => dd.slice(0, 10) !== dateStr);
+      savePlatforms(platforms);
+      renderBetList();
+      renderPlatformList(currentBetFilter);
+      renderVipPanel();
+    });
+
+    item.appendChild(label);
+    item.appendChild(removeBtn);
+    betList.appendChild(item);
+  });
+}
+
+betAddConfirm.addEventListener('click', async () => {
+  if (!currentBetPlatform || !betDateInput.value) return;
+  const dateStr = betDateInput.value; // 'YYYY-MM-DD'
+  if (!currentBetPlatform.betDays) currentBetPlatform.betDays = [];
+
+  // Não duplica
+  const already = currentBetPlatform.betDays.some(d => d.slice(0, 10) === dateStr);
+  if (already) {
+    await showAppAlert('Este dia já está registrado.');
+    return;
+  }
+
+  currentBetPlatform.betDays.push(dateStr);
+  savePlatforms(platforms);
+  renderBetList();
+  renderPlatformList(currentBetFilter);
+  renderVipPanel();
+});
+
+betModalClose.addEventListener('click', () => {
+  betModal.style.display = 'none';
+  currentBetPlatform = null;
+});
+
+betModal.addEventListener('click', e => {
+  if (e.target === betModal) {
+    betModal.style.display = 'none';
+    currentBetPlatform = null;
+  }
+});
+    let platforms = loadPlatforms();
+function getMergedVipPlatform(vipPlatform) {
+      const storedPlatform = platforms.find((platform) => platform.name === vipPlatform.code);
+      return {
+        ...vipPlatform,
+        lastResetDate: storedPlatform?.lastResetDate || null,
+        deposits: Array.isArray(storedPlatform?.deposits) ? storedPlatform.deposits : [],
+        betDays: Array.isArray(storedPlatform?.betDays) ? storedPlatform.betDays : []
+      };
+    }
+
+    renderPlatformList();
+
+    const platformPanelEl = document.getElementById('platformPanel');
+    const calendarEl = document.getElementById('calendar');
+    const platformSearchEl = document.getElementById('platformSearch');
+
+    platformSearchEl.addEventListener('input', (e) => {
+      renderPlatformList(e.target.value);
+    });
+
+    document.getElementById('allBonusBtn').addEventListener('click', () => {
+      document.querySelectorAll('.platform-item').forEach(el => el.classList.remove('selected'));
+      showAllBonusCalendar();
+    });
+
+    document.getElementById('resetAllBtn').addEventListener('click', async () => {
+      const ok = await showAppConfirm('Resetar todos os depósitos de TODAS as plataformas?');
+      if (!ok) return;
+      platforms.forEach(p => p.deposits = []);
+      savePlatforms(platforms);
+      renderPlatformList();
+      updateCalendarEvents();
+      updateHeroSummary();
+});
 
     document.getElementById('scrollToPanelBtn').addEventListener('click', () => {
       platformPanelEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -573,7 +882,6 @@ function getVipBonus(platform) {
       const windowTo = new Date(now); windowTo.setDate(windowTo.getDate() + 40);
 
       platforms.forEach(platform => {
-        if (platform.cycleEnded) return;
         const emissionDates = computeEmissionDates(platform, now);
         emissionDates.forEach(emDate => {
           if (emDate >= windowFrom && emDate <= windowTo) {
@@ -597,6 +905,7 @@ function getVipBonus(platform) {
           }
         });
       });
+
 
       updateHeroSummary();
     }
@@ -657,17 +966,4 @@ function getVipBonus(platform) {
     scheduleDailyUpdate();
     renderVipPanel();
   });
-        const endBtn = document.createElement('button');
-        endBtn.className = 'platform-end-btn' + (p.cycleEnded ? ' already-ended' : '');
-        endBtn.textContent = p.cycleEnded ? '⏸ Encerrado' : '🏁 Fim';
-        endBtn.disabled = p.cycleEnded;
-        endBtn.addEventListener('click', async (ev) => {
-          ev.stopPropagation();
-          const ok = await showAppConfirm(`Encerrar o ciclo de ${p.name}? Os depósitos serão zerados e o calendário ficará pausado até você apertar "Reinício".`);
-          if (!ok) return;
-          p.deposits = [];
-          p.cycleEnded = true;
-          savePlatforms(platforms);
-          updateCalendarEvents();
-          renderPlatformList(q);
-          updateHeroSumm
+
