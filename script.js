@@ -537,8 +537,126 @@ function getVipBonus(platform) {
           updateCalendarEvents();
           renderPlatformList(q);
           updateHeroSummary();
-        });
+    });
 
+    document.getElementById('scrollToPanelBtn').addEventListener('click', () => {
+      platformPanelEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    document.getElementById('scrollToCalendarBtn').addEventListener('click', () => {
+      calendarEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    const toggleBtn = document.getElementById('togglePanelBtn');
+    const minimizeTab = document.getElementById('minimizeTab');
+
+    toggleBtn.addEventListener('click', () => {
+      platformPanelEl.classList.toggle('minimized');
+      minimizeTab.classList.toggle('show');
+      toggleBtn.title = platformPanelEl.classList.contains('minimized') ? 'Abrir painel' : 'Minimizar painel';
+      minimizeTab.textContent = platformPanelEl.classList.contains('minimized') ? 'Abrir Painel' : 'Fechar Painel';
+    });
+
+    minimizeTab.addEventListener('click', () => {
+      platformPanelEl.classList.remove('minimized');
+      minimizeTab.classList.remove('show');
+      toggleBtn.title = 'Minimizar painel';
+      minimizeTab.textContent = 'Abrir Painel';
+    });
+
+    function updateCalendarEvents(){
+      if (!calendar) return;
+      calendar.removeAllEvents();
+
+      const now = new Date();
+      const windowFrom = new Date(now); windowFrom.setDate(windowFrom.getDate() - 10);
+      const windowTo = new Date(now); windowTo.setDate(windowTo.getDate() + 40);
+
+      platforms.forEach(platform => {
+        if (platform.cycleEnded) return;
+        const emissionDates = computeEmissionDates(platform, now);
+        emissionDates.forEach(emDate => {
+          if (emDate >= windowFrom && emDate <= windowTo) {
+            const totalAtEmission = sumDepositsUpTo(platform, emDate);
+            const bg = colorForLevel(totalAtEmission);
+
+            calendar.addEvent({
+              id: `emit_${platform.id}_${emDate.toISOString().slice(0,10)}`,
+              title: platform.name,
+              start: emDate.toISOString().slice(0,10),
+              allDay: true,
+              display: 'block',
+              backgroundColor: bg,
+              borderColor: 'rgba(0,0,0,0.06)',
+              extendedProps: {
+                platformId: platform.id,
+                platformName: platform.name,
+                totalAtEmission: totalAtEmission
+              }
+            });
+          }
+        });
+      });
+
+      updateHeroSummary();
+    }
+
+    function filterCalendarByPlatform(platformId){
+      const allEvents = calendar.getEvents();
+      allEvents.forEach(event => {
+        const eventPlatformId = event.extendedProps.platformId;
+        event.setProp('display', eventPlatformId === platformId ? 'block' : 'none');
+      });
+    }
+
+    function showAllBonusCalendar(){
+      const allEvents = calendar.getEvents();
+      allEvents.forEach(event => {
+        event.setProp('display', 'block');
+      });
+    }
+
+    const calendar = new FullCalendar.Calendar(calendarEl, {
+      initialView: 'dayGridMonth',
+      locale: 'pt-br',
+      selectable: true,
+      headerToolbar: {
+        left: 'prev,next today',
+        center: 'title',
+        right: 'dayGridMonth,timeGridWeek,timeGridDay'
+      },
+      events: [],
+      eventDisplay: 'block',
+      eventDidMount: function(info){
+        const bg = info.event.backgroundColor;
+        info.el.style.background = bg;
+        info.el.style.color = '#000000';
+        info.el.style.border = '1px solid rgba(0,0,0,0.06)';
+        info.el.style.borderRadius = '10px';
+        info.el.style.fontWeight = '700';
+        info.el.style.fontSize = '0.75rem';
+        info.el.style.padding = '2px';
+      }
+    });
+
+    calendar.render();
+    updateCalendarEvents();
+    updateHeroSummary();
+
+    function scheduleDailyUpdate(){
+      const now = new Date();
+      const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
+      const ms = nextMidnight - now;
+      setTimeout(() => {
+        updateCalendarEvents();
+        renderPlatformList(platformSearchEl.value);
+        updateHeroSummary();
+        scheduleDailyUpdate();
+      }, ms);
+    }
+    scheduleDailyUpdate();
+    renderVipPanel();
+  });
         const endBtn = document.createElement('button');
         endBtn.className = 'platform-end-btn' + (p.cycleEnded ? ' already-ended' : '');
         endBtn.textContent = p.cycleEnded ? '⏸ Encerrado' : '🏁 Fim';
