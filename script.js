@@ -915,6 +915,7 @@ function getMergedVipPlatform(vipPlatform) {
       const windowTo = new Date(now); windowTo.setDate(windowTo.getDate() + 40);
 
       platforms.forEach(platform => {
+        if (platform.cycleEnded) return;
         const emissionDates = computeEmissionDates(platform, now);
         emissionDates.forEach(emDate => {
           if (emDate >= windowFrom && emDate <= windowTo) {
