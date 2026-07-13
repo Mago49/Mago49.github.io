@@ -377,12 +377,12 @@ function computeEmissionDates(platform, refDate = new Date()){
       return lvlVars[0];
     }
 
-    function getEventsForDate(targetDate){
+     function getEventsForDate(targetDate){
       const target = new Date(targetDate);
       target.setHours(0,0,0,0);
       const targetTime = target.getTime();
-      return platforms.filter(platform => computeEmissionDates(platform).some(date => date.getTime() === targetTime));
-    }
+      return platforms.filter(platform => !platform.cycleEnded && computeEmissionDates(platform).some(date => date.getTime() === targetTime));
+     }
 
     function updateHeroSummary(){
       const totalPlatforms = platforms.length;
