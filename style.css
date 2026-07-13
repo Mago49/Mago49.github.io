@@ -598,6 +598,17 @@
       min-width: 92px;
     }
 
+    .platform-end-btn {
+      background: #f59e0b;
+    }
+
+    .platform-end-btn.already-ended {
+      background: #fde68a;
+      color: #92400e;
+      opacity: 0.85;
+      cursor: default;
+    }
+
     .panel-footer {
       text-align:left;
       font-size:0.9rem;
