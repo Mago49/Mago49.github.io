@@ -426,6 +426,14 @@
 
     #platformPanel button[title] { background:#6b7280; }
 
+    #platformPanel button:disabled,
+    .platform-deposit-form input:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      transform: none !important;
+      box-shadow: none !important;
+    }
+
     .panel-actions {
       display:flex;
       gap:0.6rem;
