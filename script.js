@@ -273,6 +273,7 @@ function getVipBonus(platform) {
       lastResetDate: null,
       deposits: [],
       betDays: []
+      cycleEnded: false
     }));
     const PLAT_STORAGE_KEY = 'depositPlatforms_v3';
 
@@ -288,6 +289,7 @@ function getVipBonus(platform) {
           lastResetDate: p.lastResetDate || null,
           deposits: Array.isArray(p.deposits) ? p.deposits : [],
           betDays: Array.isArray(p.betDays) ? p.betDays : []
+          cycleEnded: p.cycleEnded === true
         }));
       } catch (err) {
         console.error('Erro ao ler plataformas', err);
