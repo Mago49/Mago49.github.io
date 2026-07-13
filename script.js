@@ -507,8 +507,10 @@ function computeEmissionDates(platform, refDate = new Date()){
 
         const btn = document.createElement('button');
         btn.textContent = 'Adicionar';
+        btn.disabled = p.cycleEnded;
         btn.addEventListener('click', async (e) => {
           e.stopPropagation();
+          if (p.cycleEnded) return;
           const value = parseFloat(input.value);
           if (isNaN(value) || value <= 0) {
             await showAppAlert('Digite um valor válido');
@@ -525,6 +527,22 @@ function computeEmissionDates(platform, refDate = new Date()){
           updateHeroSummary();
         });
 
+        const endBtn = document.createElement('button');
+        endBtn.className = 'platform-end-btn' + (p.cycleEnded ? ' already-ended' : '');
+        endBtn.textContent = p.cycleEnded ? '⏸ Encerrado' : '🏁 Fim';
+        endBtn.disabled = p.cycleEnded;
+        endBtn.addEventListener('click', async (ev) => {
+          ev.stopPropagation();
+          const ok = await showAppConfirm(`Encerrar o ciclo de ${p.name}? Os depósitos serão zerados e o calendário ficará pausado até você apertar "Reinício".`);
+          if (!ok) return;
+          p.deposits = [];
+          p.cycleEnded = true;
+          savePlatforms(platforms);
+          updateCalendarEvents();
+          renderPlatformList(q);
+          updateHeroSummary();
+        });
+
         const resetBtn = document.createElement('button');
         resetBtn.textContent = 'Reinício';
         resetBtn.style.background = '#ef4444';
@@ -535,6 +553,7 @@ function computeEmissionDates(platform, refDate = new Date()){
 
         actionButtons.appendChild(historyBtn);
 actionButtons.appendChild(btn);
+actionButtons.appendChild(endBtn);
 actionButtons.appendChild(resetBtn);
 li.appendChild(actionButtons);
 
