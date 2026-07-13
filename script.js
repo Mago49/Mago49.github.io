@@ -731,6 +731,7 @@ historyCloseBtn.addEventListener('click', () => {
     resetConfirmBtn.addEventListener('click', () => {
       if (currentResetPlatform) {
         currentResetPlatform.lastResetDate = `${resetDateInput.value}T00:00:00`;
+        currentResetPlatform.cycleEnded = false;
         savePlatforms(platforms);
         updateCalendarEvents();
         renderPlatformList(currentResetFilter);
