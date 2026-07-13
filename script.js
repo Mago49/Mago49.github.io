@@ -485,10 +485,11 @@ function computeEmissionDates(platform, refDate = new Date()){
 
         const input = document.createElement('input');
         input.type = 'number';
-        input.placeholder = 'Valor do depósito';
+        input.placeholder = p.cycleEnded ? 'Ciclo encerrado — aguardando reinício' : 'Valor do depósito';
         input.min = '0';
         input.step = '0.01';
         input.value = '';
+        input.disabled = p.cycleEnded;
 
         form.appendChild(input);
         li.appendChild(form);
