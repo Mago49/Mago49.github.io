@@ -420,7 +420,7 @@ function computeEmissionDates(platform, refDate = new Date()){
 
       items.forEach(p => {
         const li = document.createElement('li');
-        li.className = 'platform-item';
+        li.className = 'platform-item' + (p.cycleEnded ? ' ended' : '');
         li.dataset.id = p.id;
 
         const total = getTotalDepositsSinceCycle(p);
@@ -436,7 +436,10 @@ function computeEmissionDates(platform, refDate = new Date()){
 
         const cycleInfo = document.createElement('div');
         cycleInfo.className = 'cycle-day';
-        if (cycleDay === 0) {
+        if (p.cycleEnded) {
+          cycleInfo.classList.add('cycle-ended');
+          cycleInfo.textContent = '⏸ Encerrado';
+        } else if (cycleDay === 0) {
           cycleInfo.classList.add('no-bonus');
           cycleInfo.textContent = 'Dia 0';
         } else {
@@ -446,6 +449,13 @@ function computeEmissionDates(platform, refDate = new Date()){
         header.appendChild(name);
         header.appendChild(cycleInfo);
         li.appendChild(header);
+
+        if (p.cycleEnded) {
+          const alertBanner = document.createElement('div');
+          alertBanner.className = 'ended-badge';
+          alertBanner.textContent = '⚠️ Ciclo encerrado — aguardando reinício';
+          li.appendChild(alertBanner);
+        }
 
         const meta = document.createElement('div');
         meta.className = 'platform-meta';
