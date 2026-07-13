@@ -388,8 +388,9 @@ function computeEmissionDates(platform, refDate = new Date()){
       const totalPlatforms = platforms.length;
       const totalDeposits = platforms.reduce((sum, platform) => sum + getTotalDepositsSinceCycle(platform), 0);
       const bonusToday = getEventsForDate(new Date()).length;
-      const activeCycles = platforms.filter(platform => platform.lastResetDate && getCurrentCycleDay(platform) > 0).length;
+      const activeCycles = platforms.filter(platform => !platform.cycleEnded && platform.lastResetDate && getCurrentCycleDay(platform) > 0).length;
       const topPlatform = [...platforms]
+        .filter(platform => !platform.cycleEnded)
         .sort((a, b) => getTotalDepositsSinceCycle(b) - getTotalDepositsSinceCycle(a))[0];
 
       document.getElementById('heroPlatformCount').textContent = String(totalPlatforms);
