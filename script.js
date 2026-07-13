@@ -272,7 +272,7 @@ function getVipBonus(platform) {
       name: PLATFORM_NAMES[i],
       lastResetDate: null,
       deposits: [],
-      betDays: []
+      betDays: [],
       cycleEnded: false
     }));
     const PLAT_STORAGE_KEY = 'depositPlatforms_v3';
@@ -288,7 +288,7 @@ function getVipBonus(platform) {
           name: p.name || PLATFORM_NAMES[i],
           lastResetDate: p.lastResetDate || null,
           deposits: Array.isArray(p.deposits) ? p.deposits : [],
-          betDays: Array.isArray(p.betDays) ? p.betDays : []
+          betDays: Array.isArray(p.betDays) ? p.betDays : [],
           cycleEnded: p.cycleEnded === true
         }));
       } catch (err) {
