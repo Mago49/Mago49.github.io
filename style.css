@@ -147,7 +147,8 @@
     .history-delete-btn:hover,
     .history-close:hover,
     .btn-confirm:hover,
-    .btn-cancel-modal:hover {
+    .btn-cancel-modal:hover,
+    .btn-remove-modal:hover {
       transform: translateY(-1px);
       box-shadow: 0 10px 22px rgba(15, 23, 42, 0.12);
     }
