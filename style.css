@@ -791,7 +791,8 @@
     .modal,
     .reset-modal,
     .history-modal,
-    .bet-modal {
+    .bet-modal,
+    .platform-manage-modal {
       position: fixed;
       top: 0;
       left: 0;
