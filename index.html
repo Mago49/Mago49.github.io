@@ -181,6 +181,54 @@
     </div>
   </div>
 
+  <!-- Modal Gerenciar Plataformas (lista em acordeão) -->
+<div class="platform-manage-modal" id="platformManageModal">
+  <div class="platform-manage-modal-content">
+    <div class="bet-modal-header">
+      <h2>Gerenciar Plataformas</h2>
+      <button class="history-close" id="platformManageCloseBtn" type="button">Fechar</button>
+    </div>
+
+    <div class="platform-manage-list" id="platformManageList">
+      <!-- Linha especial de adicionar, sempre primeira e fixa -->
+      <div class="platform-manage-row platform-manage-row-add" id="platformManageAddRow">
+        <div class="platform-manage-row-header">
+          <div class="platform-manage-row-title">➕ Nova plataforma</div>
+          <span class="platform-manage-chevron">▾</span>
+        </div>
+        <div class="platform-manage-row-body">
+          <div class="platform-form-fields">
+            <label for="platformManageAddName">Código/Nome</label>
+            <input type="text" id="platformManageAddName" maxlength="12" placeholder="Ex: 99XX" />
+
+            <label for="platformManageAddLevel">Nível VIP</label>
+            <select id="platformManageAddLevel">
+              <option value="">Não definido</option>
+              <option value="0">0</option>
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+            </select>
+
+            <label for="platformManageAddGroup">Tipo</label>
+            <select id="platformManageAddGroup">
+              <option value="">Não definido</option>
+              <option value="com">Com aposta</option>
+              <option value="sem">Sem aposta</option>
+            </select>
+          </div>
+          <div class="reset-modal-buttons">
+            <button class="btn-confirm" id="platformManageAddSaveBtn" type="button">Salvar</button>
+          </div>
+        </div>
+      </div>
+      <!-- As linhas das plataformas existentes são geradas via JS aqui dentro -->
+    </div>
+  </div>
+</div>
+  
   <!-- Modal genérico de alerta/confirmação, substitui alert()/confirm() nativos -->
   <div class="modal" id="appModal">
     <div class="modal-content">
