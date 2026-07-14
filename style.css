@@ -610,13 +610,6 @@
       cursor: default;
     }
 
-    .panel-footer {
-      text-align:left;
-      font-size:0.9rem;
-      color:#334155;
-      padding-top: 0.2rem;
-    }
-
     .tips-card {
       padding: 1.05rem 1.1rem 1.1rem;
     }
