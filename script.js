@@ -18,43 +18,6 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 };
 
-const vipPlatforms = [
-  { code: 'FXX', level: 2, group: 'com' },
-  { code: '551X', level: 3, group: 'com' },
-  { code: '838X', level: 3, group: 'com' },
-  { code: 'PP11', level: 4, group: 'com' },
-  { code: '1UUU', level: 3, group: 'com' },
-  { code: '11TT', level: 3, group: 'com' },
-  { code: 'DDUU', level: 4, group: 'com' },
-  { code: '45T', level: 3, group: 'com' },
-  { code: '7GGG', level: 3, group: 'com' },
-  { code: '66GG', level: 3, group: 'com' },
-  { code: '44MM', level: 3, group: 'com' },
-  { code: 'NNZZ', level: 3, group: 'com' },
-  { code: '899V', level: 3, group: 'com' },
-  { code: '83H', level: 3, group: 'com' },
-  { code: '5TTT', level: 3, group: 'com' },
-  { code: '84D', level: 3, group: 'com' },
-  { code: '552X', level: 3, group: 'com' },
-
-  { code: '35C', level: 2, group: 'sem' },
-  { code: '63V', level: 3, group: 'sem' },
-  { code: '68D', level: 2, group: 'sem' },
-  { code: '61T', level: 3, group: 'sem' },
-  { code: '72B', level: 3, group: 'sem' },
-  { code: '36Q', level: 4, group: 'sem' },
-  { code: '53D', level: 2, group: 'sem' },
-  { code: '93K', level: 3, group: 'sem' },
-  { code: '93D', level: 3, group: 'sem' },
-  { code: 'A73', level: 3, group: 'sem' },
-  { code: 'EE44', level: 3, group: 'sem' },
-  { code: '7JJJ', level: 3, group: 'sem' },
-  { code: '877X', level: 3, group: 'sem' },
-  { code: '79C', level: 3, group: 'sem' },
-  { code: '988K', level: 3, group: 'sem' },
-  { code: 'HHH5', level: 0, group: 'sem' }
-];
-
 // Modal genérico de alerta/confirmação (substitui alert()/confirm() nativos do navegador)
 function showAppModal(message, showCancel) {
   return new Promise((resolve) => {
@@ -847,15 +810,6 @@ betModal.addEventListener('click', e => {
   }
 });
     let platforms = loadPlatforms();
-function getMergedVipPlatform(vipPlatform) {
-      const storedPlatform = platforms.find((platform) => platform.name === vipPlatform.code);
-      return {
-        ...vipPlatform,
-        lastResetDate: storedPlatform?.lastResetDate || null,
-        deposits: Array.isArray(storedPlatform?.deposits) ? storedPlatform.deposits : [],
-        betDays: Array.isArray(storedPlatform?.betDays) ? storedPlatform.betDays : []
-      };
-    }
 
     renderPlatformList();
 
