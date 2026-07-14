@@ -1269,3 +1269,155 @@
   font-size: 0.9rem;
   padding: 0.5rem 0;
 }
+
+/* Modal de gerenciamento — conteúdo (largura/altura próprias) */
+.platform-manage-modal-content {
+  width: min(100%, 560px);
+  max-height: 82vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.platform-manage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+/* Linha do acordeão */
+.platform-manage-row {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.platform-manage-row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.75rem 0.9rem;
+  cursor: pointer;
+}
+
+.platform-manage-row-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+  color: var(--text-dark);
+}
+
+.platform-manage-chevron {
+  transition: transform 0.2s ease;
+  color: #64748b;
+}
+
+.platform-manage-row.open .platform-manage-chevron {
+  transform: rotate(180deg);
+}
+
+.platform-manage-row-body {
+  max-height: 0;
+  overflow: hidden;
+  padding: 0 0.9rem;
+  transition: max-height 0.25s ease, padding 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.platform-manage-row.open .platform-manage-row-body {
+  max-height: 480px;
+  padding: 0 0.9rem 0.9rem;
+}
+
+/* Linha especial "Nova plataforma" */
+.platform-manage-row-add .platform-manage-row-header {
+  background: #f5f3ff;
+}
+
+.platform-manage-row-add .platform-manage-row-title {
+  color: #6d28d9;
+}
+
+/* Campos de formulário reutilizados dentro de cada linha */
+.platform-form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  text-align: left;
+}
+
+.platform-form-fields label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.platform-form-fields input,
+.platform-form-fields select {
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  outline: none;
+  background: #fff;
+}
+
+.platform-form-fields input:focus,
+.platform-form-fields select:focus {
+  border-color: rgba(37,99,235,0.45);
+  box-shadow: 0 0 0 4px rgba(37,99,235,0.12);
+}
+
+.btn-remove-modal {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* Badge "não configurado" — usada dentro da lista do modal */
+.vip-unset-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  border-radius: 999px;
+  padding: 0.2rem 0.5rem;
+  white-space: nowrap;
+}
+
+/* Agrupa "Dia X" + ícone de editar no cabeçalho do card */
+.cycle-day-group {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* Ícone 📝 no card */
+.edit-icon-btn {
+  border: none;
+  background: transparent;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.3rem 0.45rem;
+  border-radius: 8px;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.edit-icon-btn:hover {
+  background: rgba(15,23,42,0.06);
+  transform: translateY(-1px);
+}
+
+.edit-icon-btn.unset {
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+}
