@@ -433,19 +433,21 @@ function computeEmissionDates(platform, refDate = new Date()){
         meta.appendChild(totalBadge);
         li.appendChild(meta);
 
-        const form = document.createElement('div');
-        form.className = 'platform-deposit-form';
+        let input = null;
+        if (!p.cycleEnded) {
+          const form = document.createElement('div');
+          form.className = 'platform-deposit-form';
 
-        const input = document.createElement('input');
-        input.type = 'number';
-        input.placeholder = p.cycleEnded ? 'Ciclo encerrado — aguardando reinício' : 'Valor do depósito';
-        input.min = '0';
-        input.step = '0.01';
-        input.value = '';
-        input.disabled = p.cycleEnded;
+          input = document.createElement('input');
+          input.type = 'number';
+          input.placeholder = 'Valor do depósito';
+          input.min = '0';
+          input.step = '0.01';
+          input.value = '';
 
-        form.appendChild(input);
-        li.appendChild(form);
+          form.appendChild(input);
+          li.appendChild(form);
+        }
 
         const actionButtons = document.createElement('div');
         actionButtons.className = 'platform-actions-buttons';
