@@ -383,8 +383,24 @@ function computeEmissionDates(platform, refDate = new Date()){
           cycleInfo.textContent = `Dia ${cycleDay}`;
         }
 
+        const cycleGroup = document.createElement('div');
+        cycleGroup.className = 'cycle-day-group';
+
+        const editIconBtn = document.createElement('button');
+        editIconBtn.type = 'button';
+        editIconBtn.className = 'edit-icon-btn' + (p.group ? '' : ' unset');
+        editIconBtn.textContent = '📝';
+        editIconBtn.title = p.group ? 'Editar plataforma' : 'Configurar nível VIP';
+        editIconBtn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          openPlatformManage(p.id);
+        });
+
+        cycleGroup.appendChild(cycleInfo);
+        cycleGroup.appendChild(editIconBtn);
+
         header.appendChild(name);
-        header.appendChild(cycleInfo);
+        header.appendChild(cycleGroup);
         li.appendChild(header);
 
         if (p.cycleEnded) {
