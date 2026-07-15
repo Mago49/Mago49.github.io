@@ -800,7 +800,214 @@ betModal.addEventListener('click', e => {
   }
 });
     let platforms = loadPlatforms();
+    
+// === MODAL GERENCIAR PLATAFORMAS (acordeão) ===
+const platformManageModal    = document.getElementById('platformManageModal');
+const platformManageCloseBtn = document.getElementById('platformManageCloseBtn');
+const platformManageList     = document.getElementById('platformManageList');
+const platformManageAddRow   = document.getElementById('platformManageAddRow');
 
+function renderPlatformManageList(openId){
+  // remove só as linhas existentes, mantém a linha fixa de "Nova plataforma"
+  platformManageList.querySelectorAll('.platform-manage-row-existing').forEach(el => el.remove());
+
+  platforms.forEach(p => {
+    const row = document.createElement('div');
+    row.className = 'platform-manage-row platform-manage-row-existing';
+    row.dataset.id = p.id;
+    if (p.id === openId) row.classList.add('open');
+
+    const header = document.createElement('div');
+    header.className = 'platform-manage-row-header';
+
+    const title = document.createElement('div');
+    title.className = 'platform-manage-row-title';
+    title.textContent = p.name;
+    if (!p.group) {
+      const badge = document.createElement('span');
+      badge.className = 'vip-unset-badge';
+      badge.textContent = '⚠️ não configurado';
+      title.appendChild(badge);
+    }
+
+    const chevron = document.createElement('span');
+    chevron.className = 'platform-manage-chevron';
+    chevron.textContent = '▾';
+
+    header.appendChild(title);
+    header.appendChild(chevron);
+    header.addEventListener('click', () => row.classList.toggle('open'));
+
+    const body = document.createElement('div');
+    body.className = 'platform-manage-row-body';
+
+    const fields = document.createElement('div');
+    fields.className = 'platform-form-fields';
+
+    const nameLabel = document.createElement('label');
+    nameLabel.textContent = 'Código/Nome';
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.maxLength = 12;
+    nameInput.value = p.name;
+
+    const levelLabel = document.createElement('label');
+    levelLabel.textContent = 'Nível VIP';
+    const levelSelect = document.createElement('select');
+    [['', 'Não definido'], ['0','0'], ['1','1'], ['2','2'], ['3','3'], ['4','4'], ['5','5']]
+      .forEach(([v, l]) => {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = l;
+        levelSelect.appendChild(opt);
+      });
+    levelSelect.value = (p.level === null || p.level === undefined) ? '' : String(p.level);
+
+    const groupLabel = document.createElement('label');
+    groupLabel.textContent = 'Tipo';
+    const groupSelect = document.createElement('select');
+    [['', 'Não definido'], ['com', 'Com aposta'], ['sem', 'Sem aposta']]
+      .forEach(([v, l]) => {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = l;
+        groupSelect.appendChild(opt);
+      });
+    groupSelect.value = p.group || '';
+
+    fields.appendChild(nameLabel);
+    fields.appendChild(nameInput);
+    fields.appendChild(levelLabel);
+    fields.appendChild(levelSelect);
+    fields.appendChild(groupLabel);
+    fields.appendChild(groupSelect);
+
+    const actions = document.createElement('div');
+    actions.className = 'reset-modal-buttons';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'btn-confirm';
+    saveBtn.type = 'button';
+    saveBtn.textContent = 'Salvar';
+    saveBtn.addEventListener('click', async () => {
+      const name = nameInput.value.trim().toUpperCase();
+      if (!name) {
+        await showAppAlert('Digite um código para a plataforma.');
+        return;
+      }
+      const duplicate = platforms.some(pp => pp !== p && pp.name.toUpperCase() === name);
+      if (duplicate) {
+        await showAppAlert('Já existe uma plataforma com esse código.');
+        return;
+      }
+      p.name  = name;
+      p.level = levelSelect.value === '' ? null : Number(levelSelect.value);
+      p.group = groupSelect.value === '' ? null : groupSelect.value;
+
+      savePlatforms(platforms);
+      renderPlatformManageList(p.id);
+      renderPlatformList(platformSearchEl.value);
+      renderVipPanel();
+      updateCalendarEvents();
+      updateHeroSummary();
+    });
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'btn-remove-modal';
+    removeBtn.type = 'button';
+    removeBtn.textContent = 'Remover';
+    removeBtn.addEventListener('click', async () => {
+      const ok = await showAppConfirm(
+        `Remover "${p.name}"? Isso apaga também todo o histórico de depósitos e ` +
+        `apostas dela. Essa ação não pode ser desfeita.`
+      );
+      if (!ok) return;
+      platforms = platforms.filter(pp => pp.id !== p.id);
+      savePlatforms(platforms);
+      renderPlatformManageList();
+      renderPlatformList(platformSearchEl.value);
+      renderVipPanel();
+      updateCalendarEvents();
+      updateHeroSummary();
+    });
+
+    actions.appendChild(saveBtn);
+    actions.appendChild(removeBtn);
+    body.appendChild(fields);
+    body.appendChild(actions);
+    row.appendChild(header);
+    row.appendChild(body);
+    platformManageList.appendChild(row);
+  });
+}
+
+// Linha fixa "Nova plataforma"
+platformManageAddRow.querySelector('.platform-manage-row-header')
+  .addEventListener('click', () => platformManageAddRow.classList.toggle('open'));
+
+document.getElementById('platformManageAddSaveBtn').addEventListener('click', async () => {
+  const nameInput  = document.getElementById('platformManageAddName');
+  const levelSelect = document.getElementById('platformManageAddLevel');
+  const groupSelect = document.getElementById('platformManageAddGroup');
+
+  const name = nameInput.value.trim().toUpperCase();
+  if (!name) {
+    await showAppAlert('Digite um código para a plataforma.');
+    return;
+  }
+  const duplicate = platforms.some(p => p.name.toUpperCase() === name);
+  if (duplicate) {
+    await showAppAlert('Já existe uma plataforma com esse código.');
+    return;
+  }
+
+  platforms.push({
+    id: 'p' + Date.now(),
+    name,
+    lastResetDate: null,
+    deposits: [],
+    betDays: [],
+    level: levelSelect.value === '' ? null : Number(levelSelect.value),
+    group: groupSelect.value === '' ? null : groupSelect.value
+  });
+
+  savePlatforms(platforms);
+  nameInput.value = '';
+  levelSelect.value = '';
+  groupSelect.value = '';
+  platformManageAddRow.classList.remove('open');
+
+  renderPlatformManageList();
+  renderPlatformList(platformSearchEl.value);
+  renderVipPanel();
+  updateCalendarEvents();
+  updateHeroSummary();
+});
+
+function openPlatformManage(focusId){
+  renderPlatformManageList(focusId || null);
+  platformManageModal.style.display = 'flex';
+  if (focusId) {
+    requestAnimationFrame(() => {
+      const row = platformManageList.querySelector(`.platform-manage-row-existing[data-id="${focusId}"]`);
+      if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }
+}
+
+function closePlatformManage(){
+  platformManageModal.style.display = 'none';
+}
+
+platformManageCloseBtn.addEventListener('click', closePlatformManage);
+platformManageModal.addEventListener('click', (e) => {
+  if (e.target === platformManageModal) closePlatformManage();
+});
+
+document.getElementById('editPlatformsBtn').addEventListener('click', () => {
+  openPlatformManage();
+});
+    
     renderPlatformList();
 
     const platformPanelEl = document.getElementById('platformPanel');
