@@ -508,14 +508,13 @@ function computeEmissionDates(platform, refDate = new Date()){
         });
 
         actionButtons.appendChild(historyBtn);
-actionButtons.appendChild(btn);
+if (btn) actionButtons.appendChild(btn);
 actionButtons.appendChild(endBtn);
 actionButtons.appendChild(resetBtn);
 li.appendChild(actionButtons);
 
 // Seção de apostas — só para plataformas 'com aposta'
-const vipMeta = vipPlatforms.find(v => v.code === p.name);
-if (vipMeta && vipMeta.group === 'com') {
+if (p.group === 'com') {
   const betSection = document.createElement('div');
   betSection.className = 'bet-section';
 
