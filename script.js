@@ -351,7 +351,6 @@ function computeEmissionDates(platform, refDate = new Date()){
 
     function renderPlatformList(filter = ''){
       const listEl = document.getElementById('platformList');
-      const countEl = document.getElementById('platformCount');
       listEl.innerHTML = '';
       const q = filter.trim().toLowerCase();
       const items = platforms.filter(p => p.name.toLowerCase().includes(q));
@@ -558,8 +557,6 @@ renderVipPanel();
         listEl.appendChild(li);
       });
 
-      const totalAll = platforms.reduce((s, pl) => s + getTotalDepositsSinceCycle(pl), 0);
-      countEl.textContent = `${items.length} plataformas • Total geral: ${formatCurrency(totalAll)}`;
       updateHeroSummary();
     }
 
