@@ -458,27 +458,28 @@ function computeEmissionDates(platform, refDate = new Date()){
           showHistoryModal(p);
         });
 
-        const btn = document.createElement('button');
-        btn.textContent = 'Adicionar';
-        btn.disabled = p.cycleEnded;
-        btn.addEventListener('click', async (e) => {
-          e.stopPropagation();
-          if (p.cycleEnded) return;
-          const value = parseFloat(input.value);
-          if (isNaN(value) || value <= 0) {
-            await showAppAlert('Digite um valor válido');
-            return;
-          }
-          p.deposits.push({
-            date: new Date().toISOString(),
-            value: value
+        let btn = null;
+        if (!p.cycleEnded) {
+          btn = document.createElement('button');
+          btn.textContent = 'Adicionar';
+          btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const value = parseFloat(input.value);
+            if (isNaN(value) || value <= 0) {
+              await showAppAlert('Digite um valor válido');
+              return;
+            }
+            p.deposits.push({
+              date: new Date().toISOString(),
+              value: value
+            });
+            input.value = '';
+            savePlatforms(platforms);
+            updateCalendarEvents();
+            renderPlatformList(q);
+            updateHeroSummary();
           });
-          input.value = '';
-          savePlatforms(platforms);
-          updateCalendarEvents();
-          renderPlatformList(q);
-          updateHeroSummary();
-        });
+        }
 
         const endBtn = document.createElement('button');
         endBtn.className = 'platform-end-btn' + (p.cycleEnded ? ' already-ended' : '');
