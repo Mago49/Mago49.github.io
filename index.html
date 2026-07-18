@@ -27,6 +27,19 @@
 </head>
 
 <body>
+  <div class="auth-screen" id="authScreen">
+    <div class="auth-card">
+      <span class="hero-badge">✨ Painel do Tigrinho 🐯</span>
+      <h1>Acesse seu painel</h1>
+      <p>Entre com sua conta Google para sincronizar seus dados entre aparelhos.</p>
+      <button class="btn-primary auth-google-btn" id="googleLoginBtn" type="button">
+        <span class="auth-google-icon" aria-hidden="true">G</span>
+        Entrar com Google
+      </button>
+      <p class="auth-error" id="authError"></p>
+    </div>
+  </div>
+
   <svg class="background-svg" viewBox="0 0 1440 800" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
     <circle cx="280" cy="280" r="280" fill="#1e3a8a" />
     <circle cx="1160" cy="280" r="280" fill="#ef4444" />
@@ -34,7 +47,7 @@
     <circle cx="1160" cy="520" r="280" fill="#15803d" />
   </svg>
 
-  <main class="page-shell">
+  <main class="page-shell app-hidden" id="appMain">
     <section class="hero card-shell" aria-label="Resumo da página">
       <div class="hero-content">
         <div>
@@ -109,6 +122,7 @@
 </section>
           <div class="panel-header">
     <h3>Plataformas</h3>
+    <span class="user-label" id="userLabel"></span>
     <div class="panel-controls">
       <input id="platformSearch" type="search" placeholder="Buscar plataforma" aria-label="Buscar plataforma" />
       <button id="togglePanelBtn" aria-expanded="true" title="Minimizar painel">−</button>
@@ -121,6 +135,7 @@
     <button id="allBonusBtn" title="Ver todos os bônus">TODOS OS BÔNUS</button>
     <button id="editPlatformsBtn" title="Adicionar, editar ou remover plataformas">Editar</button>
     <button id="resetAllBtn" title="Resetar todos os depósitos">Resetar</button>
+    <button id="logoutBtn" title="Sair da conta">Sair</button>
   </div>
         </aside>
 
@@ -240,7 +255,7 @@
     </div>
   </div>
 
-  <footer class="legend" aria-hidden="false">
+  <footer class="legend app-hidden" id="appFooter" aria-hidden="false">
     <div class="legend-item"><div class="legend-swatch" style="background:var(--level-0)"></div><div><span class="legend-label">Nível 0:</span><span>1–29</span></div></div>
     <div class="legend-item"><div class="legend-swatch" style="background:var(--level-1)"></div><div><span class="legend-label">Nível 1:</span><span>30–69</span></div></div>
     <div class="legend-item"><div class="legend-swatch" style="background:var(--level-2)"></div><div><span class="legend-label">Nível 2:</span><span>70–149</span></div></div>
@@ -248,6 +263,6 @@
     <div class="legend-item"><div class="legend-swatch" style="background:var(--level-4)"></div><div><span class="legend-label">Nível 4:</span><span>300–600</span></div></div>
   </footer>
 
-  <script src="script.js" defer></script>
+  <script type="module" src="script.js"></script>
 </body>
 </html>

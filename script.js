@@ -1,3 +1,29 @@
+// === FIREBASE ===
+// Importa só o que é usado, direto do CDN oficial do Google (não precisa de npm/build).
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import {
+  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import {
+  getFirestore, collection, doc, getDocs, deleteDoc, writeBatch
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+// TODO: troque pelos valores do SEU projeto Firebase
+// (Console do Firebase > Configurações do projeto > Seus apps > SDK setup and configuration)
+const firebaseConfig = {
+  apiKey: "AIzaSyBYByjI-DQIZMwYiZIub0Wli7A-wVu_XmQ",
+  authDomain: "painel1-b6ec2.firebaseapp.com",
+  projectId: "painel1-b6ec2",
+  storageBucket: "painel1-b6ec2.firebasestorage.app",
+  messagingSenderId: "1005504044952",
+  appId: "1:1005504044952:web:de298c7cadd0542a94d5ed"
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const auth = getAuth(firebaseApp);
+const db = getFirestore(firebaseApp);
+const googleProvider = new GoogleAuthProvider();
+
 document.addEventListener('DOMContentLoaded', () => {
     const vipBonusTable = {
   com: {
@@ -213,30 +239,63 @@ function getVipBonus(platform) {
     }));
     const PLAT_STORAGE_KEY = 'depositPlatforms_v3';
 
-    function loadPlatforms(){
+    let currentUid = null;
+
+    function normalizePlatformData(parsed){
+      if (!Array.isArray(parsed)) return null;
+      return parsed.map((p, i) => ({
+        id: p.id || ('p' + (i+1)),
+        name: p.name || PLATFORM_NAMES[i] || ('P' + (i+1)),
+        lastResetDate: p.lastResetDate || null,
+        deposits: Array.isArray(p.deposits) ? p.deposits : [],
+        betDays: Array.isArray(p.betDays) ? p.betDays : [],
+        cycleEnded: p.cycleEnded === true,
+        level: (p.level !== undefined && p.level !== null) ? p.level : null,
+        group: p.group || null
+      }));
+    }
+
+    // Lê o backup antigo do localStorage (versões anteriores do painel), usado
+    // só uma vez, na primeira vez que o usuário loga e ainda não tem nada no Firestore.
+    function loadLegacyLocalPlatforms(){
       try {
         const raw = localStorage.getItem(PLAT_STORAGE_KEY);
-        if (!raw) return DEFAULT_PLATFORMS.slice();
-        const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed)) return DEFAULT_PLATFORMS.slice();
-        return parsed.map((p, i) => ({
-          id: p.id || ('p' + (i+1)),
-          name: p.name || PLATFORM_NAMES[i],
-          lastResetDate: p.lastResetDate || null,
-          deposits: Array.isArray(p.deposits) ? p.deposits : [],
-          betDays: Array.isArray(p.betDays) ? p.betDays : [],
-          cycleEnded: p.cycleEnded === true,
-          level: (p.level !== undefined && p.level !== null) ? p.level : null,
-          group: p.group || null
-        }));
+        if (!raw) return null;
+        return normalizePlatformData(JSON.parse(raw));
       } catch (err) {
-        console.error('Erro ao ler plataformas', err);
-        return DEFAULT_PLATFORMS.slice();
+        console.error('Erro ao ler backup local antigo', err);
+        return null;
       }
     }
 
+    async function loadPlatformsFromFirestore(uid){
+      const colRef = collection(db, 'users', uid, 'platforms');
+      const snap = await getDocs(colRef);
+
+      if (!snap.empty) {
+        return normalizePlatformData(snap.docs.map(d => d.data())) || [];
+      }
+
+      // Coleção vazia: migra o backup antigo do localStorage (se existir) ou usa o padrão.
+      const initial = loadLegacyLocalPlatforms() || DEFAULT_PLATFORMS.slice();
+      const batch = writeBatch(db);
+      initial.forEach(p => batch.set(doc(colRef, p.id), p));
+      await batch.commit();
+      return initial;
+    }
+
     function savePlatforms(list){
-      localStorage.setItem(PLAT_STORAGE_KEY, JSON.stringify(list));
+      if (!currentUid) return;
+      const colRef = collection(db, 'users', currentUid, 'platforms');
+      const batch = writeBatch(db);
+      list.forEach(p => batch.set(doc(colRef, p.id), p));
+      batch.commit().catch(err => console.error('Erro ao salvar no Firebase:', err));
+    }
+
+    function deletePlatformDoc(id){
+      if (!currentUid) return;
+      deleteDoc(doc(db, 'users', currentUid, 'platforms', id))
+        .catch(err => console.error('Erro ao remover no Firebase:', err));
     }
 
     function formatCurrency(value){
@@ -799,8 +858,8 @@ betModal.addEventListener('click', e => {
     currentBetPlatform = null;
   }
 });
-    let platforms = loadPlatforms();
-    
+    let platforms = [];
+
 // === MODAL GERENCIAR PLATAFORMAS (acordeão) ===
 const platformManageModal    = document.getElementById('platformManageModal');
 const platformManageCloseBtn = document.getElementById('platformManageCloseBtn');
@@ -923,6 +982,7 @@ function renderPlatformManageList(openId){
       );
       if (!ok) return;
       platforms = platforms.filter(pp => pp.id !== p.id);
+      deletePlatformDoc(p.id);
       savePlatforms(platforms);
       renderPlatformManageList();
       renderPlatformList(platformSearchEl.value);
@@ -1007,8 +1067,6 @@ platformManageModal.addEventListener('click', (e) => {
 document.getElementById('editPlatformsBtn').addEventListener('click', () => {
   openPlatformManage();
 });
-    
-    renderPlatformList();
 
     const platformPanelEl = document.getElementById('platformPanel');
     const calendarEl = document.getElementById('calendar');
@@ -1150,6 +1208,62 @@ document.getElementById('editPlatformsBtn').addEventListener('click', () => {
       }, ms);
     }
     scheduleDailyUpdate();
-    renderVipPanel();
+
+    // === AUTENTICAÇÃO (Google / Firebase) ===
+    const authScreenEl = document.getElementById('authScreen');
+    const appMainEl = document.getElementById('appMain');
+    const appFooterEl = document.getElementById('appFooter');
+    const googleLoginBtn = document.getElementById('googleLoginBtn');
+    const authErrorEl = document.getElementById('authError');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const userLabelEl = document.getElementById('userLabel');
+
+    googleLoginBtn.addEventListener('click', async () => {
+      authErrorEl.textContent = '';
+      googleLoginBtn.disabled = true;
+      try {
+        await signInWithPopup(auth, googleProvider);
+      } catch (err) {
+        console.error('Erro no login:', err);
+        authErrorEl.textContent = 'Não foi possível entrar. Tente novamente.';
+      } finally {
+        googleLoginBtn.disabled = false;
+      }
+    });
+
+    logoutBtn.addEventListener('click', async () => {
+      await signOut(auth);
+    });
+
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        currentUid = user.uid;
+        userLabelEl.textContent = user.displayName ? `Olá, ${user.displayName.split(' ')[0]}` : (user.email || '');
+
+        try {
+          platforms = await loadPlatformsFromFirestore(currentUid);
+        } catch (err) {
+          console.error('Erro ao carregar dados do Firebase:', err);
+          await showAppAlert('Não foi possível carregar seus dados. Verifique sua internet e tente novamente.');
+          platforms = [];
+        }
+
+        authScreenEl.classList.add('app-hidden');
+        appMainEl.classList.remove('app-hidden');
+        appFooterEl.classList.remove('app-hidden');
+
+        renderPlatformList();
+        updateCalendarEvents();
+        updateHeroSummary();
+        renderVipPanel();
+      } else {
+        currentUid = null;
+        platforms = [];
+        userLabelEl.textContent = '';
+        appMainEl.classList.add('app-hidden');
+        appFooterEl.classList.add('app-hidden');
+        authScreenEl.classList.remove('app-hidden');
+      }
+    });
   });
 
