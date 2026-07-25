@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Calendário de Bônus</title>
 
-  <!-- CSS crítico inline: garante fundo fixo já no 1º frame, antes do style.css carregar -->
+  <!-- CSS crítico inline: garante fundo fixo já no 1º frame, antes do CSS externo carregar -->
   <style>
     html, body { margin: 0; padding: 0; }
     .background-svg {
@@ -19,7 +19,19 @@
     }
   </style>
 
-  <link rel="stylesheet" href="style.css" />
+  <!-- CSS do projeto, dividido por responsabilidade.
+       ORDEM IMPORTA: variables.css primeiro (os outros usam var(--x)),
+       responsive.css por último (precisa vencer empates de especificidade). -->
+  <link rel="stylesheet" href="css/variables.css" />
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/hero.css" />
+  <link rel="stylesheet" href="css/layout.css" />
+  <link rel="stylesheet" href="css/calendar.css" />
+  <link rel="stylesheet" href="css/panel.css" />
+  <link rel="stylesheet" href="css/vip.css" />
+  <link rel="stylesheet" href="css/modals.css" />
+  <link rel="stylesheet" href="css/footer.css" />
+  <link rel="stylesheet" href="css/responsive.css" />
 
   <!-- FullCalendar com defer: não bloqueia mais o carregamento do CSS -->
   <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet" />
@@ -243,7 +255,7 @@
     </div>
   </div>
 </div>
-  
+
   <!-- Modal genérico de alerta/confirmação, substitui alert()/confirm() nativos -->
   <div class="modal" id="appModal">
     <div class="modal-content">
@@ -263,6 +275,6 @@
     <div class="legend-item"><div class="legend-swatch" style="background:var(--level-4)"></div><div><span class="legend-label">Nível 4:</span><span>300–600</span></div></div>
   </footer>
 
-  <script type="module" src="script.js"></script>
+  <script type="module" src="js/main.js"></script>
 </body>
 </html>
