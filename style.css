@@ -588,25 +588,6 @@
       color: #92400e;
     }
 
-    .ended-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-      padding: 0.5rem 0.75rem;
-      border-radius: 12px;
-      background: #fef3c7;
-      border: 1px solid #fcd34d;
-      color: #92400e;
-      font-weight: 800;
-      font-size: 0.82rem;
-      animation: pulseWarn 1.8s ease-in-out infinite;
-    }
-
-    @keyframes pulseWarn {
-      0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.35); }
-      50% { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
-       }
-
     .platform-item-header {
       display:flex;
       align-items:center;

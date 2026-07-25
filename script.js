@@ -462,13 +462,6 @@ function computeEmissionDates(platform, refDate = new Date()){
         header.appendChild(cycleGroup);
         li.appendChild(header);
 
-        if (p.cycleEnded) {
-          const alertBanner = document.createElement('div');
-          alertBanner.className = 'ended-badge';
-          alertBanner.textContent = '⚠️ Ciclo encerrado — aguardando reinício';
-          li.appendChild(alertBanner);
-        }
-
         const meta = document.createElement('div');
         meta.className = 'platform-meta';
 
@@ -1127,10 +1120,11 @@ document.getElementById('editPlatformsBtn').addEventListener('click', () => {
       platforms.forEach(platform => {
         if (platform.cycleEnded) return;
         const emissionDates = computeEmissionDates(platform, now);
-        emissionDates.forEach(emDate => {
+        emissionDates.forEach((emDate, emIndex) => {
           if (emDate >= windowFrom && emDate <= windowTo) {
             const totalAtEmission = sumDepositsUpTo(platform, emDate);
             const bg = colorForLevel(totalAtEmission);
+            const isDay30 = emIndex === emissionDates.length - 1; // último item = bônus do dia 30
 
             calendar.addEvent({
               id: `emit_${platform.id}_${emDate.toISOString().slice(0,10)}`,
@@ -1139,11 +1133,12 @@ document.getElementById('editPlatformsBtn').addEventListener('click', () => {
               allDay: true,
               display: 'block',
               backgroundColor: bg,
-              borderColor: 'rgba(0,0,0,0.06)',
+              borderColor: isDay30 ? '#FF0000' : 'rgba(0,0,0,0.06)',
               extendedProps: {
                 platformId: platform.id,
                 platformName: platform.name,
-                totalAtEmission: totalAtEmission
+                totalAtEmission: totalAtEmission,
+                isDay30: isDay30
               }
             });
           }
@@ -1182,9 +1177,10 @@ document.getElementById('editPlatformsBtn').addEventListener('click', () => {
       eventDisplay: 'block',
       eventDidMount: function(info){
         const bg = info.event.backgroundColor;
+        const isDay30 = info.event.extendedProps.isDay30;
         info.el.style.background = bg;
         info.el.style.color = '#000000';
-        info.el.style.border = '1px solid rgba(0,0,0,0.06)';
+        info.el.style.border = isDay30 ? '1px solid #FF0000' : '1px solid rgba(0,0,0,0.06)';
         info.el.style.borderRadius = '10px';
         info.el.style.fontWeight = '700';
         info.el.style.fontSize = '0.75rem';
