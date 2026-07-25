@@ -1,0 +1,359 @@
+#platformPanel {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-soft);
+  padding: 1rem;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  font-family: inherit;
+  overflow-y: auto;
+  max-height: none;
+  transition: max-height 0.3s ease, padding 0.3s ease, opacity 0.3s ease;
+  flex-shrink: 0;
+  backdrop-filter: blur(14px);
+}
+
+#platformPanel.minimized {
+  max-height: 0;
+  padding: 0;
+  overflow: hidden;
+  border: none;
+  opacity: 0;
+}
+
+#platformPanel .panel-header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:0.75rem;
+}
+
+#platformPanel h3 {
+  margin:0;
+  font-size:1.08rem;
+}
+
+#platformPanel .panel-controls {
+  display:flex;
+  gap:0.5rem;
+  align-items:center;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+#platformPanel input[type="search"] {
+  padding:0.7rem 0.85rem;
+  border-radius:999px;
+  border:1px solid #dbe2ea;
+  flex: 1;
+  min-width: 0;
+  background: rgba(255,255,255,0.95);
+}
+
+#platformPanel input[type="search"],
+.platform-deposit-form input,
+.reset-date-picker input {
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+#platformPanel input[type="search"]:focus,
+.platform-deposit-form input:focus,
+.reset-date-picker input:focus {
+  border-color: rgba(37,99,235,0.45);
+  box-shadow: 0 0 0 4px rgba(37,99,235,0.12);
+}
+
+#platformPanel button {
+  padding:0.65rem 0.85rem;
+  border-radius:999px;
+  border: none;
+  background:var(--primary);
+  color:#fff;
+  cursor:pointer;
+  font-weight:700;
+  font-size: 0.85rem;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+}
+
+#platformPanel button[title] { background:#6b7280; }
+
+#platformPanel button:disabled,
+.platform-deposit-form input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+.panel-actions {
+  display:flex;
+  gap:0.6rem;
+  flex-wrap: wrap;
+}
+
+.panel-actions button {
+  background:var(--accent);
+  padding:0.7rem 0.85rem;
+  font-size:0.84rem;
+  flex: 1;
+  min-width: 140px;
+}
+
+.panel-actions button[title] { background:var(--danger); }
+
+#platformList {
+  list-style:none;
+  margin:0;
+  padding:0;
+  overflow:auto;
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  gap:0.55rem;
+  max-height: 760px;
+}
+
+.platform-item {
+  display:flex;
+  flex-direction: column;
+  gap:0.55rem;
+  padding:0.9rem;
+  border-radius:16px;
+  border:1px solid rgba(0,0,0,0.05);
+  background: rgba(255,255,255,0.94);
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 6px 18px rgba(15,23,42,0.04);
+}
+
+.platform-item:hover {
+  background: #ffffff;
+  box-shadow: 0 10px 22px rgba(0,0,0,0.07);
+  transform: translateY(-1px);
+}
+
+.platform-item.selected {
+  box-shadow: 0 10px 28px rgba(21,128,61,0.16);
+  border: 2px solid var(--accent);
+}
+
+.platform-item.ended {
+  border: 2px dashed #f59e0b;
+  background: rgba(255, 251, 235, 0.95);
+}
+
+.cycle-day.cycle-ended {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.platform-item-header {
+  display:flex;
+  align-items:center;
+  gap:0.5rem;
+  justify-content: space-between;
+}
+
+.platform-item .name {
+  flex:1;
+  font-weight:700;
+  color:var(--text-dark);
+  font-size: 1rem;
+}
+
+.platform-item .cycle-day {
+  font-size:0.82rem;
+  font-weight:800;
+  background: #e0e7ff;
+  color: #3730a3;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.platform-item .cycle-day.no-bonus {
+  background: #fecaca;
+  color: #991b1b;
+}
+
+.platform-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.platform-item .reset-date {
+  font-size:0.8rem;
+  color:#64748b;
+}
+
+.platform-total-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--text-dark);
+  border: 1px solid rgba(15,23,42,0.06);
+  box-shadow: inset 0 -2px 0 rgba(255,255,255,0.2);
+}
+
+.platform-deposit-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding-top: 0.15rem;
+}
+
+.platform-deposit-form input {
+  flex: 1;
+  padding: 0.75rem 0.85rem;
+  font-size: 0.9rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.platform-actions-buttons {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.platform-actions-buttons button {
+  flex: 1;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.78rem;
+  min-width: 92px;
+}
+
+.platform-end-btn {
+  background: #f59e0b;
+}
+
+.platform-end-btn.already-ended {
+  background: #fde68a;
+  color: #92400e;
+  opacity: 0.85;
+  cursor: default;
+}
+
+.minimize-tab {
+  display: none;
+  position: fixed;
+  bottom: 92px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  padding: 0.9rem 1.5rem;
+  border-radius: 16px 16px 0 0;
+  cursor: pointer;
+  font-weight: 700;
+  z-index: 19;
+  box-shadow: 0 12px 24px rgba(21,128,61,0.22);
+}
+
+.minimize-tab.show {
+  display: block;
+}
+
+/* Agrupa "Dia X" + ícone de editar no cabeçalho do card */
+.cycle-day-group {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.edit-icon-btn {
+  border: none;
+  background: transparent;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.3rem 0.45rem;
+  border-radius: 8px;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.edit-icon-btn:hover {
+  background: rgba(15,23,42,0.06);
+  transform: translateY(-1px);
+}
+
+.edit-icon-btn.unset {
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+}
+
+/* === Apostas — controles dentro do card da plataforma (não é o modal) === */
+.bet-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding-top: 0.1rem;
+}
+
+.bet-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.bet-today-btn {
+  flex: 1;
+  min-width: 120px;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  background: var(--accent);
+  color: #fff;
+}
+
+.bet-today-btn.already-bet {
+  background: #166534;
+  opacity: 0.75;
+  cursor: default;
+}
+
+.bet-manage-btn {
+  padding: 0.6rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  background: var(--blue);
+  color: #fff;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+
+.bet-count-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #166534;
+  background: #dcfce7;
+  border: 1px solid #bbf7d0;
+  border-radius: 999px;
+  padding: 0.25rem 0.6rem;
+}

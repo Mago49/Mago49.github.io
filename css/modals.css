@@ -1,0 +1,376 @@
+.modal,
+.reset-modal,
+.history-modal,
+.bet-modal,
+.platform-manage-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(15,23,42,0.48);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 1rem;
+  backdrop-filter: blur(4px);
+}
+
+.modal-content,
+.reset-modal-content,
+.history-modal-content,
+.bet-modal-content {
+  background: #fff;
+  padding: 1.5rem;
+  border-radius: 20px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.2);
+  width: min(100%, 520px);
+  border: 1px solid rgba(15,23,42,0.08);
+}
+
+.modal-content {
+  text-align: center;
+  max-width: 420px;
+}
+
+/* appModal (alerta/confirmação genérico) reaproveita .modal + .modal-content acima */
+
+.bet-modal-content {
+  width: min(100%, 480px);
+  max-height: 80vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.reset-modal-content h2,
+.history-modal-content h2 {
+  margin: 0 0 1rem 0;
+  font-size: 1.25rem;
+}
+
+.reset-modal-content p {
+  margin: 0.5rem 0;
+  font-size: 0.95rem;
+  color: #64748b;
+  line-height: 1.55;
+}
+
+.reset-date-picker {
+  margin: 1rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.reset-date-picker label {
+  font-size: 0.9rem;
+  color: #334155;
+  text-align: left;
+  font-weight: 600;
+}
+
+.reset-date-picker input {
+  padding: 0.8rem 0.9rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 12px;
+  font-size: 0.95rem;
+}
+
+.reset-modal-buttons {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: center;
+  margin-top: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.reset-modal-buttons button,
+.history-close {
+  padding: 0.75rem 1rem;
+  border: none;
+  border-radius: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.btn-confirm {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn-cancel-modal,
+.history-close,
+.bet-modal-close {
+  background: #e5e7eb;
+  color: #1f2937;
+}
+
+.btn-remove-modal {
+  background: var(--danger);
+  color: #fff;
+}
+
+.history-modal-content {
+  max-width: 560px;
+  max-height: 75vh;
+  overflow-y: auto;
+}
+
+.history-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.9rem;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 0.92rem;
+  gap: 0.65rem;
+}
+
+.history-item:last-child {
+  border-bottom: none;
+}
+
+.history-item-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex: 1;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.history-date {
+  font-weight: 600;
+  color: var(--text-dark);
+}
+
+.history-value {
+  background: var(--accent);
+  color: #fff;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.history-delete-btn {
+  background: var(--danger);
+  color: #fff;
+  border: none;
+  padding: 0.45rem 0.65rem;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 0.76rem;
+  transition: background 0.2s, transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.history-delete-btn:hover {
+  background: #dc2626;
+}
+
+.history-empty {
+  text-align: center;
+  color: #64748b;
+  padding: 1rem;
+}
+
+/* === Modal: Gerenciar Apostas === */
+.bet-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.bet-modal-header h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.bet-modal-close {
+  border: none;
+  border-radius: 10px;
+  padding: 0.45rem 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.bet-add-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.bet-add-row input[type="date"] {
+  flex: 1;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.bet-add-row input[type="date"]:focus {
+  border-color: rgba(37,99,235,0.45);
+  box-shadow: 0 0 0 4px rgba(37,99,235,0.12);
+}
+
+.bet-add-confirm {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 0.7rem 1rem;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.bet-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.bet-list-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.65rem 0.85rem;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  font-size: 0.9rem;
+  gap: 0.5rem;
+}
+
+.bet-list-item span {
+  font-weight: 600;
+  color: var(--text-dark);
+}
+
+.bet-list-remove {
+  background: var(--danger);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.3rem 0.6rem;
+  font-weight: 700;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.bet-empty {
+  text-align: center;
+  color: #64748b;
+  font-size: 0.9rem;
+  padding: 0.5rem 0;
+}
+
+/* === Modal: Gerenciar Plataformas (acordeão) === */
+.platform-manage-modal-content {
+  width: min(100%, 560px);
+  max-height: 82vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.platform-manage-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.platform-manage-row {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.platform-manage-row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.75rem 0.9rem;
+  cursor: pointer;
+}
+
+.platform-manage-row-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 700;
+  color: var(--text-dark);
+}
+
+.platform-manage-chevron {
+  transition: transform 0.2s ease;
+  color: #64748b;
+}
+
+.platform-manage-row.open .platform-manage-chevron {
+  transform: rotate(180deg);
+}
+
+.platform-manage-row-body {
+  max-height: 0;
+  overflow: hidden;
+  padding: 0 0.9rem;
+  transition: max-height 0.25s ease, padding 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.platform-manage-row.open .platform-manage-row-body {
+  max-height: 480px;
+  padding: 0 0.9rem 0.9rem;
+}
+
+.platform-manage-row-add .platform-manage-row-header {
+  background: #f5f3ff;
+}
+
+.platform-manage-row-add .platform-manage-row-title {
+  color: #6d28d9;
+}
+
+.platform-form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  text-align: left;
+}
+
+.platform-form-fields label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.platform-form-fields input,
+.platform-form-fields select {
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 12px;
+  font-size: 0.95rem;
+  outline: none;
+  background: #fff;
+}
+
+.platform-form-fields input:focus,
+.platform-form-fields select:focus {
+  border-color: rgba(37,99,235,0.45);
+  box-shadow: 0 0 0 4px rgba(37,99,235,0.12);
+}
