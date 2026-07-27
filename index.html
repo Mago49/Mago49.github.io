@@ -70,6 +70,7 @@
           </p>
           <div class="hero-actions">
             <button class="btn-primary" id="scrollToPanelBtn">Ver plataformas</button>
+            <button class="btn-secondary" id="scrollToVipBtn">Vip Bônus</button>
             <button class="btn-secondary" id="scrollToCalendarBtn">Ir para calendário</button>
           </div>
         </div>
@@ -121,7 +122,7 @@
         <button class="minimize-tab" id="minimizeTab">Abrir Painel</button>
 
         <aside id="platformPanel" aria-label="Painel de plataformas">
-<section class="card-shell vip-card" aria-label="Resumo VIP">
+<section class="card-shell vip-card" aria-label="Resumo VIP" id="vipPanelSection">
   <div class="section-heading">
     <div>
       <h3>Bônus VIP</h3>
@@ -132,7 +133,7 @@
   <div id="vipTotals" class="vip-totals"></div>
   <div id="vipSummary" class="vip-summary"></div>
 </section>
-          <div class="panel-header">
+          <div class="panel-header" id="platformListSection">
     <h3>Plataformas</h3>
     <span class="user-label" id="userLabel"></span>
     <div class="panel-controls">
