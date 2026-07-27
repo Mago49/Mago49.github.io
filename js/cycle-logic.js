@@ -71,22 +71,36 @@ export function getTotalDepositsSinceCycle(platform) {
   return sumDepositsUpTo(platform, new Date());
 }
 
-// Cache das 5 cores de nível lidas do CSS. Elas não mudam em tempo de
-// execução, então não faz sentido reler do documento toda vez que uma
-// plataforma é desenhada (lista + calendário chamam colorForLevel várias
-// vezes por render).
+// Faixas de valor por nível — fonte única usada tanto pra pintar
+// calendário/lista quanto pra montar a legenda dinâmica (ver ui-hero.js).
+export const LEVEL_INFO = [
+  { min: 0,    label: '1–29' },
+  { min: 30,   label: '30–69' },
+  { min: 70,   label: '70–149' },
+  { min: 150,  label: '150–299' },
+  { min: 300,  label: '300–599' },
+  { min: 601,  label: '600–999' },
+  { min: 1001, label: '1.000–1.099' },
+  { min: 2001, label: '2.000–5.000' }
+];
+
+export function levelForAmount(amount) {
+  const v = Number(amount);
+  const value = isNaN(v) ? 0 : v;
+  for (let level = LEVEL_INFO.length - 1; level >= 0; level--) {
+    if (value >= LEVEL_INFO[level].min) return level;
+  }
+  return 0;
+}
+
 let cachedLevelColors = null;
 
 function getLevelColors() {
   if (!cachedLevelColors) {
     const root = getComputedStyle(document.documentElement);
-    cachedLevelColors = [
-      root.getPropertyValue('--level-0').trim(),
-      root.getPropertyValue('--level-1').trim(),
-      root.getPropertyValue('--level-2').trim(),
-      root.getPropertyValue('--level-3').trim(),
-      root.getPropertyValue('--level-4').trim()
-    ];
+    cachedLevelColors = LEVEL_INFO.map((_, level) =>
+      root.getPropertyValue(`--level-${level}`).trim()
+    );
   }
   return cachedLevelColors;
 }
@@ -95,16 +109,11 @@ export function colorForLevel(valueOrLevel) {
   const lvlVars = getLevelColors();
 
   const v = Number(valueOrLevel);
-  if (Number.isInteger(v) && v >= 0 && v <= 4) {
+  if (Number.isInteger(v) && v >= 0 && v < lvlVars.length) {
     return lvlVars[v];
   }
 
-  const amount = isNaN(v) ? 0 : v;
-  if (amount >= 300) return lvlVars[4];
-  if (amount >= 150) return lvlVars[3];
-  if (amount >= 70) return lvlVars[2];
-  if (amount >= 30) return lvlVars[1];
-  return lvlVars[0];
+  return lvlVars[levelForAmount(valueOrLevel)];
 }
 
 export function getEventsForDate(targetDate) {
