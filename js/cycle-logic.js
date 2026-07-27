@@ -1,6 +1,7 @@
 // === LÓGICA DE CICLOS E BÔNUS VIP ===
 // Regras de negócio puras: datas de emissão, cálculo de bônus, cor por nível.
-// Não mexe no DOM (exceto leitura de variáveis CSS em colorForLevel).
+// Não mexe no DOM (exceto leitura de variáveis CSS em colorForLevel, que
+// agora é feita uma única vez e guardada em cache — ver getLevelColors()).
 
 import { state } from './state.js';
 
@@ -70,15 +71,28 @@ export function getTotalDepositsSinceCycle(platform) {
   return sumDepositsUpTo(platform, new Date());
 }
 
+// Cache das 5 cores de nível lidas do CSS. Elas não mudam em tempo de
+// execução, então não faz sentido reler do documento toda vez que uma
+// plataforma é desenhada (lista + calendário chamam colorForLevel várias
+// vezes por render).
+let cachedLevelColors = null;
+
+function getLevelColors() {
+  if (!cachedLevelColors) {
+    const root = getComputedStyle(document.documentElement);
+    cachedLevelColors = [
+      root.getPropertyValue('--level-0').trim(),
+      root.getPropertyValue('--level-1').trim(),
+      root.getPropertyValue('--level-2').trim(),
+      root.getPropertyValue('--level-3').trim(),
+      root.getPropertyValue('--level-4').trim()
+    ];
+  }
+  return cachedLevelColors;
+}
+
 export function colorForLevel(valueOrLevel) {
-  const root = getComputedStyle(document.documentElement);
-  const lvlVars = [
-    root.getPropertyValue('--level-0').trim(),
-    root.getPropertyValue('--level-1').trim(),
-    root.getPropertyValue('--level-2').trim(),
-    root.getPropertyValue('--level-3').trim(),
-    root.getPropertyValue('--level-4').trim()
-  ];
+  const lvlVars = getLevelColors();
 
   const v = Number(valueOrLevel);
   if (Number.isInteger(v) && v >= 0 && v <= 4) {
@@ -99,7 +113,7 @@ export function getEventsForDate(targetDate) {
   const targetTime = target.getTime();
   return state.platforms.filter(platform =>
     !platform.cycleEnded &&
-    computeEmissionDates(platform).some(date => date.getTime() === targetTime)
+    computeEmissionDates(platform, target).some(date => date.getTime() === targetTime)
   );
 }
 

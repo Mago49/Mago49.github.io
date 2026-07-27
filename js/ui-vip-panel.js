@@ -1,6 +1,6 @@
 // === PAINEL VIP ===
 import { state } from './state.js';
-import { formatCurrency } from './utils.js';
+import { formatCurrency, escapeHtml } from './utils.js';
 import { getVipBonus } from './cycle-logic.js';
 
 export function renderVipPanel() {
@@ -30,11 +30,14 @@ export function renderVipPanel() {
     const bonus = getVipBonus(platform);
     const groupLabel = platform.group === 'com' ? 'Com aposta' : 'Sem aposta';
     const groupClass = platform.group === 'com' ? 'group-com' : 'group-sem';
+    // Nome digitado pelo usuário: escapado antes de entrar no innerHTML,
+    // pra um "<" ou "&" no código da plataforma não virar HTML sem querer.
+    const safeName = escapeHtml(platform.name);
 
     return `
       <article class="vip-item">
         <div class="vip-item-header">
-          <div class="vip-code">${platform.name}</div>
+          <div class="vip-code">${safeName}</div>
           <div class="vip-badges">
             <span class="vip-badge level">VIP ${platform.level}</span>
             <span class="vip-badge ${groupClass}">${groupLabel}</span>

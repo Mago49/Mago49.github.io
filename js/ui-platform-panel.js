@@ -10,7 +10,6 @@ import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
 import { getCycleStart, getCurrentCycleDay, getTotalDepositsSinceCycle, colorForLevel } from './cycle-logic.js';
 import { savePlatforms, deletePlatformDoc } from './platforms-store.js';
 import { updateCalendarEvents, filterCalendarByPlatform, showAllBonusCalendar } from './ui-calendar.js';
-import { updateHeroSummary } from './ui-hero.js';
 import { renderVipPanel } from './ui-vip-panel.js';
 
 const platformPanelEl = document.getElementById('platformPanel');
@@ -57,7 +56,9 @@ export function renderPlatformList(filter = '') {
 
     const editIconBtn = document.createElement('button');
     editIconBtn.type = 'button';
-    editIconBtn.className = 'edit-icon-btn' + (p.group ? '' : ' unset');
+    // btn-neutral = mesma cor cinza dos outros botões utilitários do painel
+    // (ver panel.css). Antes isso vinha do atributo title, agora é explícito.
+    editIconBtn.className = 'edit-icon-btn btn-neutral' + (p.group ? '' : ' unset');
     editIconBtn.textContent = '📝';
     editIconBtn.title = p.group ? 'Editar plataforma' : 'Configurar nível VIP';
     editIconBtn.addEventListener('click', (ev) => {
@@ -139,9 +140,9 @@ export function renderPlatformList(filter = '') {
         });
         input.value = '';
         savePlatforms(state.currentUid, state.platforms);
+        // updateCalendarEvents() já atualiza o resumo do topo por dentro.
         updateCalendarEvents();
         renderPlatformList(q);
-        updateHeroSummary();
       });
     }
 
@@ -158,7 +159,6 @@ export function renderPlatformList(filter = '') {
       savePlatforms(state.currentUid, state.platforms);
       updateCalendarEvents();
       renderPlatformList(q);
-      updateHeroSummary();
     });
 
     const resetBtn = document.createElement('button');
@@ -224,7 +224,10 @@ export function renderPlatformList(filter = '') {
     }
 
     li.addEventListener('click', (e) => {
-      if (e.target === btn || e.target === input || e.target === resetBtn || e.target === historyBtn) return;
+      // btn, resetBtn e historyBtn já chamam stopPropagation() nos próprios
+      // listeners, então um clique neles nunca chega até aqui. Só o campo de
+      // valor do depósito (input) realmente precisa ser filtrado.
+      if (e.target === input) return;
       document.querySelectorAll('.platform-item').forEach(el => el.classList.remove('selected'));
       li.classList.add('selected');
       filterCalendarByPlatform(p.id);
@@ -232,8 +235,6 @@ export function renderPlatformList(filter = '') {
 
     listEl.appendChild(li);
   });
-
-  updateHeroSummary();
 }
 
 // ---------- MODAL: HISTÓRICO ----------
@@ -288,7 +289,6 @@ function showHistoryModal(platform) {
           updateCalendarEvents();
           renderPlatformList(platformSearchEl.value);
           showHistoryModal(platform);
-          updateHeroSummary();
         }
       });
       item.appendChild(deleteBtn);
@@ -339,14 +339,21 @@ function closeResetModal() {
   currentResetPlatform = null;
 }
 
-resetConfirmBtn.addEventListener('click', () => {
+resetConfirmBtn.addEventListener('click', async () => {
   if (currentResetPlatform) {
+    if (!resetDateInput.value) {
+      await showAppAlert('Selecione uma data válida para reiniciar o ciclo.');
+      return;
+    }
     currentResetPlatform.lastResetDate = `${resetDateInput.value}T00:00:00`;
     currentResetPlatform.cycleEnded = false;
+    // Reinício agora também zera os depósitos, como garantia extra caso
+    // alguém clique direto em "Reinício" sem passar por "Fim" antes —
+    // assim nenhum depósito do ciclo anterior vaza pro ciclo novo.
+    currentResetPlatform.deposits = [];
     savePlatforms(state.currentUid, state.platforms);
     updateCalendarEvents();
     renderPlatformList(currentResetFilter);
-    updateHeroSummary();
   }
   closeResetModal();
 });
@@ -565,7 +572,6 @@ function renderPlatformManageList(openId) {
       renderPlatformList(platformSearchEl.value);
       renderVipPanel();
       updateCalendarEvents();
-      updateHeroSummary();
     });
 
     const removeBtn = document.createElement('button');
@@ -585,7 +591,6 @@ function renderPlatformManageList(openId) {
       renderPlatformList(platformSearchEl.value);
       renderVipPanel();
       updateCalendarEvents();
-      updateHeroSummary();
     });
 
     actions.appendChild(saveBtn);
@@ -637,7 +642,6 @@ document.getElementById('platformManageAddSaveBtn').addEventListener('click', as
   renderPlatformList(platformSearchEl.value);
   renderVipPanel();
   updateCalendarEvents();
-  updateHeroSummary();
 });
 
 function openPlatformManage(focusId) {
@@ -682,7 +686,6 @@ document.getElementById('resetAllBtn').addEventListener('click', async () => {
   savePlatforms(state.currentUid, state.platforms);
   renderPlatformList();
   updateCalendarEvents();
-  updateHeroSummary();
 });
 
 const toggleBtn = document.getElementById('togglePanelBtn');

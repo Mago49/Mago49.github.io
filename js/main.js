@@ -5,8 +5,8 @@
 
 import { startBackgroundAnimation } from './ui-background.js';
 import { createCalendar, updateCalendarEvents } from './ui-calendar.js';
-import { updateHeroSummary } from './ui-hero.js';
 import { renderPlatformList } from './ui-platform-panel.js';
+import { renderVipPanel } from './ui-vip-panel.js';
 
 // Ativa os módulos que só precisam ser importados para registrar seus
 // próprios listeners (login/logout, todos os modais do painel etc.).
@@ -15,8 +15,9 @@ import './auth.js';
 startBackgroundAnimation();
 
 createCalendar();
+// updateCalendarEvents() já atualiza o resumo do topo (hero) por dentro,
+// não é preciso chamar updateHeroSummary() de novo aqui.
 updateCalendarEvents();
-updateHeroSummary();
 
 document.getElementById('scrollToPanelBtn').addEventListener('click', () => {
   document.getElementById('platformPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -34,7 +35,10 @@ function scheduleDailyUpdate() {
     const platformSearchEl = document.getElementById('platformSearch');
     updateCalendarEvents();
     renderPlatformList(platformSearchEl.value);
-    updateHeroSummary();
+    // Bônus VIP depende do dia atual (dias no mês, segundas-feiras etc.),
+    // então também precisa ser recalculado na virada do dia — sem isso ele
+    // fica desatualizado até o usuário recarregar a página manualmente.
+    renderVipPanel();
     scheduleDailyUpdate();
   }, ms);
 }

@@ -9,6 +9,19 @@ export function formatCurrency(value) {
   }).format(Number(value) || 0);
 }
 
+// Escapa caracteres especiais de HTML antes de inserir um texto em innerHTML.
+// Usado sempre que um dado editável pelo usuário (ex: nome de plataforma)
+// entra num template de innerHTML, pra evitar que HTML digitado no campo
+// seja interpretado como código pelo navegador.
+export function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // Modal genérico de alerta/confirmação (substitui alert()/confirm() nativos do navegador).
 // Depende dos elementos #appModal / #appModalMessage / #appModalConfirmBtn / #appModalCancelBtn
 // existirem no HTML da página atual.

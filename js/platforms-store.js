@@ -22,8 +22,6 @@ export const DEFAULT_PLATFORMS = Array.from({ length: 33 }, (_, i) => ({
   group: null
 }));
 
-const PLAT_STORAGE_KEY = 'depositPlatforms_v3';
-
 export function normalizePlatformData(parsed) {
   if (!Array.isArray(parsed)) return null;
   return parsed.map((p, i) => ({
@@ -38,19 +36,6 @@ export function normalizePlatformData(parsed) {
   }));
 }
 
-// Lê o backup antigo do localStorage (versões anteriores do painel), usado
-// só uma vez, na primeira vez que o usuário loga e ainda não tem nada no Firestore.
-function loadLegacyLocalPlatforms() {
-  try {
-    const raw = localStorage.getItem(PLAT_STORAGE_KEY);
-    if (!raw) return null;
-    return normalizePlatformData(JSON.parse(raw));
-  } catch (err) {
-    console.error('Erro ao ler backup local antigo', err);
-    return null;
-  }
-}
-
 export async function loadPlatformsFromFirestore(uid) {
   const colRef = collection(db, 'users', uid, 'platforms');
   const snap = await getDocs(colRef);
@@ -59,8 +44,9 @@ export async function loadPlatformsFromFirestore(uid) {
     return normalizePlatformData(snap.docs.map(d => d.data())) || [];
   }
 
-  // Coleção vazia: migra o backup antigo do localStorage (se existir) ou usa o padrão.
-  const initial = loadLegacyLocalPlatforms() || DEFAULT_PLATFORMS.slice();
+  // Coleção vazia: usuário novo, ainda sem nenhuma plataforma salva no
+  // Firestore. Cria o conjunto padrão de 33 plataformas para ele.
+  const initial = DEFAULT_PLATFORMS.slice();
   const batch = writeBatch(db);
   initial.forEach(p => batch.set(doc(colRef, p.id), p));
   await batch.commit();

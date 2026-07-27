@@ -4,7 +4,6 @@ import { state } from './state.js';
 import { showAppAlert } from './utils.js';
 import { loadPlatformsFromFirestore } from './platforms-store.js';
 import { updateCalendarEvents } from './ui-calendar.js';
-import { updateHeroSummary } from './ui-hero.js';
 import { renderVipPanel } from './ui-vip-panel.js';
 import { renderPlatformList } from './ui-platform-panel.js';
 
@@ -50,9 +49,10 @@ onAuthStateChanged(auth, async (user) => {
     appMainEl.classList.remove('app-hidden');
     appFooterEl.classList.remove('app-hidden');
 
+    // updateCalendarEvents() já atualiza o resumo do topo (hero) sozinha
+    // por dentro, então não é preciso chamar updateHeroSummary() de novo aqui.
     renderPlatformList();
     updateCalendarEvents();
-    updateHeroSummary();
     renderVipPanel();
   } else {
     state.currentUid = null;
