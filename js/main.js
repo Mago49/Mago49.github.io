@@ -20,7 +20,11 @@ createCalendar();
 updateCalendarEvents();
 
 document.getElementById('scrollToPanelBtn').addEventListener('click', () => {
-  document.getElementById('platformPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.getElementById('platformListSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
+});
+
+document.getElementById('scrollToVipBtn').addEventListener('click', () => {
+  document.getElementById('vipPanelSection').scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
 
 document.getElementById('scrollToCalendarBtn').addEventListener('click', () => {
