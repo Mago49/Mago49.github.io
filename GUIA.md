@@ -135,3 +135,39 @@ dividido o projeto: a camada de dados já existe pronta, você só escreve a tel
 - [ ] Confirmar que login com Google ainda funciona
 - [ ] Confirmar que adicionar depósito, resetar ciclo e apostas ainda funcionam
 - [ ] Só então: commit e push
+
+## 8. Atualização 1 — o que mudou nesta rodada
+
+Registro rápido pra você lembrar o motivo de cada mudança (detalhes completos
+ficaram na conversa com o Claude):
+
+- **`panel.css` / `index.html` / `ui-platform-panel.js`**: os botões
+  "utilitários" do painel (minimizar, Editar, Resetar, Sair, TODOS OS BÔNUS e o
+  ícone 📝 de cada plataforma) dependiam do atributo `title` pra ficarem cinza.
+  `title` é pra tooltip, não pra estilo — qualquer botão novo com `title` viraria
+  cinza sem querer. Agora existe a classe `.btn-neutral`, explícita, aplicada só
+  onde deveria. O visual não mudou, só o mecanismo por trás.
+- **`ui-platform-panel.js`**: o botão "Reinício" agora também zera os depósitos
+  (antes só o "Fim" fazia isso) — evita depósitos do ciclo anterior vazando pro
+  novo ciclo se alguém clicar direto em Reinício sem passar pelo Fim.
+- **`ui-platform-panel.js`**: clique no card da plataforma tinha uma checagem
+  redundante (`e.target === btn/resetBtn/historyBtn`) que nunca disparava,
+  porque esses botões já paravam a propagação do clique sozinhos. Simplificado
+  pra checar só o campo de valor do depósito.
+- **`auth.js` / `main.js` / `ui-platform-panel.js`**: `updateHeroSummary()`
+  (resumo do topo) era chamado 2-3 vezes seguidas em quase toda ação, porque
+  `updateCalendarEvents()` já chama ela sozinha por dentro. Removidas as
+  chamadas repetidas — mesmo resultado, menos recálculo.
+- **`main.js`**: a atualização automática da virada do dia agora também chama
+  `renderVipPanel()`, pra o resumo VIP não ficar desatualizado até alguém
+  recarregar a página manualmente.
+- **`cycle-logic.js`**: `getEventsForDate` não usava a data recebida pra
+  calcular o ciclo (sempre calculava com "agora"). Corrigido pra usar a data
+  pedida de fato. `colorForLevel` agora guarda as cores em cache, em vez de ler
+  do CSS toda vez que uma plataforma é desenhada.
+- **`platforms-store.js`**: removida a leitura de backup do `localStorage`
+  (`loadLegacyLocalPlatforms`) — só fazia sentido na sua migração inicial;
+  qualquer usuário novo já nasce direto no Firestore.
+- **`utils.js` / `ui-vip-panel.js`**: nome da plataforma agora passa por
+  `escapeHtml()` antes de entrar no `innerHTML` do painel VIP — proteção
+  simples e barata contra HTML acidental/malicioso no nome.
