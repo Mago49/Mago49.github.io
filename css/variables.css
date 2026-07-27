@@ -1,5 +1,5 @@
 /* Tokens de design (cores, raios, sombras) usados em todos os outros CSS.
-   Sempre carregar este arquivo PRIMEIRO â€” os outros dependem dessas var(--x). */
+   Sempre carregar este arquivo PRIMEIRO — os outros dependem dessas var(--x). */
 
 :root {
   --level-0: #fecdd3;
