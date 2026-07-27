@@ -79,9 +79,9 @@ export const LEVEL_INFO = [
   { min: 70,   label: '70–149' },
   { min: 150,  label: '150–299' },
   { min: 300,  label: '300–599' },
-  { min: 601,  label: '600–999' },
-  { min: 1001, label: '1.000–1.099' },
-  { min: 2001, label: '2.000–5.000' }
+  { min: 600,  label: '600–999' },
+  { min: 1000, label: '1.000–1.099' },
+  { min: 2000, label: '2.000–5.000' }
 ];
 
 export function levelForAmount(amount) {
