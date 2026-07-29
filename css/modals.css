@@ -1,8 +1,14 @@
+/* === MODAIS (popups de verdade, com overlay) ===
+   O antigo "modal" de Gerenciar Plataformas saiu daqui: a Página 4 é uma
+   tela inteira dedicada a isso, então virou conteúdo normal da página em
+   vez de um popup por cima de outro conteúdo (ver manage-panel.css). Aqui
+   ficam só os popups que continuam sendo popups: alerta genérico, reinício
+   de ciclo, histórico de depósitos e gerenciar apostas. */
+
 .modal,
 .reset-modal,
 .history-modal,
-.bet-modal,
-.platform-manage-modal {
+.bet-modal {
   position: fixed;
   top: 0;
   left: 0;
@@ -77,6 +83,13 @@
   border: 1px solid #e6e9ee;
   border-radius: 12px;
   font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.reset-date-picker input:focus {
+  border-color: rgba(37,99,235,0.45);
+  box-shadow: 0 0 0 4px rgba(37,99,235,0.12);
 }
 
 .reset-modal-buttons {
@@ -272,105 +285,4 @@
   color: #64748b;
   font-size: 0.9rem;
   padding: 0.5rem 0;
-}
-
-/* === Modal: Gerenciar Plataformas (acordeão) === */
-.platform-manage-modal-content {
-  width: min(100%, 560px);
-  max-height: 82vh;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 0.9rem;
-}
-
-.platform-manage-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
-}
-
-.platform-manage-row {
-  border: 1px solid rgba(15, 23, 42, 0.08);
-  border-radius: 14px;
-  background: #fff;
-  overflow: hidden;
-}
-
-.platform-manage-row-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
-  padding: 0.75rem 0.9rem;
-  cursor: pointer;
-}
-
-.platform-manage-row-title {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-weight: 700;
-  color: var(--text-dark);
-}
-
-.platform-manage-chevron {
-  transition: transform 0.2s ease;
-  color: #64748b;
-}
-
-.platform-manage-row.open .platform-manage-chevron {
-  transform: rotate(180deg);
-}
-
-.platform-manage-row-body {
-  max-height: 0;
-  overflow: hidden;
-  padding: 0 0.9rem;
-  transition: max-height 0.25s ease, padding 0.25s ease;
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-}
-
-.platform-manage-row.open .platform-manage-row-body {
-  max-height: 480px;
-  padding: 0 0.9rem 0.9rem;
-}
-
-.platform-manage-row-add .platform-manage-row-header {
-  background: #f5f3ff;
-}
-
-.platform-manage-row-add .platform-manage-row-title {
-  color: #6d28d9;
-}
-
-.platform-form-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  text-align: left;
-}
-
-.platform-form-fields label {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #334155;
-}
-
-.platform-form-fields input,
-.platform-form-fields select {
-  padding: 0.75rem 0.85rem;
-  border: 1px solid #e6e9ee;
-  border-radius: 12px;
-  font-size: 0.95rem;
-  outline: none;
-  background: #fff;
-}
-
-.platform-form-fields input:focus,
-.platform-form-fields select:focus {
-  border-color: rgba(37,99,235,0.45);
-  box-shadow: 0 0 0 4px rgba(37,99,235,0.12);
 }

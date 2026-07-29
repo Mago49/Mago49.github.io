@@ -1,6 +1,6 @@
-/* IMPORTANTE: este arquivo precisa ser o ÚLTIMO <link> no <head>.
-   Em CSS, quando duas regras têm a mesma especificidade, vence a que
-   aparece por último no HTML — por isso os overrides de @media só
+/* IMPORTANTE: este arquivo precisa ser o ÚLTIMO <link> no <head>, em toda
+   página. Em CSS, quando duas regras têm a mesma especificidade, vence a
+   que aparece por último no HTML — por isso os overrides de @media só
    funcionam de forma confiável se este arquivo vier depois dos outros. */
 
 @media (max-width: 1100px) {
@@ -9,14 +9,17 @@
     grid-template-columns: 1fr;
   }
 
-  #platformList {
-    max-height: 500px;
+  .vip-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width:900px) {
   .page-shell {
     width: min(100% - 1rem, 1240px);
+  }
+
+  .page-shell.has-legend {
     padding-bottom: 8.4rem;
   }
 
@@ -50,19 +53,40 @@
     gap: 0.4rem;
   }
 
-  #platformPanel .panel-header {
+  #platformManagePanel .panel-header {
     flex-direction: column;
     align-items: stretch;
   }
 
-  #platformPanel .panel-controls {
+  #platformManagePanel .panel-controls {
     width: 100%;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .top-nav {
+    justify-content: flex-end;
+  }
+
+  /* Cards de filtro (Página 2): em telas menores o grid deixa de crescer
+     livremente e ganha scroll interno, pra manter a página compacta. */
+  .pcards-grid {
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    max-height: 380px;
+    overflow-y: auto;
+    padding-right: 0.2rem;
   }
 }
 
 @media (max-width:640px) {
   .page-shell {
     width: calc(100% - 0.75rem);
+  }
+
+  .page-shell.has-legend {
     padding-bottom: 9rem;
   }
 
@@ -86,6 +110,7 @@
   }
 
   .hero-actions button,
+  .hero-actions a,
   .panel-actions button,
   .platform-actions-buttons button,
   .reset-modal-buttons button {
@@ -99,10 +124,48 @@
     align-items: flex-start;
   }
 
-  .minimize-tab {
-    bottom: 110px;
-    width: calc(100% - 2rem);
-    text-align: center;
+  .top-nav {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .top-nav a,
+  .top-nav button {
+    flex: 1;
+  }
+
+  .vip-summary {
+    grid-template-columns: 1fr;
+    max-height: 1100px;
+  }
+
+  .vip-filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .vip-filter-btn {
+    width: 100%;
+  }
+
+  .pcards-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .sort-menu {
+    width: 100%;
+  }
+
+  .sort-menu-toggle {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .sort-menu-dropdown {
+    left: 0;
+    right: 0;
+    width: 100%;
   }
 
   footer.legend {

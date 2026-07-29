@@ -1,3 +1,12 @@
+/* A legenda fixa agora só existe em calendario.html. O .page-shell dessa
+   página precisa da classe extra "has-legend" pra reservar espaço embaixo
+   e o conteúdo não ficar escondido atrás do rodapé fixo (breakpoints
+   adicionais em responsive.css). Nas outras 3 páginas, sem a classe, o
+   .page-shell usa o padding-bottom padrão menor definido em base.css. */
+.page-shell.has-legend {
+  padding-bottom: 7rem;
+}
+
 footer.legend {
   position: fixed;
   bottom: 0;

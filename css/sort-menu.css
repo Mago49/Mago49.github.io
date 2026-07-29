@@ -1,0 +1,54 @@
+/* === MENU "ORDENAR" (dropdown compartilhado — Páginas 2 e 4) === */
+
+.sort-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.sort-menu-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
+.sort-menu-dropdown {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  z-index: 40;
+  display: none;
+  flex-direction: column;
+  min-width: 190px;
+  padding: 0.4rem;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid rgba(15,23,42,0.08);
+  box-shadow: 0 16px 36px rgba(15,23,42,0.14);
+}
+
+.sort-menu-dropdown.open {
+  display: flex;
+}
+
+.sort-menu-item {
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 0.6rem 0.7rem;
+  border-radius: 9px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--text-dark);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.sort-menu-item:hover {
+  background: rgba(15,23,42,0.06);
+}
+
+.sort-menu-item.active {
+  background: var(--primary);
+  color: #fff;
+}

@@ -27,20 +27,6 @@
   align-items: center;
 }
 
-.hero-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.45rem 0.8rem;
-  border-radius: 999px;
-  background: rgba(15,23,42,0.08);
-  color: var(--primary);
-  font-size: 0.82rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  margin-bottom: 0.9rem;
-}
-
 .hero h1 {
   margin: 0;
   font-size: clamp(1.9rem, 4vw, 3rem);
@@ -63,13 +49,38 @@
   margin-top: 1.25rem;
 }
 
-.hero-actions button {
+.hero-actions button,
+.hero-actions a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
   border-radius: 999px;
   padding: 0.8rem 1.1rem;
   font-weight: 700;
   cursor: pointer;
+  text-decoration: none;
   transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+/* Página 1 (Hub): Painel Geral centralizado, mais estreito que o layout de
+   2 colunas original, já que não compete mais com um layout-grid ao lado. */
+.hero.hub-hero {
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Os 3 botões saem de dentro do hero e ficam logo abaixo dele. Reaproveita
+   o mesmo .hero-actions (mesmo visual de botão), só que centralizado. */
+.hero-actions.hub-actions {
+  max-width: 900px;
+  margin: 0 auto 1.5rem;
+}
+
+.hero-actions.hub-actions a {
+  flex: 1;
+  min-width: 180px;
 }
 
 .hero-summary {
