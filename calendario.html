@@ -1,0 +1,126 @@
+<!-- Página 2 — Calendário. Título/frase à esquerda, navegação à direita,
+     calendário ao centro, grid de cards de filtro abaixo, legenda fixa
+     (só nesta página). -->
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Painel do Tigrinho — Calendário</title>
+
+  <style>
+    html, body { margin: 0; padding: 0; }
+    .background-svg {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+    }
+  </style>
+
+  <!-- CSS do projeto. ORDEM IMPORTA: variables.css primeiro, responsive.css por último. -->
+  <link rel="stylesheet" href="css/variables.css" />
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/layout.css" />
+  <link rel="stylesheet" href="css/calendar.css" />
+  <link rel="stylesheet" href="css/panel.css" />
+  <link rel="stylesheet" href="css/platform-cards.css" />
+  <link rel="stylesheet" href="css/sort-menu.css" />
+  <link rel="stylesheet" href="css/nav.css" />
+  <link rel="stylesheet" href="css/footer.css" />
+  <link rel="stylesheet" href="css/modals.css" />
+  <link rel="stylesheet" href="css/responsive.css" />
+
+  <!-- FullCalendar com defer: não bloqueia o carregamento do CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js" defer></script>
+</head>
+
+<body>
+  <div class="auth-loading" id="authLoading">
+    <div class="auth-loading-spinner" aria-label="Carregando"></div>
+  </div>
+
+  <div class="auth-screen app-hidden" id="authScreen">
+    <div class="auth-card">
+      <span class="hero-badge">✨ Painel do Tigrinho 🐯</span>
+      <h1>Acesse seu painel</h1>
+      <p>Entre com sua conta Google para sincronizar seus dados entre aparelhos.</p>
+      <button class="btn-primary auth-google-btn" id="googleLoginBtn" type="button">
+        <span class="auth-google-icon" aria-hidden="true">G</span>
+        Entrar com Google
+      </button>
+      <p class="auth-error" id="authError"></p>
+    </div>
+  </div>
+
+  <svg class="background-svg" viewBox="0 0 1440 800" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <circle cx="280" cy="280" r="280" fill="#1e3a8a" />
+    <circle cx="1160" cy="280" r="280" fill="#ef4444" />
+    <circle cx="280" cy="520" r="280" fill="#facc15" />
+    <circle cx="1160" cy="520" r="280" fill="#15803d" />
+  </svg>
+
+  <main class="page-shell has-legend app-hidden" id="appMain">
+    <div class="page-header">
+      <div class="page-header-text">
+        <h1>Calendário de bônus</h1>
+        <p>Veja os próximos eventos e acompanhe os ciclos por nível de depósito.</p>
+      </div>
+      <nav class="top-nav" aria-label="Navegação">
+        <span class="user-label" id="userLabel"></span>
+        <a class="nav-home" href="index.html" title="Página inicial">🏠</a>
+        <a href="vip.html" title="Painel VIP">VIP</a>
+        <a href="edicao.html" title="Editar plataformas">📝</a>
+        <button id="logoutBtn" type="button" title="Sair">Sair</button>
+      </nav>
+    </div>
+
+    <section class="card-shell" aria-label="Calendário de bônus">
+      <div class="calendar-toolbar">
+        <span class="pill">📅 Visual mensal, semanal e diária</span>
+        <span class="pill">🎯 Cores por nível automático</span>
+        <span class="pill">⚡ Atualização local instantânea</span>
+      </div>
+      <div id="calendar"></div>
+    </section>
+
+    <section class="card-shell pcards-section" aria-label="Filtro de plataformas">
+      <div class="section-heading" style="padding:0 0 0.9rem;">
+        <div>
+          <h2>Plataformas</h2>
+          <p>Clique numa plataforma para ver só os bônus dela no calendário.</p>
+        </div>
+      </div>
+
+      <div class="pcards-toolbar">
+        <input type="search" id="pcardsSearch" placeholder="Buscar plataforma" aria-label="Buscar plataforma" />
+        <div class="sort-menu">
+          <button type="button" id="pcardsSortBtn" class="sort-menu-toggle" aria-expanded="false">⇅ Ordenar</button>
+          <div class="sort-menu-dropdown" id="pcardsSortDropdown"></div>
+        </div>
+      </div>
+
+      <div class="pcards-grid" id="pcardsGrid"></div>
+    </section>
+  </main>
+
+  <footer class="legend app-hidden" id="appFooter" aria-hidden="false"></footer>
+
+  <!-- Modal genérico de alerta/confirmação (auth-guard.js usa em caso de
+       falha ao carregar dados do Firestore — precisa existir em toda página). -->
+  <div class="modal" id="appModal">
+    <div class="modal-content">
+      <p id="appModalMessage"></p>
+      <div class="reset-modal-buttons">
+        <button class="btn-confirm" id="appModalConfirmBtn" type="button">OK</button>
+        <button class="btn-cancel-modal" id="appModalCancelBtn" type="button">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/main-calendario.js"></script>
+</body>
+</html>

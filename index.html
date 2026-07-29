@@ -1,10 +1,11 @@
-  <!-- Estrutura base do documento e importação da biblioteca FullCalendar -->
+<!-- Página 1 — Hub. Painel Geral centralizado; os 3 botões abaixo navegam
+     para as páginas dedicadas (Calendário, VIP, Edição). -->
 <!doctype html>
 <html lang="pt-br">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Calendário de Bônus</title>
+  <title>Painel do Tigrinho — Início</title>
 
   <!-- CSS crítico inline: garante fundo fixo já no 1º frame, antes do CSS externo carregar -->
   <style>
@@ -19,27 +20,22 @@
     }
   </style>
 
-  <!-- CSS do projeto, dividido por responsabilidade.
-       ORDEM IMPORTA: variables.css primeiro (os outros usam var(--x)),
-       responsive.css por último (precisa vencer empates de especificidade). -->
+  <!-- CSS do projeto. ORDEM IMPORTA: variables.css primeiro, responsive.css por último. -->
   <link rel="stylesheet" href="css/variables.css" />
   <link rel="stylesheet" href="css/base.css" />
-  <link rel="stylesheet" href="css/hero.css" />
   <link rel="stylesheet" href="css/layout.css" />
-  <link rel="stylesheet" href="css/calendar.css" />
-  <link rel="stylesheet" href="css/panel.css" />
-  <link rel="stylesheet" href="css/vip.css" />
+  <link rel="stylesheet" href="css/hero.css" />
+  <link rel="stylesheet" href="css/nav.css" />
   <link rel="stylesheet" href="css/modals.css" />
-  <link rel="stylesheet" href="css/footer.css" />
   <link rel="stylesheet" href="css/responsive.css" />
-
-  <!-- FullCalendar com defer: não bloqueia mais o carregamento do CSS -->
-  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.css" rel="stylesheet" />
-  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js" defer></script>
 </head>
 
 <body>
-  <div class="auth-screen" id="authScreen">
+  <div class="auth-loading" id="authLoading">
+    <div class="auth-loading-spinner" aria-label="Carregando"></div>
+  </div>
+
+  <div class="auth-screen app-hidden" id="authScreen">
     <div class="auth-card">
       <span class="hero-badge">✨ Painel do Tigrinho 🐯</span>
       <h1>Acesse seu painel</h1>
@@ -60,7 +56,12 @@
   </svg>
 
   <main class="page-shell app-hidden" id="appMain">
-    <section class="hero card-shell" aria-label="Resumo da página">
+    <div class="top-nav" style="justify-content:flex-end; margin-bottom:0.5rem;">
+      <span class="user-label" id="userLabel"></span>
+      <button id="logoutBtn" type="button" title="Sair">Sair</button>
+    </div>
+
+    <section class="hero card-shell hub-hero" aria-label="Resumo da página">
       <div class="hero-content">
         <div>
           <span class="hero-badge">✨ Painel do Tigrinho 🐯</span>
@@ -68,11 +69,6 @@
           <p>
             Acompanhe suas plataformas em um layout mais moderno, organizado e fácil de usar.
           </p>
-          <div class="hero-actions">
-            <button class="btn-primary" id="scrollToPanelBtn">Ver plataformas</button>
-            <button class="btn-secondary" id="scrollToVipBtn">Vip Bônus</button>
-            <button class="btn-secondary" id="scrollToCalendarBtn">Ir para calendário</button>
-          </div>
         </div>
 
         <div class="hero-summary" aria-label="Resumo geral">
@@ -100,164 +96,15 @@
       </div>
     </section>
 
-    <section class="layout-grid" aria-label="Conteúdo principal">
-      <div class="main-column">
-        <section class="card-shell" aria-label="Calendário de bônus">
-          <div class="section-heading">
-            <div>
-              <h2>Calendário de bônus</h2>
-              <p>Veja os próximos eventos e acompanhe os ciclos por nível de depósito.</p>
-            </div>
-          </div>
-          <div class="calendar-toolbar">
-            <span class="pill">📅 Visual mensal, semanal e diária</span>
-            <span class="pill">🎯 Cores por nível automático</span>
-            <span class="pill">⚡ Atualização local instantânea</span>
-          </div>
-          <div id="calendar"></div>
-        </section>
-      </div>
-
-      <div class="side-column">
-        <button class="minimize-tab" id="minimizeTab">Abrir Painel</button>
-
-        <aside id="platformPanel" aria-label="Painel de plataformas">
-<section class="card-shell vip-card" aria-label="Resumo VIP" id="vipPanelSection">
-  <div class="section-heading">
-    <div>
-      <h3>Bônus VIP</h3>
-      <p>Resumo diário, semanal e mensal por plataforma e grupo.</p>
+    <div class="hero-actions hub-actions">
+      <a class="btn-primary" href="edicao.html">Ver plataformas</a>
+      <a class="btn-secondary" href="vip.html">Vip Bônus</a>
+      <a class="btn-secondary" href="calendario.html">Ir para calendário</a>
     </div>
-  </div>
-
-  <div id="vipTotals" class="vip-totals"></div>
-  <div id="vipSummary" class="vip-summary"></div>
-</section>
-          <div class="panel-header" id="platformListSection">
-    <h3>Plataformas</h3>
-    <span class="user-label" id="userLabel"></span>
-    <div class="panel-controls">
-      <input id="platformSearch" type="search" placeholder="Buscar plataforma" aria-label="Buscar plataforma" />
-      <button id="togglePanelBtn" class="btn-neutral" aria-expanded="true" title="Minimizar painel">−</button>
-    </div>
-  </div>
-
-  <ul id="platformList" role="list" aria-live="polite"></ul>
-
-  <div class="panel-actions">
-    <button id="allBonusBtn" class="btn-neutral" title="Ver todos os bônus">TODOS OS BÔNUS</button>
-    <button id="editPlatformsBtn" class="btn-neutral" title="Adicionar, editar ou remover plataformas">Editar</button>
-    <button id="resetAllBtn" class="btn-neutral" title="Resetar todos os depósitos">Resetar</button>
-    <button id="logoutBtn" class="btn-neutral" title="Sair da conta">Sair</button>
-  </div>
-        </aside>
-
-        <section class="card-shell tips-card" aria-label="Dicas de uso">
-          <div class="section-heading" style="padding:0;">
-            <div>
-              <h3>Dicas rápidas</h3>
-              <p>Use o painel com mais agilidade no dia a dia.</p>
-            </div>
-          </div>
-          <ul class="tips-list">
-            <li>Use a busca para localizar uma plataforma rapidamente.</li>
-            <li>Abra o histórico para revisar depósitos recentes antes de resetar.</li>
-            <li>Selecione uma plataforma para filtrar somente os bônus dela no calendário.</li>
-            <li>Os níveis mudam automaticamente conforme o total acumulado no ciclo.</li>
-          </ul>
-        </section>
-      </div>
-    </section>
   </main>
 
-  <div class="reset-modal" id="resetModal">
-    <div class="reset-modal-content">
-      <h2>Iniciar novo ciclo</h2>
-      <p id="resetModalText"></p>
-      <div class="reset-date-picker">
-        <label for="resetDateInput">Selecione a data de reinício:</label>
-        <input type="date" id="resetDateInput" />
-      </div>
-      <p style="font-weight: 600; color: #0f172a;">O ciclo recomeçará no dia selecionado (Dia 1)</p>
-      <div class="reset-modal-buttons">
-        <button class="btn-confirm" id="resetConfirmBtn">Confirmar</button>
-        <button class="btn-cancel-modal" id="resetCancelBtn">Cancelar</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="history-modal" id="historyModal">
-    <div class="history-modal-content">
-      <h2 id="historyTitle">Histórico de Depósitos</h2>
-      <div id="historyList"></div>
-      <button class="history-close" id="historyCloseBtn">Fechar</button>
-    </div>
-  </div>
-
-<!-- Modal Gerenciar Apostas -->
-  <div class="bet-modal" id="betModal">
-    <div class="bet-modal-content">
-      <div class="bet-modal-header">
-        <h2 id="betModalTitle">Apostas — Plataforma</h2>
-        <button class="bet-modal-close" id="betModalClose">Fechar</button>
-      </div>
-      <div class="bet-add-row">
-        <input type="date" id="betDateInput" />
-        <button class="bet-add-confirm" id="betAddConfirm">+ Adicionar</button>
-      </div>
-      <div class="bet-list" id="betList"></div>
-    </div>
-  </div>
-
-  <!-- Modal Gerenciar Plataformas (lista em acordeão) -->
-<div class="platform-manage-modal" id="platformManageModal">
-  <div class="platform-manage-modal-content">
-    <div class="bet-modal-header">
-      <h2>Gerenciar Plataformas</h2>
-      <button class="history-close" id="platformManageCloseBtn" type="button">Fechar</button>
-    </div>
-
-    <div class="platform-manage-list" id="platformManageList">
-      <!-- Linha especial de adicionar, sempre primeira e fixa -->
-      <div class="platform-manage-row platform-manage-row-add" id="platformManageAddRow">
-        <div class="platform-manage-row-header">
-          <div class="platform-manage-row-title">➕ Nova plataforma</div>
-          <span class="platform-manage-chevron">▾</span>
-        </div>
-        <div class="platform-manage-row-body">
-          <div class="platform-form-fields">
-            <label for="platformManageAddName">Código/Nome</label>
-            <input type="text" id="platformManageAddName" maxlength="12" placeholder="Ex: 99XX" />
-
-            <label for="platformManageAddLevel">Nível VIP</label>
-            <select id="platformManageAddLevel">
-              <option value="">Não definido</option>
-              <option value="0">0</option>
-              <option value="1">1</option>
-              <option value="2">2</option>
-              <option value="3">3</option>
-              <option value="4">4</option>
-              <option value="5">5</option>
-            </select>
-
-            <label for="platformManageAddGroup">Tipo</label>
-            <select id="platformManageAddGroup">
-              <option value="">Não definido</option>
-              <option value="com">Com aposta</option>
-              <option value="sem">Sem aposta</option>
-            </select>
-          </div>
-          <div class="reset-modal-buttons">
-            <button class="btn-confirm" id="platformManageAddSaveBtn" type="button">Salvar</button>
-          </div>
-        </div>
-      </div>
-      <!-- As linhas das plataformas existentes são geradas via JS aqui dentro -->
-    </div>
-  </div>
-</div>
-
-  <!-- Modal genérico de alerta/confirmação, substitui alert()/confirm() nativos -->
+  <!-- Modal genérico de alerta/confirmação (auth-guard.js usa em caso de
+       falha ao carregar dados do Firestore — precisa existir em toda página). -->
   <div class="modal" id="appModal">
     <div class="modal-content">
       <p id="appModalMessage"></p>
@@ -268,8 +115,6 @@
     </div>
   </div>
 
-  <footer class="legend app-hidden" id="appFooter" aria-hidden="false"></footer>
-
-  <script type="module" src="js/main.js"></script>
+  <script type="module" src="js/main-inicio.js"></script>
 </body>
 </html>
