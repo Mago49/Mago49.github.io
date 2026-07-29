@@ -1,7 +1,12 @@
 // === CALENDÁRIO (FullCalendar) ===
+// Só existe na Página 2 (calendario.html). Antes essa função chamava
+// updateHeroSummary() sozinha por dentro; como hero (Página 1) e legenda
+// (Página 2) agora são coisas separadas que só fazem sentido em páginas
+// diferentes, updateCalendarEvents() aceita um callback opcional e quem
+// chama (main-calendario.js) decide o que atualizar depois — nesse caso,
+// a legenda via renderLegend().
 import { state } from './state.js';
 import { computeEmissionDates, sumDepositsUpTo, colorForLevel } from './cycle-logic.js';
-import { updateHeroSummary } from './ui-hero.js';
 
 // Cria a instância do FullCalendar e guarda em state.calendar.
 // Chamar uma única vez, depois que #calendar já existe no DOM.
@@ -36,7 +41,7 @@ export function createCalendar() {
   return state.calendar;
 }
 
-export function updateCalendarEvents() {
+export function updateCalendarEvents(onDone) {
   if (!state.calendar) return;
   state.calendar.removeAllEvents();
 
@@ -72,7 +77,7 @@ export function updateCalendarEvents() {
     });
   });
 
-  updateHeroSummary();
+  if (typeof onDone === 'function') onDone();
 }
 
 export function filterCalendarByPlatform(platformId) {

@@ -1,14 +1,23 @@
-// === PAINEL VIP ===
+// === PAINEL VIP (Página 3) ===
 import { state } from './state.js';
 import { formatCurrency, escapeHtml } from './utils.js';
 import { getVipBonus } from './cycle-logic.js';
 
-export function renderVipPanel() {
+// filterGroup: null (ALL) | 'com' | 'sem'
+// searchTerm: filtra por nome, case-insensitive
+export function renderVipPanel(filterGroup = null, searchTerm = '') {
   const totalsEl = document.getElementById('vipTotals');
   const summaryEl = document.getElementById('vipSummary');
   if (!totalsEl || !summaryEl) return;
 
-  const vipList = state.platforms.filter(p => p.group === 'com' || p.group === 'sem');
+  const q = searchTerm.trim().toLowerCase();
+
+  const vipList = state.platforms.filter(p => {
+    if (p.group !== 'com' && p.group !== 'sem') return false;
+    if (filterGroup && p.group !== filterGroup) return false;
+    if (q && !p.name.toLowerCase().includes(q)) return false;
+    return true;
+  });
 
   const totals = vipList.reduce((acc, platform) => {
     const bonus = getVipBonus(platform);
@@ -25,6 +34,11 @@ export function renderVipPanel() {
     <div class="vip-total-box"><span class="vip-total-label">Mensal</span><span class="vip-total-value">${formatCurrency(totals.monthly)}</span></div>
     <div class="vip-total-box"><span class="vip-total-label">Total</span><span class="vip-total-value">${formatCurrency(totals.total)}</span></div>
   `;
+
+  if (vipList.length === 0) {
+    summaryEl.innerHTML = '<div class="history-empty">Nenhuma plataforma encontrada.</div>';
+    return;
+  }
 
   summaryEl.innerHTML = vipList.map((platform) => {
     const bonus = getVipBonus(platform);
@@ -53,4 +67,30 @@ export function renderVipPanel() {
       </article>
     `;
   }).join('');
+}
+
+// Liga busca + os 3 botões de filtro (ALL / COM / SEM). Chamado uma única
+// vez pelo main-vip.js, depois do primeiro login.
+export function initVipFilters() {
+  const searchEl = document.getElementById('vipSearch');
+  const filterBtns = document.querySelectorAll('.vip-filter-btn');
+  let currentGroup = null;
+
+  function apply() {
+    renderVipPanel(currentGroup, searchEl ? searchEl.value : '');
+  }
+
+  if (searchEl) {
+    searchEl.addEventListener('input', apply);
+  }
+
+  filterBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      filterBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const value = btn.dataset.group;
+      currentGroup = value === 'all' ? null : value;
+      apply();
+    });
+  });
 }

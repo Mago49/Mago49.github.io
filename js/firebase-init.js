@@ -1,12 +1,12 @@
 // === FIREBASE INIT ===
 // Único lugar do projeto onde initializeApp() é chamado.
-// Toda página nova (gestao.html, relatorios.html, etc.) deve importar
-// auth/db DAQUI, nunca chamar initializeApp() de novo — isso causa erro
-// de "app já inicializado" ou aponta pro projeto errado.
+// Toda página nova deve importar auth/db DAQUI, nunca chamar initializeApp()
+// de novo — isso causa erro de "app já inicializado" ou aponta pro projeto errado.
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import {
-  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
+  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged,
+  setPersistence, browserLocalPersistence
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
   getFirestore, collection, doc, getDocs, deleteDoc, writeBatch
@@ -27,6 +27,16 @@ export const firebaseApp = initializeApp(firebaseConfig);
 export const auth = getAuth(firebaseApp);
 export const db = getFirestore(firebaseApp);
 export const googleProvider = new GoogleAuthProvider();
+
+// Garante sessão persistida entre fechamentos do navegador (fica logado até
+// clicar em "Sair"). Sem isso o SDK pode cair num padrão menos confiável
+// dependendo do navegador (Safari/ITP, aba privada, etc.) — pedir de forma
+// explícita é o que garante o comportamento em qualquer ambiente.
+// authReady resolve depois que a persistência é configurada; auth-guard.js
+// aguarda essa promise antes de registrar onAuthStateChanged, pra nunca
+// correr risco de ler o estado de auth antes da persistência certa valer.
+export const authReady = setPersistence(auth, browserLocalPersistence)
+  .catch(err => console.error('Erro ao configurar persistência de login:', err));
 
 // Reexporta as funções do SDK usadas no resto do app, pra tudo vir de um só lugar.
 export {

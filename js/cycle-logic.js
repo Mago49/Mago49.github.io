@@ -80,7 +80,7 @@ export const LEVEL_INFO = [
   { min: 150,  label: '150–299' },
   { min: 300,  label: '300–599' },
   { min: 600,  label: '600–999' },
-  { min: 1000, label: '1.000–1.999' },
+  { min: 1000, label: '1.000–1.099' },
   { min: 2000, label: '2.000–5.000' }
 ];
 
@@ -116,14 +116,32 @@ export function colorForLevel(valueOrLevel) {
   return lvlVars[levelForAmount(valueOrLevel)];
 }
 
-export function getEventsForDate(targetDate) {
+export function getEventsForDate(targetDate, platforms = state.platforms) {
   const target = new Date(targetDate);
   target.setHours(0, 0, 0, 0);
   const targetTime = target.getTime();
-  return state.platforms.filter(platform =>
+  return platforms.filter(platform =>
     !platform.cycleEnded &&
     computeEmissionDates(platform, target).some(date => date.getTime() === targetTime)
   );
+}
+
+// === ESTATÍSTICAS DO RESUMO (Hero + Legenda) ===
+// Função pura: calcula tudo que o resumo do topo (Página 1) e a legenda
+// (Página 2) precisam, sem tocar no DOM. ui-hero.js só recebe o resultado
+// e escreve nos elementos — cada página chama só o renderizador que usa.
+export function computeHeroStats(platforms) {
+  const totalPlatforms = platforms.length;
+  const totalDeposits = platforms.reduce((sum, platform) => sum + getTotalDepositsSinceCycle(platform), 0);
+  const bonusToday = getEventsForDate(new Date(), platforms).length;
+  const activeCycles = platforms.filter(platform => !platform.cycleEnded && platform.lastResetDate && getCurrentCycleDay(platform) > 0).length;
+  const topPlatform = [...platforms]
+    .filter(platform => !platform.cycleEnded)
+    .sort((a, b) => getTotalDepositsSinceCycle(b) - getTotalDepositsSinceCycle(a))[0] || null;
+  const topPlatformTotal = topPlatform ? getTotalDepositsSinceCycle(topPlatform) : 0;
+  const maxLevel = levelForAmount(topPlatformTotal);
+
+  return { totalPlatforms, totalDeposits, bonusToday, activeCycles, topPlatform, topPlatformTotal, maxLevel };
 }
 
 export function getVipBonus(platform) {

@@ -1,47 +1,45 @@
-// === RESUMO DO TOPO (HERO) + LEGENDA DINÂMICA DO RODAPÉ ===
-import { state } from './state.js';
+// === RESUMO DO TOPO (HERO) — Página 1 — e LEGENDA — Página 2 ===
+// Antes essas duas coisas viviam numa função só (updateHeroSummary), o que
+// não funciona mais: os elementos do hero só existem em index.html e o
+// elemento da legenda (#appFooter) só existe em calendario.html. Cada
+// página agora chama só o renderizador que faz sentido pra ela, os dois
+// alimentados pela mesma função pura computeHeroStats() (cycle-logic.js).
 import { formatCurrency } from './utils.js';
-import { getTotalDepositsSinceCycle, getEventsForDate, getCurrentCycleDay, levelForAmount, LEVEL_INFO } from './cycle-logic.js';
+import { LEVEL_INFO } from './cycle-logic.js';
 
-export function updateHeroSummary() {
-  const totalPlatforms = state.platforms.length;
-  const totalDeposits = state.platforms.reduce((sum, platform) => sum + getTotalDepositsSinceCycle(platform), 0);
-  const bonusToday = getEventsForDate(new Date()).length;
-  const activeCycles = state.platforms.filter(platform => !platform.cycleEnded && platform.lastResetDate && getCurrentCycleDay(platform) > 0).length;
-  const topPlatform = [...state.platforms]
-    .filter(platform => !platform.cycleEnded)
-    .sort((a, b) => getTotalDepositsSinceCycle(b) - getTotalDepositsSinceCycle(a))[0];
-
-  document.getElementById('heroPlatformCount').textContent = String(totalPlatforms);
-  document.getElementById('heroTotalDeposits').textContent = formatCurrency(totalDeposits);
-  document.getElementById('heroBonusToday').textContent = String(bonusToday);
-
+// Usado só em main-inicio.js
+export function renderHeroSummary(stats) {
+  const platformCountEl = document.getElementById('heroPlatformCount');
+  const totalDepositsEl = document.getElementById('heroTotalDeposits');
+  const bonusTodayEl = document.getElementById('heroBonusToday');
   const highlightEl = document.getElementById('heroNextHighlight');
   const highlightNoteEl = document.getElementById('heroNextHighlightNote');
+  if (!platformCountEl) return;
 
-  if (topPlatform && getTotalDepositsSinceCycle(topPlatform) > 0) {
-    highlightEl.textContent = topPlatform.name;
-    highlightNoteEl.textContent = `${formatCurrency(getTotalDepositsSinceCycle(topPlatform))} no ciclo atual • ${activeCycles} plataformas ativas.`;
+  platformCountEl.textContent = String(stats.totalPlatforms);
+  totalDepositsEl.textContent = formatCurrency(stats.totalDeposits);
+  bonusTodayEl.textContent = String(stats.bonusToday);
+
+  if (stats.topPlatform && stats.topPlatformTotal > 0) {
+    highlightEl.textContent = stats.topPlatform.name;
+    highlightNoteEl.textContent = `${formatCurrency(stats.topPlatformTotal)} no ciclo atual • ${stats.activeCycles} plataformas ativas.`;
   } else {
-    highlightEl.textContent = activeCycles > 0 ? 'Em dia' : 'Sem depósitos';
-    highlightNoteEl.textContent = activeCycles > 0
-      ? `${activeCycles} plataformas com ciclo em andamento.`
+    highlightEl.textContent = stats.activeCycles > 0 ? 'Em dia' : 'Sem depósitos';
+    highlightNoteEl.textContent = stats.activeCycles > 0
+      ? `${stats.activeCycles} plataformas com ciclo em andamento.`
       : 'Adicione depósitos para começar a acompanhar os níveis.';
   }
-
-  updateLegend(topPlatform ? getTotalDepositsSinceCycle(topPlatform) : 0);
 }
 
-// Mostra só do Nível 0 até o nível mais alto realmente atingido por alguma
-// plataforma no ciclo atual (topPlatform já é o maior total, calculado
-// acima). Evita listar níveis (ex: 6, 7) que ninguém alcançou ainda.
-function updateLegend(maxAmount) {
+// Usado só em main-calendario.js. Mostra do Nível 0 até o nível mais alto
+// realmente atingido por alguma plataforma no ciclo atual — evita listar
+// níveis que ninguém alcançou ainda. Lógica de exibição inalterada.
+export function renderLegend(stats) {
   const legendEl = document.getElementById('appFooter');
   if (!legendEl) return;
 
-  const maxLevel = levelForAmount(maxAmount);
   let html = '';
-  for (let level = 0; level <= maxLevel; level++) {
+  for (let level = 0; level <= stats.maxLevel; level++) {
     html += `
       <div class="legend-item">
         <div class="legend-swatch" style="background:var(--level-${level})"></div>
@@ -49,4 +47,4 @@ function updateLegend(maxAmount) {
       </div>`;
   }
   legendEl.innerHTML = html;
-    }
+}
