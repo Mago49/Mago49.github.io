@@ -19,7 +19,10 @@ export const DEFAULT_PLATFORMS = Array.from({ length: 33 }, (_, i) => ({
   betDays: [],
   cycleEnded: false,
   level: null,
-  group: null
+  group: null,
+  withdrawals: [],
+  betEntries: [],
+  financeWeeks: []
 }));
 
 export function normalizePlatformData(parsed) {
@@ -32,7 +35,10 @@ export function normalizePlatformData(parsed) {
     betDays: Array.isArray(p.betDays) ? p.betDays : [],
     cycleEnded: p.cycleEnded === true,
     level: (p.level !== undefined && p.level !== null) ? p.level : null,
-    group: p.group || null
+    group: p.group || null,
+    withdrawals: Array.isArray(p.withdrawals) ? p.withdrawals : [],
+    betEntries: Array.isArray(p.betEntries) ? p.betEntries : [],
+    financeWeeks: Array.isArray(p.financeWeeks) ? p.financeWeeks : []
   }));
 }
 
