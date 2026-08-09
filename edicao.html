@@ -1,0 +1,182 @@
+<!-- Página 4 — Edição. Aqui moram TODAS as ações do dia a dia (depósito,
+     histórico, fim, reinício, apostas) junto com o cadastro (nome, nível,
+     grupo) de cada plataforma, numa lista só em acordeão. -->
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Painel do Tigrinho — Edição</title>
+
+  <style>
+    html, body { margin: 0; padding: 0; }
+    .background-svg {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+    }
+  </style>
+
+  <link rel="stylesheet" href="css/variables.css" />
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/panel.css" />
+  <link rel="stylesheet" href="css/manage-panel.css" />
+  <link rel="stylesheet" href="css/modals.css" />
+  <link rel="stylesheet" href="css/sort-menu.css" />
+  <link rel="stylesheet" href="css/nav.css" />
+  <link rel="stylesheet" href="css/responsive.css" />
+</head>
+
+<body>
+  <div class="auth-loading" id="authLoading">
+    <div class="auth-loading-spinner" aria-label="Carregando"></div>
+  </div>
+
+  <div class="auth-screen app-hidden" id="authScreen">
+    <div class="auth-card">
+      <span class="hero-badge">✨ Painel do Tigrinho 🐯</span>
+      <h1>Acesse seu painel</h1>
+      <p>Entre com sua conta Google para sincronizar seus dados entre aparelhos.</p>
+      <button class="btn-primary auth-google-btn" id="googleLoginBtn" type="button">
+        <span class="auth-google-icon" aria-hidden="true">G</span>
+        Entrar com Google
+      </button>
+      <p class="auth-error" id="authError"></p>
+    </div>
+  </div>
+
+  <svg class="background-svg" viewBox="0 0 1440 800" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <circle cx="280" cy="280" r="280" fill="#1e3a8a" />
+    <circle cx="1160" cy="280" r="280" fill="#ef4444" />
+    <circle cx="280" cy="520" r="280" fill="#facc15" />
+    <circle cx="1160" cy="520" r="280" fill="#15803d" />
+  </svg>
+
+  <main class="page-shell app-hidden" id="appMain">
+    <div class="page-header">
+      <div class="page-header-text">
+        <span class="hero-badge">✏️ Edição</span>
+        <h1>Plataformas</h1>
+        <p>Edite suas plataformas com muita facilidade.</p>
+      </div>
+      <nav class="top-nav" aria-label="Navegação">
+        <span class="user-label" id="userLabel"></span>
+        <a class="nav-home" href="index.html" title="Página inicial">🏠</a>
+        <a href="calendario.html" title="Calendário">📅</a>
+        <a href="vip.html" title="Painel VIP">VIP</a>
+        <a href="financeiro.html" title="Financeiro">💰</a>
+        <button id="logoutBtn" type="button" title="Sair">Sair</button>
+      </nav>
+    </div>
+
+    <aside id="platformManagePanel" aria-label="Gerenciar plataformas">
+      <div class="panel-header">
+        <h3>Plataformas</h3>
+        <div class="panel-controls">
+          <input id="platformSearch" type="search" placeholder="Buscar plataforma" aria-label="Buscar plataforma" />
+          <div class="sort-menu">
+            <button type="button" id="manageSortBtn" class="sort-menu-toggle" aria-expanded="false">⇅ Ordenar</button>
+            <div class="sort-menu-dropdown" id="manageSortDropdown"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-actions">
+        <button id="resetAllBtn" type="button" title="Resetar todos os depósitos">Resetar todos os depósitos</button>
+      </div>
+
+      <div id="platformManageList" role="list" aria-live="polite">
+        <!-- Linha especial de adicionar, sempre primeira e fixa -->
+        <div class="platform-manage-row platform-manage-row-add" id="platformManageAddRow">
+          <div class="platform-manage-row-header">
+            <div class="platform-manage-row-title">➕ Nova plataforma</div>
+            <span class="platform-manage-chevron">▾</span>
+          </div>
+          <div class="platform-manage-row-body">
+            <div class="platform-form-fields">
+              <label for="platformManageAddName">Código/Nome</label>
+              <input type="text" id="platformManageAddName" maxlength="12" placeholder="Ex: 99XX" />
+
+              <label for="platformManageAddLevel">Nível VIP</label>
+              <select id="platformManageAddLevel">
+                <option value="">Não definido</option>
+                <option value="0">0</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+              </select>
+
+              <label for="platformManageAddGroup">Tipo</label>
+              <select id="platformManageAddGroup">
+                <option value="">Não definido</option>
+                <option value="com">Com aposta</option>
+                <option value="sem">Sem aposta</option>
+              </select>
+            </div>
+            <div class="reset-modal-buttons">
+              <button class="btn-confirm" id="platformManageAddSaveBtn" type="button">Salvar</button>
+            </div>
+          </div>
+        </div>
+        <!-- As linhas das plataformas existentes são geradas via JS aqui dentro -->
+      </div>
+    </aside>
+  </main>
+
+  <div class="reset-modal" id="resetModal">
+    <div class="reset-modal-content">
+      <h2>Iniciar novo ciclo</h2>
+      <p id="resetModalText"></p>
+      <div class="reset-date-picker">
+        <label for="resetDateInput">Selecione a data de reinício:</label>
+        <input type="date" id="resetDateInput" />
+      </div>
+      <p style="font-weight: 600; color: #0f172a;">O ciclo recomeçará no dia selecionado (Dia 1)</p>
+      <div class="reset-modal-buttons">
+        <button class="btn-confirm" id="resetConfirmBtn">Confirmar</button>
+        <button class="btn-cancel-modal" id="resetCancelBtn">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="history-modal" id="historyModal">
+    <div class="history-modal-content">
+      <h2 id="historyTitle">Histórico de Depósitos</h2>
+      <div id="historyList"></div>
+      <button class="history-close" id="historyCloseBtn">Fechar</button>
+    </div>
+  </div>
+
+  <div class="bet-modal" id="betModal">
+    <div class="bet-modal-content">
+      <div class="bet-modal-header">
+        <h2 id="betModalTitle">Apostas — Plataforma</h2>
+        <button class="bet-modal-close" id="betModalClose">Fechar</button>
+      </div>
+      <div class="bet-add-row">
+        <input type="date" id="betDateInput" />
+        <button class="bet-add-confirm" id="betAddConfirm">+ Adicionar</button>
+      </div>
+      <div class="bet-list" id="betList"></div>
+    </div>
+  </div>
+
+  <!-- Modal genérico de alerta/confirmação, substitui alert()/confirm() nativos -->
+  <div class="modal" id="appModal">
+    <div class="modal-content">
+      <p id="appModalMessage"></p>
+      <div class="reset-modal-buttons">
+        <button class="btn-confirm" id="appModalConfirmBtn" type="button">OK</button>
+        <button class="btn-cancel-modal" id="appModalCancelBtn" type="button">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/main-edicao.js"></script>
+</body>
+</html>
