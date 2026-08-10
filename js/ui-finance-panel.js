@@ -2,14 +2,15 @@
 // Cada linha mostra a semana atual ao vivo (editável: registrar saque,
 // registrar aposta, e — a partir de domingo — Bônus + Result Betting pra
 // fechar a semana) e, abaixo, o histórico de semanas já fechadas
-// (congelado, só leitura). Reaproveita o visual do acordeão que já existe
-// em manage-panel.css (mesmas classes .platform-manage-row*) — só o
-// conteúdo de dentro de cada linha é diferente da Página 4.
+// (editável campo a campo, ver buildWeekCardEditing). Reaproveita o
+// visual do acordeão que já existe em manage-panel.css (mesmas classes
+// .platform-manage-row*) — só o conteúdo de dentro de cada linha é
+// diferente da Página 4.
 
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
 import {
-  computeCurrentWeekLive, closeWeek, isCurrentWeekClosed, canCloseCurrentWeek
+  computeCurrentWeekLive, closeWeek, isCurrentWeekClosed, canCloseCurrentWeek, updateClosedWeek
 } from './finance-logic.js';
 import { savePlatforms } from './platforms-store.js';
 
@@ -18,6 +19,9 @@ const financeSearchEl = document.getElementById('financeSearch');
 
 let currentSearch = '';
 let openRowId = null;
+// Semana do histórico atualmente em edição (no máximo uma por vez):
+// { platformId, weekStart } | null
+let editingWeek = null;
 
 function formatDatePt(isoDateStr) {
   const [y, m, d] = isoDateStr.split('-');
@@ -35,6 +39,16 @@ function statBox(label, value, cls = '') {
       <span class="finance-stat-label">${label}</span>
       <span class="finance-stat-value ${cls}">${value}</span>
     </div>`;
+}
+
+function numberInput(placeholder, value, step = '0.01') {
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.step = step;
+  input.placeholder = placeholder;
+  input.value = value;
+  input.setAttribute('aria-label', placeholder);
+  return input;
 }
 
 export function renderFinanceList() {
@@ -250,7 +264,7 @@ function buildCurrentWeekSection(p, live, closed) {
         await showAppAlert('Preencha Bônus e Result Betting pra fechar a semana.');
         return;
       }
-      const ok = await showAppConfirm(`Fechar a semana de ${p.name}? Depois de fechada, os valores não mudam mais.`);
+      const ok = await showAppConfirm(`Fechar a semana de ${p.name}? Depois de fechada, os valores não mudam mais sozinhos.`);
       if (!ok) return;
       closeWeek(p, bonus, resultBetting);
       savePlatforms(state.currentUid, state.platforms);
@@ -265,7 +279,7 @@ function buildCurrentWeekSection(p, live, closed) {
   return section;
 }
 
-// ---------- SEÇÃO "HISTÓRICO" (semanas fechadas, só leitura) ----------
+// ---------- SEÇÃO "HISTÓRICO" (semanas fechadas — editável campo a campo) ----------
 
 function buildHistorySection(p) {
   const section = document.createElement('div');
@@ -290,27 +304,142 @@ function buildHistorySection(p) {
   history.className = 'finance-history';
 
   weeks.forEach(w => {
-    const card = document.createElement('div');
-    card.className = 'finance-week-card';
-    card.innerHTML = `
-      <div class="finance-week-card-header">
-        <span>${formatDatePt(w.weekStart)} – ${formatDatePt(w.weekEnd)}</span>
-      </div>
-      <div class="finance-stats-grid">
-        ${statBox('Depósito', formatCurrency(w.deposit))}
-        ${statBox('Saque', formatCurrency(w.withdrawal))}
-        ${statBox('Diferença', formatCurrency(w.difference), w.difference >= 0 ? 'positive' : 'negative')}
-        ${statBox('Apostado', formatCurrency(w.wagered))}
-        ${statBox('N° Apostas', String(w.betCount))}
-        ${statBox('Bônus', formatCurrency(w.bonus))}
-        ${statBox('R.B.', formatCurrency(w.resultBetting), w.resultBetting >= 0 ? 'positive' : 'negative')}
-        ${statBox('R.B. + Bônus', formatCurrency(w.rbPlusBonus), w.rbPlusBonus >= 0 ? 'positive' : 'negative')}
-      </div>`;
-    history.appendChild(card);
+    const isEditing = !!editingWeek
+      && editingWeek.platformId === p.id
+      && editingWeek.weekStart === w.weekStart;
+
+    history.appendChild(isEditing ? buildWeekCardEditing(p, w) : buildWeekCardReadOnly(p, w));
   });
 
   section.appendChild(history);
   return section;
+}
+
+function buildWeekCardReadOnly(p, w) {
+  const card = document.createElement('div');
+  card.className = 'finance-week-card';
+
+  const header = document.createElement('div');
+  header.className = 'finance-week-card-header';
+
+  const rangeSpan = document.createElement('span');
+  rangeSpan.textContent = `${formatDatePt(w.weekStart)} – ${formatDatePt(w.weekEnd)}`;
+
+  const editBtn = document.createElement('button');
+  editBtn.type = 'button';
+  editBtn.className = 'bet-manage-btn';
+  editBtn.textContent = 'Editar';
+  editBtn.addEventListener('click', () => {
+    editingWeek = { platformId: p.id, weekStart: w.weekStart };
+    openRowId = p.id;
+    renderFinanceList();
+  });
+
+  header.appendChild(rangeSpan);
+  header.appendChild(editBtn);
+  card.appendChild(header);
+
+  const stats = document.createElement('div');
+  stats.className = 'finance-stats-grid';
+  stats.innerHTML = `
+    ${statBox('Depósito', formatCurrency(w.deposit))}
+    ${statBox('Saque', formatCurrency(w.withdrawal))}
+    ${statBox('Diferença', formatCurrency(w.difference), w.difference >= 0 ? 'positive' : 'negative')}
+    ${statBox('Apostado', formatCurrency(w.wagered))}
+    ${statBox('N° Apostas', String(w.betCount))}
+    ${statBox('Bônus', formatCurrency(w.bonus))}
+    ${statBox('R.B.', formatCurrency(w.resultBetting), w.resultBetting >= 0 ? 'positive' : 'negative')}
+    ${statBox('R.B. + Bônus', formatCurrency(w.rbPlusBonus), w.rbPlusBonus >= 0 ? 'positive' : 'negative')}
+  `;
+  card.appendChild(stats);
+
+  return card;
+}
+
+// Diferença e R.B.+Bônus NÃO viram input: ficam de fora do formulário de
+// propósito, porque são sempre recalculados a partir dos outros 6 campos
+// (ver updateClosedWeek em finance-logic.js) — editá-los direto poderia
+// deixar o registro inconsistente (ex: Diferença que não bate com
+// Saque - Depósito).
+function buildWeekCardEditing(p, w) {
+  const card = document.createElement('div');
+  card.className = 'finance-week-card finance-week-card-editing';
+
+  const header = document.createElement('div');
+  header.className = 'finance-week-card-header';
+  header.innerHTML = `<span>${formatDatePt(w.weekStart)} – ${formatDatePt(w.weekEnd)}</span>`;
+  card.appendChild(header);
+
+  const note = document.createElement('p');
+  note.className = 'finance-close-week-note';
+  note.textContent = 'Diferença e R.B. + Bônus são recalculados automaticamente ao salvar.';
+  card.appendChild(note);
+
+  const row1 = document.createElement('div');
+  row1.className = 'finance-entry-form';
+  const depositInput = numberInput('Depósito', w.deposit);
+  const withdrawalInput = numberInput('Saque', w.withdrawal);
+  row1.appendChild(depositInput);
+  row1.appendChild(withdrawalInput);
+  card.appendChild(row1);
+
+  const row2 = document.createElement('div');
+  row2.className = 'finance-entry-form';
+  const wageredInput = numberInput('Apostado', w.wagered);
+  const betCountInput = numberInput('N° de apostas', w.betCount, '1');
+  row2.appendChild(wageredInput);
+  row2.appendChild(betCountInput);
+  card.appendChild(row2);
+
+  const row3 = document.createElement('div');
+  row3.className = 'finance-entry-form';
+  const bonusInput = numberInput('Bônus', w.bonus);
+  const resultInput = numberInput('Result Betting (R.B.)', w.resultBetting);
+  row3.appendChild(bonusInput);
+  row3.appendChild(resultInput);
+  card.appendChild(row3);
+
+  const actions = document.createElement('div');
+  actions.className = 'reset-modal-buttons';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'btn-confirm';
+  saveBtn.textContent = 'Salvar';
+  saveBtn.addEventListener('click', async () => {
+    const deposit = parseFloat(depositInput.value);
+    const withdrawal = parseFloat(withdrawalInput.value);
+    const wagered = parseFloat(wageredInput.value);
+    const betCount = parseInt(betCountInput.value, 10);
+    const bonus = parseFloat(bonusInput.value);
+    const resultBetting = parseFloat(resultInput.value);
+
+    if ([deposit, withdrawal, wagered, betCount, bonus, resultBetting].some(v => isNaN(v))) {
+      await showAppAlert('Preencha todos os campos com valores válidos.');
+      return;
+    }
+
+    updateClosedWeek(p, w.weekStart, { deposit, withdrawal, wagered, betCount, bonus, resultBetting });
+    savePlatforms(state.currentUid, state.platforms);
+    editingWeek = null;
+    openRowId = p.id;
+    renderFinanceList();
+  });
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'btn-cancel-modal';
+  cancelBtn.textContent = 'Cancelar';
+  cancelBtn.addEventListener('click', () => {
+    editingWeek = null;
+    renderFinanceList();
+  });
+
+  actions.appendChild(saveBtn);
+  actions.appendChild(cancelBtn);
+  card.appendChild(actions);
+
+  return card;
 }
 
 // ---------- CONTROLE DO TOPO (busca) ----------

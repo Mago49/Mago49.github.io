@@ -172,7 +172,13 @@ function buildActionsSection(p) {
         await showAppAlert('Digite um valor válido');
         return;
       }
-      p.deposits.push({ date: new Date().toISOString(), value });
+      const entry = { date: new Date().toISOString(), value };
+      p.deposits.push(entry);
+      // depositLog é o histórico PERMANENTE usado pelo Financeiro (Página
+      // 5) — ao contrário de p.deposits, Fim/Reinício (mais abaixo) NUNCA
+      // apagam este array.
+      if (!p.depositLog) p.depositLog = [];
+      p.depositLog.push({ ...entry });
       savePlatforms(state.currentUid, state.platforms);
       renderManageList();
     });
@@ -396,7 +402,11 @@ function initAddRow() {
       betDays: [],
       cycleEnded: false,
       level: levelSelect.value === '' ? null : Number(levelSelect.value),
-      group: groupSelect.value === '' ? null : groupSelect.value
+      group: groupSelect.value === '' ? null : groupSelect.value,
+      withdrawals: [],
+      betEntries: [],
+      financeWeeks: [],
+      depositLog: []
     });
 
     savePlatforms(state.currentUid, state.platforms);
@@ -620,7 +630,13 @@ betModal.addEventListener('click', e => {
   }
 });
 
-// ---------- CONTROLES DO TOPO (busca, ordenar, resetar todos) ----------
+// ---------- CONTROLES DO TOPO (busca, ordenar) ----------
+// O botão "Resetar todos os depósitos" foi REMOVIDO — ele zerava
+// `deposits` de todas as plataformas de uma vez e tinha o mesmo problema
+// (em escala maior) que Fim/Reinício sempre tiveram em relação ao
+// Financeiro: apagar dados que a Página 5 ainda precisava daquela semana.
+// Como Fim/Reinício já cobrem o caso de uso real (por plataforma), ele
+// deixou de existir.
 
 export function initManageControls() {
   initAddRow();
@@ -642,15 +658,4 @@ export function initManageControls() {
       renderManageList();
     }
   });
-
-  const resetAllBtn = document.getElementById('resetAllBtn');
-  if (resetAllBtn) {
-    resetAllBtn.addEventListener('click', async () => {
-      const ok = await showAppConfirm('Resetar todos os depósitos de TODAS as plataformas?');
-      if (!ok) return;
-      state.platforms.forEach(p => p.deposits = []);
-      savePlatforms(state.currentUid, state.platforms);
-      renderManageList();
-    });
-  }
 }

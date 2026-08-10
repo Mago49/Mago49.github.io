@@ -22,24 +22,43 @@ export const DEFAULT_PLATFORMS = Array.from({ length: 33 }, (_, i) => ({
   group: null,
   withdrawals: [],
   betEntries: [],
-  financeWeeks: []
+  financeWeeks: [],
+  depositLog: []
 }));
 
+// depositLog: histórico PERMANENTE de depósitos, usado só pelo Financeiro
+// (Página 5). Diferente de `deposits` (que Fim/Reinício do ciclo VIP zeram
+// de propósito, ver ui-platform-manage.js), depositLog nunca é apagado —
+// segue a mesma regra dos outros dados de histórico (withdrawals,
+// betEntries): todo depósito lançado entra aqui e fica pra sempre, pra
+// auditoria e pro cálculo da semana financeira nunca sumir sem querer.
 export function normalizePlatformData(parsed) {
   if (!Array.isArray(parsed)) return null;
-  return parsed.map((p, i) => ({
-    id: p.id || ('p' + (i + 1)),
-    name: p.name || PLATFORM_NAMES[i] || ('P' + (i + 1)),
-    lastResetDate: p.lastResetDate || null,
-    deposits: Array.isArray(p.deposits) ? p.deposits : [],
-    betDays: Array.isArray(p.betDays) ? p.betDays : [],
-    cycleEnded: p.cycleEnded === true,
-    level: (p.level !== undefined && p.level !== null) ? p.level : null,
-    group: p.group || null,
-    withdrawals: Array.isArray(p.withdrawals) ? p.withdrawals : [],
-    betEntries: Array.isArray(p.betEntries) ? p.betEntries : [],
-    financeWeeks: Array.isArray(p.financeWeeks) ? p.financeWeeks : []
-  }));
+  return parsed.map((p, i) => {
+    const deposits = Array.isArray(p.deposits) ? p.deposits : [];
+
+    // Migração única: contas que ainda não tinham depositLog (campo novo)
+    // ganham uma cópia do `deposits` atual como ponto de partida. Depois
+    // dessa primeira normalização, o Firestore já salva depositLog de
+    // verdade e essa cópia nunca mais roda pra essa conta (a condição do
+    // if só é verdadeira quando o campo simplesmente não existe no doc).
+    const depositLog = Array.isArray(p.depositLog) ? p.depositLog : deposits.slice();
+
+    return {
+      id: p.id || ('p' + (i + 1)),
+      name: p.name || PLATFORM_NAMES[i] || ('P' + (i + 1)),
+      lastResetDate: p.lastResetDate || null,
+      deposits,
+      betDays: Array.isArray(p.betDays) ? p.betDays : [],
+      cycleEnded: p.cycleEnded === true,
+      level: (p.level !== undefined && p.level !== null) ? p.level : null,
+      group: p.group || null,
+      withdrawals: Array.isArray(p.withdrawals) ? p.withdrawals : [],
+      betEntries: Array.isArray(p.betEntries) ? p.betEntries : [],
+      financeWeeks: Array.isArray(p.financeWeeks) ? p.financeWeeks : [],
+      depositLog
+    };
+  });
 }
 
 export async function loadPlatformsFromFirestore(uid) {

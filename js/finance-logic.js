@@ -5,9 +5,10 @@
 // a planilha externa: os campos brutos (depósito, saque, aposta) são
 // somados AO VIVO durante a semana; no domingo, Bônus e Result Betting
 // são informados e a semana é CONGELADA pra sempre em
-// platform.financeWeeks — depois disso os 8 campos não recalculam mais,
-// viram um retrato fixo daquela semana (igual uma linha já preenchida na
-// planilha antiga).
+// platform.financeWeeks — depois disso os 8 campos não recalculam mais
+// sozinhos (só editando manualmente, ver updateClosedWeek), viram um
+// retrato fixo daquela semana (igual uma linha já preenchida na planilha
+// antiga).
 
 // Segunda-feira 00:00:00 da semana que contém `date`.
 export function getWeekStart(date = new Date()) {
@@ -37,12 +38,13 @@ function sumInRange(events, weekStart, weekEnd, key) {
 }
 
 // Totais AO VIVO da semana em aberto — recalculados toda vez que a tela é
-// aberta, a partir de deposits (já existente) + withdrawals + betEntries.
+// aberta, a partir de depositLog (histórico permanente, nunca zerado por
+// Fim/Reinício — ver ui-platform-manage.js) + withdrawals + betEntries.
 export function computeCurrentWeekLive(platform, refDate = new Date()) {
   const weekStart = getWeekStart(refDate);
   const weekEnd = getWeekEnd(weekStart);
 
-  const deposit = sumInRange(platform.deposits, weekStart, weekEnd, 'value');
+  const deposit = sumInRange(platform.depositLog, weekStart, weekEnd, 'value');
   const withdrawal = sumInRange(platform.withdrawals, weekStart, weekEnd, 'value');
   const wagered = sumInRange(platform.betEntries, weekStart, weekEnd, 'wagered');
   const betCount = sumInRange(platform.betEntries, weekStart, weekEnd, 'betCount');
@@ -70,8 +72,9 @@ export function canCloseCurrentWeek(refDate = new Date()) {
 }
 
 // CONGELA a semana atual: calcula os 8 campos e grava fixo em
-// platform.financeWeeks. Depois de fechada, esse registro nunca mais
-// muda — mesmo que novos depósitos/saques/apostas sejam lançados depois
+// platform.financeWeeks. Depois de fechada, esse registro só muda se o
+// usuário editar manualmente (ver updateClosedWeek) — nunca recalcula
+// sozinho, mesmo que novos depósitos/saques/apostas sejam lançados depois
 // com data retroativa por engano.
 export function closeWeek(platform, bonus, resultBetting, refDate = new Date()) {
   const live = computeCurrentWeekLive(platform, refDate);
@@ -94,5 +97,35 @@ export function closeWeek(platform, bonus, resultBetting, refDate = new Date()) 
 
   if (!platform.financeWeeks) platform.financeWeeks = [];
   platform.financeWeeks.push(entry);
+  return entry;
+}
+
+// EDITA uma semana JÁ FECHADA. Os 6 campos brutos (deposit, withdrawal,
+// wagered, betCount, bonus, resultBetting) podem ser corrigidos à mão —
+// por exemplo, se algum valor foi digitado errado no momento do
+// fechamento. Diferença e R.B.+Bônus NUNCA são editados diretamente: são
+// sempre recalculados aqui a partir dos outros campos, pra nunca ficarem
+// inconsistentes com o resto do registro.
+export function updateClosedWeek(platform, weekStart, updatedFields) {
+  const entry = (platform.financeWeeks || []).find(w => w.weekStart === weekStart);
+  if (!entry) return null;
+
+  const deposit = Number(updatedFields.deposit) || 0;
+  const withdrawal = Number(updatedFields.withdrawal) || 0;
+  const wagered = Number(updatedFields.wagered) || 0;
+  const betCount = Number(updatedFields.betCount) || 0;
+  const bonus = Number(updatedFields.bonus) || 0;
+  const resultBetting = Number(updatedFields.resultBetting) || 0;
+
+  entry.deposit = deposit;
+  entry.withdrawal = withdrawal;
+  entry.difference = withdrawal - deposit;
+  entry.wagered = wagered;
+  entry.betCount = betCount;
+  entry.bonus = bonus;
+  entry.resultBetting = resultBetting;
+  entry.rbPlusBonus = resultBetting + bonus;
+  entry.editedAt = new Date().toISOString();
+
   return entry;
 }
