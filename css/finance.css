@@ -1,10 +1,11 @@
 /* === PÁGINA 5 (FINANCEIRO) ===
    Reaproveita o acordeão de manage-panel.css (.platform-manage-row e
    afins) pra listar as plataformas — só o container muda (.finance-panel
-   em vez de #platformManagePanel). Aqui ficam só as classes específicas
-   dessa página: busca, badge de semana fechada, os grids de estatística
-   (semana atual ao vivo + histórico de semanas congeladas) e o modo de
-   edição do histórico (.finance-week-card-editing). */
+   em vez de #platformManagePanel). Aqui ficam as classes específicas
+   dessa página: Painel Geral (topo, todas as plataformas), busca,
+   badge de semana fechada, grids de estatística (semana atual ao vivo,
+   total da plataforma e histórico congelado) e o modo de edição do
+   histórico (.finance-week-card-editing). */
 
 .finance-panel {
   padding: 1.1rem;
@@ -42,6 +43,43 @@
   box-shadow: 0 0 0 4px rgba(37,99,235,0.12);
 }
 
+/* === Painel Geral (topo da página — soma de todas as plataformas) === */
+.finance-overview {
+  padding: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin-bottom: 1rem;
+}
+
+.finance-overview-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.finance-overview-filter label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #334155;
+}
+
+.finance-overview-filter input[type="date"] {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 12px;
+  font-size: 0.88rem;
+  outline: none;
+  background: #fff;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.finance-overview-filter input[type="date"]:focus {
+  border-color: rgba(37,99,235,0.45);
+  box-shadow: 0 0 0 4px rgba(37,99,235,0.12);
+}
+
 /* manage-panel.css limita a altura aberta do acordeão a 900px (truque de
    animação via max-height). O histórico financeiro cresce toda semana e
    pode passar disso fácil — sem este override, semanas antigas ficariam
@@ -75,9 +113,10 @@
   margin: 0;
 }
 
-/* Grid de estatísticas — usado tanto na semana atual (5 itens, ao vivo)
-   quanto em cada card do histórico (8 itens, congelado). auto-fit evita
-   precisar de 2 layouts diferentes pras duas quantidades. */
+/* Grid de estatísticas — usado na semana atual (6 itens, ao vivo), no
+   Total da plataforma e em cada card do histórico (8 itens, congelado) e
+   no Painel Geral (8 itens). auto-fit evita precisar de layouts
+   diferentes pras várias quantidades. */
 .finance-stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
@@ -162,6 +201,14 @@
   border-radius: 14px;
   padding: 0.7rem;
   background: #fff;
+}
+
+/* Card "Total da plataforma" — mesmo visual de .finance-week-card, com um
+   contorno verde (cor de destaque do app) pra diferenciar de um card de
+   semana individual. */
+.finance-total-card {
+  border-color: rgba(21,128,61,0.25);
+  background: rgba(21,128,61,0.03);
 }
 
 /* Card do histórico em modo edição — mesma estrutura de .finance-week-card,
