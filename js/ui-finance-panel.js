@@ -1,16 +1,22 @@
-// === PÁGINA 5 (FINANCEIRO) — acordeão por plataforma ===
-// Cada linha mostra a semana atual ao vivo (editável: registrar saque,
-// registrar aposta, e — a partir de domingo — Bônus + Result Betting pra
-// fechar a semana) e, abaixo, o histórico de semanas já fechadas
-// (editável campo a campo, ver buildWeekCardEditing). Reaproveita o
-// visual do acordeão que já existe em manage-panel.css (mesmas classes
-// .platform-manage-row*) — só o conteúdo de dentro de cada linha é
-// diferente da Página 4.
+// === PÁGINA 5 (FINANCEIRO) — acordeão por plataforma + Painel Geral ===
+// Cada linha mostra: a semana atual ao vivo (registrar saque, registrar
+// aposta com R.B. já incluso, e — só aos domingos — Bônus pra fechar a
+// semana); o "Total da plataforma" (soma de todas as semanas já
+// fechadas dela); e o Histórico com uma busca por data pra pular direto
+// pra uma semana específica. Reaproveita o visual do acordeão que já
+// existe em manage-panel.css (mesmas classes .platform-manage-row*) — só
+// o conteúdo de dentro de cada linha é diferente da Página 4.
+//
+// Acima da lista de plataformas fica o Painel Geral (#financeOverview no
+// HTML): soma TODAS as plataformas juntas, com filtro De/Até por data —
+// ver renderFinanceOverview().
 
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
 import {
-  computeCurrentWeekLive, closeWeek, isCurrentWeekClosed, canCloseCurrentWeek, updateClosedWeek
+  getWeekStart,
+  computeCurrentWeekLive, closeWeek, isCurrentWeekClosed, canCloseCurrentWeek,
+  updateClosedWeek, computePlatformTotals, computeOverallTotals
 } from './finance-logic.js';
 import { savePlatforms } from './platforms-store.js';
 
@@ -22,6 +28,9 @@ let openRowId = null;
 // Semana do histórico atualmente em edição (no máximo uma por vez):
 // { platformId, weekStart } | null
 let editingWeek = null;
+// Data digitada na busca do histórico (dentro da linha aberta) — string
+// 'AAAA-MM-DD' ou null. Reseta toda vez que uma linha é aberta/fechada.
+let historyDateFilter = null;
 
 function formatDatePt(isoDateStr) {
   const [y, m, d] = isoDateStr.split('-');
@@ -41,17 +50,55 @@ function statBox(label, value, cls = '') {
     </div>`;
 }
 
-function numberInput(placeholder, value, step = '0.01') {
-  const input = document.createElement('input');
-  input.type = 'number';
-  input.step = step;
-  input.placeholder = placeholder;
-  input.value = value;
-  input.setAttribute('aria-label', placeholder);
-  return input;
+function statsGridHtml(totals) {
+  return `
+    ${statBox('Depósito', formatCurrency(totals.deposit))}
+    ${statBox('Saque', formatCurrency(totals.withdrawal))}
+    ${statBox('Diferença', formatCurrency(totals.difference), totals.difference >= 0 ? 'positive' : 'negative')}
+    ${statBox('Apostado', formatCurrency(totals.wagered))}
+    ${statBox('N° Apostas', String(totals.betCount))}
+    ${statBox('Bônus', formatCurrency(totals.bonus))}
+    ${statBox('R.B.', formatCurrency(totals.resultBetting), totals.resultBetting >= 0 ? 'positive' : 'negative')}
+    ${statBox('R.B. + Bônus', formatCurrency(totals.rbPlusBonus), totals.rbPlusBonus >= 0 ? 'positive' : 'negative')}
+  `;
 }
 
+// ---------- PAINEL GERAL (topo da página — todas as plataformas) ----------
+
+export function initFinanceOverview() {
+  const fromEl = document.getElementById('financeOverviewFrom');
+  const toEl = document.getElementById('financeOverviewTo');
+  const clearBtn = document.getElementById('financeOverviewClearBtn');
+
+  if (fromEl) fromEl.addEventListener('change', renderFinanceOverview);
+  if (toEl) toEl.addEventListener('change', renderFinanceOverview);
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      if (fromEl) fromEl.value = '';
+      if (toEl) toEl.value = '';
+      renderFinanceOverview();
+    });
+  }
+}
+
+export function renderFinanceOverview() {
+  const statsEl = document.getElementById('financeOverviewStats');
+  if (!statsEl) return;
+
+  const fromEl = document.getElementById('financeOverviewFrom');
+  const toEl = document.getElementById('financeOverviewTo');
+  const from = fromEl && fromEl.value ? fromEl.value : null;
+  const to = toEl && toEl.value ? toEl.value : null;
+
+  const totals = computeOverallTotals(state.platforms, from, to);
+  statsEl.innerHTML = statsGridHtml(totals);
+}
+
+// ---------- LISTA DE PLATAFORMAS ----------
+
 export function renderFinanceList() {
+  renderFinanceOverview();
+
   if (!financeListEl) return;
   financeListEl.innerHTML = '';
 
@@ -66,6 +113,12 @@ export function renderFinanceList() {
   }
 
   list.forEach(p => financeListEl.appendChild(buildRow(p)));
+}
+
+function dividerEl() {
+  const hr = document.createElement('hr');
+  hr.className = 'manage-section-divider';
+  return hr;
 }
 
 function buildRow(p) {
@@ -109,18 +162,18 @@ function buildRow(p) {
   header.appendChild(chevron);
   header.addEventListener('click', () => {
     openRowId = (openRowId === p.id) ? null : p.id;
+    editingWeek = null;
+    historyDateFilter = null;
     renderFinanceList();
   });
 
-  // --- body (aberto): Semana atual + Histórico ---
+  // --- body (aberto): Semana atual + Total da plataforma + Histórico ---
   const body = document.createElement('div');
   body.className = 'platform-manage-row-body';
   body.appendChild(buildCurrentWeekSection(p, live, closed));
-
-  const divider = document.createElement('hr');
-  divider.className = 'manage-section-divider';
-  body.appendChild(divider);
-
+  body.appendChild(dividerEl());
+  body.appendChild(buildPlatformTotalSection(p));
+  body.appendChild(dividerEl());
   body.appendChild(buildHistorySection(p));
 
   row.appendChild(header);
@@ -153,6 +206,7 @@ function buildCurrentWeekSection(p, live, closed) {
       ${statBox('Diferença', formatCurrency(live.difference), live.difference >= 0 ? 'positive' : 'negative')}
       ${statBox('Apostado', formatCurrency(live.wagered))}
       ${statBox('N° Apostas', String(live.betCount))}
+      ${statBox('R.B.', formatCurrency(live.resultBetting), live.resultBetting >= 0 ? 'positive' : 'negative')}
     </div>`;
   section.appendChild(statsWrap);
 
@@ -192,7 +246,7 @@ function buildCurrentWeekSection(p, live, closed) {
   withdrawForm.appendChild(withdrawBtn);
   section.appendChild(withdrawForm);
 
-  // --- registrar aposta (valor apostado + n° de apostas) ---
+  // --- registrar aposta (valor apostado + n° de apostas + R.B. da aposta) ---
   const betForm = document.createElement('div');
   betForm.className = 'finance-entry-form';
   const wageredInput = document.createElement('input');
@@ -205,6 +259,10 @@ function buildCurrentWeekSection(p, live, closed) {
   betCountInput.min = '0';
   betCountInput.step = '1';
   betCountInput.placeholder = 'N° de apostas';
+  const rbInput = document.createElement('input');
+  rbInput.type = 'number';
+  rbInput.step = '0.01';
+  rbInput.placeholder = 'R.B. da aposta';
   const betBtn = document.createElement('button');
   betBtn.className = 'bet-manage-btn';
   betBtn.type = 'button';
@@ -212,22 +270,25 @@ function buildCurrentWeekSection(p, live, closed) {
   betBtn.addEventListener('click', async () => {
     const wagered = parseFloat(wageredInput.value);
     const betCount = parseInt(betCountInput.value, 10);
-    if (isNaN(wagered) || wagered <= 0 || isNaN(betCount) || betCount <= 0) {
-      await showAppAlert('Digite valor apostado e n° de apostas válidos');
+    const resultBetting = parseFloat(rbInput.value);
+    if (isNaN(wagered) || wagered <= 0 || isNaN(betCount) || betCount <= 0 || isNaN(resultBetting)) {
+      await showAppAlert('Digite valor apostado, n° de apostas e R.B. válidos');
       return;
     }
     if (!p.betEntries) p.betEntries = [];
-    p.betEntries.push({ date: new Date().toISOString(), wagered, betCount });
+    p.betEntries.push({ date: new Date().toISOString(), wagered, betCount, resultBetting });
     savePlatforms(state.currentUid, state.platforms);
     openRowId = p.id;
     renderFinanceList();
   });
   betForm.appendChild(wageredInput);
   betForm.appendChild(betCountInput);
+  betForm.appendChild(rbInput);
   betForm.appendChild(betBtn);
   section.appendChild(betForm);
 
-  // --- fechar semana (só aparece aos domingos) ---
+  // --- fechar semana: só aos domingos, e só pede o Bônus (R.B. já vem
+  //     somado ao vivo das apostas registradas acima) ---
   if (canCloseCurrentWeek()) {
     const closeSection = document.createElement('div');
     closeSection.className = 'finance-close-week';
@@ -237,18 +298,18 @@ function buildCurrentWeekSection(p, live, closed) {
     closeLabel.textContent = 'Fechar semana (domingo)';
     closeSection.appendChild(closeLabel);
 
+    const closeNote = document.createElement('p');
+    closeNote.className = 'finance-close-week-note';
+    closeNote.textContent = `R.B. da semana já somado automaticamente: ${formatCurrency(live.resultBetting)}. Falta só informar o Bônus.`;
+    closeSection.appendChild(closeNote);
+
     const closeForm = document.createElement('div');
     closeForm.className = 'finance-entry-form';
     const bonusInput = document.createElement('input');
     bonusInput.type = 'number';
     bonusInput.step = '0.01';
     bonusInput.placeholder = 'Bônus recebido na semana';
-    const resultInput = document.createElement('input');
-    resultInput.type = 'number';
-    resultInput.step = '0.01';
-    resultInput.placeholder = 'Result Betting (R.B.)';
     closeForm.appendChild(bonusInput);
-    closeForm.appendChild(resultInput);
     closeSection.appendChild(closeForm);
 
     const closeActions = document.createElement('div');
@@ -259,14 +320,13 @@ function buildCurrentWeekSection(p, live, closed) {
     closeBtn.textContent = '🔒 Fechar semana';
     closeBtn.addEventListener('click', async () => {
       const bonus = parseFloat(bonusInput.value);
-      const resultBetting = parseFloat(resultInput.value);
-      if (isNaN(bonus) || isNaN(resultBetting)) {
-        await showAppAlert('Preencha Bônus e Result Betting pra fechar a semana.');
+      if (isNaN(bonus)) {
+        await showAppAlert('Preencha o Bônus pra fechar a semana.');
         return;
       }
       const ok = await showAppConfirm(`Fechar a semana de ${p.name}? Depois de fechada, os valores não mudam mais sozinhos.`);
       if (!ok) return;
-      closeWeek(p, bonus, resultBetting);
+      closeWeek(p, bonus);
       savePlatforms(state.currentUid, state.platforms);
       openRowId = p.id;
       renderFinanceList();
@@ -279,7 +339,47 @@ function buildCurrentWeekSection(p, live, closed) {
   return section;
 }
 
-// ---------- SEÇÃO "HISTÓRICO" (semanas fechadas — editável campo a campo) ----------
+// ---------- SEÇÃO "TOTAL DA PLATAFORMA" (soma de todas as semanas fechadas) ----------
+
+function buildPlatformTotalSection(p) {
+  const section = document.createElement('div');
+  section.className = 'manage-data-section';
+
+  const label = document.createElement('div');
+  label.className = 'manage-section-label';
+  label.textContent = 'Total da plataforma';
+  section.appendChild(label);
+
+  const weeks = p.financeWeeks || [];
+
+  if (weeks.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'finance-empty';
+    empty.textContent = 'Nenhuma semana fechada ainda.';
+    section.appendChild(empty);
+    return section;
+  }
+
+  const totals = computePlatformTotals(p);
+
+  const card = document.createElement('div');
+  card.className = 'finance-week-card finance-total-card';
+
+  const header = document.createElement('div');
+  header.className = 'finance-week-card-header';
+  header.innerHTML = `<span>${weeks.length} semana(s) fechada(s)</span>`;
+  card.appendChild(header);
+
+  const stats = document.createElement('div');
+  stats.className = 'finance-stats-grid';
+  stats.innerHTML = statsGridHtml(totals);
+  card.appendChild(stats);
+
+  section.appendChild(card);
+  return section;
+}
+
+// ---------- SEÇÃO "HISTÓRICO" (semanas fechadas — editável + busca por data) ----------
 
 function buildHistorySection(p) {
   const section = document.createElement('div');
@@ -290,12 +390,49 @@ function buildHistorySection(p) {
   label.textContent = 'Histórico (semanas fechadas)';
   section.appendChild(label);
 
-  const weeks = [...(p.financeWeeks || [])].sort((a, b) => b.weekStart.localeCompare(a.weekStart));
+  // Busca por data: escolher qualquer dia dentro de uma semana já fechada
+  // pula direto pra ela, sem precisar rolar a lista inteira.
+  const searchRow = document.createElement('div');
+  searchRow.className = 'finance-entry-form';
+
+  const dateInput = document.createElement('input');
+  dateInput.type = 'date';
+  dateInput.setAttribute('aria-label', 'Buscar semana por data');
+  if (historyDateFilter) dateInput.value = historyDateFilter;
+  dateInput.addEventListener('change', () => {
+    historyDateFilter = dateInput.value || null;
+    openRowId = p.id;
+    renderFinanceList();
+  });
+  searchRow.appendChild(dateInput);
+
+  if (historyDateFilter) {
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.className = 'btn-cancel-modal';
+    clearBtn.textContent = 'Limpar busca';
+    clearBtn.addEventListener('click', () => {
+      historyDateFilter = null;
+      openRowId = p.id;
+      renderFinanceList();
+    });
+    searchRow.appendChild(clearBtn);
+  }
+  section.appendChild(searchRow);
+
+  let weeks = [...(p.financeWeeks || [])].sort((a, b) => b.weekStart.localeCompare(a.weekStart));
+
+  if (historyDateFilter) {
+    const targetWeekStart = getWeekStart(new Date(historyDateFilter + 'T00:00:00')).toISOString().slice(0, 10);
+    weeks = weeks.filter(w => w.weekStart === targetWeekStart);
+  }
 
   if (weeks.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'finance-empty';
-    empty.textContent = 'Nenhuma semana fechada ainda.';
+    empty.textContent = historyDateFilter
+      ? 'Nenhuma semana fechada encontrada pra essa data.'
+      : 'Nenhuma semana fechada ainda.';
     section.appendChild(empty);
     return section;
   }
@@ -341,16 +478,7 @@ function buildWeekCardReadOnly(p, w) {
 
   const stats = document.createElement('div');
   stats.className = 'finance-stats-grid';
-  stats.innerHTML = `
-    ${statBox('Depósito', formatCurrency(w.deposit))}
-    ${statBox('Saque', formatCurrency(w.withdrawal))}
-    ${statBox('Diferença', formatCurrency(w.difference), w.difference >= 0 ? 'positive' : 'negative')}
-    ${statBox('Apostado', formatCurrency(w.wagered))}
-    ${statBox('N° Apostas', String(w.betCount))}
-    ${statBox('Bônus', formatCurrency(w.bonus))}
-    ${statBox('R.B.', formatCurrency(w.resultBetting), w.resultBetting >= 0 ? 'positive' : 'negative')}
-    ${statBox('R.B. + Bônus', formatCurrency(w.rbPlusBonus), w.rbPlusBonus >= 0 ? 'positive' : 'negative')}
-  `;
+  stats.innerHTML = statsGridHtml(w);
   card.appendChild(stats);
 
   return card;
@@ -442,7 +570,17 @@ function buildWeekCardEditing(p, w) {
   return card;
 }
 
-// ---------- CONTROLE DO TOPO (busca) ----------
+function numberInput(placeholder, value, step = '0.01') {
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.step = step;
+  input.placeholder = placeholder;
+  input.value = value;
+  input.setAttribute('aria-label', placeholder);
+  return input;
+}
+
+// ---------- CONTROLE DO TOPO (busca de plataforma) ----------
 
 export function initFinanceControls() {
   if (financeSearchEl) {

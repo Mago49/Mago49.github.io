@@ -1,14 +1,15 @@
 // === PONTO DE ENTRADA — Página 5 (Financeiro) ===
 import { initAuth } from './auth-guard.js';
 import { startBackgroundAnimation } from './ui-background.js';
-import { initFinanceControls, renderFinanceList } from './ui-finance-panel.js';
+import { initFinanceControls, renderFinanceList, initFinanceOverview } from './ui-finance-panel.js';
 
 startBackgroundAnimation();
 
 initAuth({
   onLogin: () => {
     initFinanceControls();
-    renderFinanceList();
+    initFinanceOverview();
+    renderFinanceList(); // já chama renderFinanceOverview() internamente
     scheduleDailyUpdate();
   }
 });
