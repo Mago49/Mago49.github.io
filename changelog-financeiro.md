@@ -57,9 +57,9 @@ errado, ficava congelada assim pra sempre.
 **Solução**: novo array `depositLog` por plataforma (Firestore), que
 funciona igual a `withdrawals`/`betEntries` — todo depósito lançado na
 Página 4 entra em `deposits` (como sempre, pro ciclo de nível/VIP) **e**
-em `depositLog` (histórico permanente, nunca apagado). O Financeiro agora
-soma a semana a partir de `depositLog`, não mais de `deposits`. Fim e
-Reinício continuam funcionando exatamente como antes — eles só mexem em
+em `depositLog` (histórico permanente, nunca apagado). O Financeiro soma
+a semana a partir de `depositLog`, não mais de `deposits`. Fim e Reinício
+continuam funcionando exatamente como antes — eles só mexem em
 `deposits`, que nunca mais é a fonte de dados do Financeiro.
 
 Contas que já existiam no Firestore ganham `depositLog` automaticamente
@@ -83,3 +83,44 @@ registro.
 **Arquivos modificados**: `js/platforms-store.js`, `js/finance-logic.js`,
 `js/ui-finance-panel.js`, `js/ui-platform-manage.js`, `edicao.html`,
 `css/finance.css`.
+
+---
+
+## Ajuste — R.B. por aposta, Painel Geral, Total da plataforma e busca no histórico
+
+**R.B. deixou de ser um valor único da semana** e passou a ser informado
+em **cada aposta registrada**, junto de Valor apostado e N° de apostas
+(`p.betEntries` ganhou um 4° campo: `resultBetting`). A semana atual
+passa a mostrar R.B. **ao vivo**, somado automaticamente igual Apostado e
+N° de apostas (`computeCurrentWeekLive` em `js/finance-logic.js`).
+
+**A trava de domingo continua existindo, mas agora só protege o Bônus**:
+o bloco "Fechar semana" só aparece aos domingos e só pede o valor do
+Bônus — o R.B. da semana já chega pronto, somado das apostas registradas
+ao longo da semana.
+
+**Limitação nova (fique de olho)**: apostas registradas ANTES desta
+atualização não têm `resultBetting` guardado — contam como R.B. = 0 na
+soma da semana. Se você já registrou apostas nesta semana antes de
+atualizar, o R.B. da semana vai ficar menor do que deveria até você
+fechar essa semana; hoje não existe uma tela pra editar uma aposta já
+registrada individualmente (só dá pra editar o total depois que a semana
+é fechada, via "Editar" no histórico). Ajustar se virar problema real.
+
+**Novo — Total da plataforma**: card novo dentro de cada plataforma,
+entre "Semana atual" e "Histórico", somando TODAS as semanas já fechadas
+dela (`computePlatformTotals`). Não conta a semana em aberto de
+propósito, já que ela ainda pode mudar até ser fechada.
+
+**Novo — busca por data no Histórico**: um campo de data acima da lista
+de semanas fechadas pula direto pra semana que contém aquele dia, em vez
+de precisar rolar a lista inteira.
+
+**Novo — Painel Geral**: seção nova no topo da Página 5, acima da lista
+de plataformas, somando TODAS as plataformas juntas (`computeOverallTotals`),
+com filtro De/Até por data (compara contra o `weekStart` de cada semana
+fechada). Só considera semanas fechadas, igual ao Total da plataforma —
+não inclui a semana em aberto de nenhuma plataforma.
+
+**Arquivos modificados**: `js/finance-logic.js`, `js/ui-finance-panel.js`,
+`js/main-financeiro.js`, `financeiro.html`, `css/finance.css`.
