@@ -41,3 +41,45 @@ Se você esquecer de fechar num domingo, a semana some da lista de fechar
 (fica só "em aberto" pra sempre, ainda contando eventos novos) até o
 próximo domingo — não há hoje um jeito de fechar atrasado. Ajustar se
 virar problema no uso real.
+
+---
+
+## Correção — Depósitos do Financeiro não dependem mais de Fim/Reinício
+
+**Bug corrigido**: a Página 5 (Financeiro) somava o Depósito da semana
+direto de `platform.deposits` — o mesmo array que os botões **Fim** e
+**Reinício** (Página 4) zeram de propósito ao reiniciar o ciclo de
+nível/VIP. Resultado: encerrar ou reiniciar uma plataforma no meio da
+semana apagava, sem aviso nenhum, os depósitos que o Financeiro contava
+pra aquela semana — e se a semana já tivesse sido fechada com esse valor
+errado, ficava congelada assim pra sempre.
+
+**Solução**: novo array `depositLog` por plataforma (Firestore), que
+funciona igual a `withdrawals`/`betEntries` — todo depósito lançado na
+Página 4 entra em `deposits` (como sempre, pro ciclo de nível/VIP) **e**
+em `depositLog` (histórico permanente, nunca apagado). O Financeiro agora
+soma a semana a partir de `depositLog`, não mais de `deposits`. Fim e
+Reinício continuam funcionando exatamente como antes — eles só mexem em
+`deposits`, que nunca mais é a fonte de dados do Financeiro.
+
+Contas que já existiam no Firestore ganham `depositLog` automaticamente
+no próximo login: `normalizePlatformData` (`js/platforms-store.js`) copia
+o `deposits` atual pra dentro de `depositLog` na primeira vez que
+encontra o campo ausente — depois disso os dois arrays seguem separados.
+
+**Removido**: o botão "Resetar todos os depósitos" (Página 4) saiu do ar.
+Ele zerava `deposits` de todas as plataformas de uma vez e tinha o mesmo
+problema em escala maior; como Fim/Reinício já cobrem o caso de uso real
+(por plataforma), ele deixou de existir.
+
+**Novo**: as semanas fechadas no histórico do Financeiro agora podem ser
+editadas (botão "Editar" em cada card). Os 6 campos brutos (Depósito,
+Saque, Apostado, N° de apostas, Bônus, R.B.) são editáveis; Diferença e
+R.B. + Bônus nunca são digitados direto — são sempre recalculados a
+partir dos outros 6 ao salvar (`updateClosedWeek` em
+`js/finance-logic.js`), pra nunca ficarem inconsistentes com o resto do
+registro.
+
+**Arquivos modificados**: `js/platforms-store.js`, `js/finance-logic.js`,
+`js/ui-finance-panel.js`, `js/ui-platform-manage.js`, `edicao.html`,
+`css/finance.css`.
