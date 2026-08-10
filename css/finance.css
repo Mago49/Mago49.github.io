@@ -2,8 +2,9 @@
    Reaproveita o acordeão de manage-panel.css (.platform-manage-row e
    afins) pra listar as plataformas — só o container muda (.finance-panel
    em vez de #platformManagePanel). Aqui ficam só as classes específicas
-   dessa página: busca, badge de semana fechada, e os grids de
-   estatística (semana atual ao vivo + histórico de semanas congeladas). */
+   dessa página: busca, badge de semana fechada, os grids de estatística
+   (semana atual ao vivo + histórico de semanas congeladas) e o modo de
+   edição do histórico (.finance-week-card-editing). */
 
 .finance-panel {
   padding: 1.1rem;
@@ -161,6 +162,14 @@
   border-radius: 14px;
   padding: 0.7rem;
   background: #fff;
+}
+
+/* Card do histórico em modo edição — mesma estrutura de .finance-week-card,
+   só com um contorno azul pra deixar claro que os campos abaixo estão
+   editáveis (ver buildWeekCardEditing em ui-finance-panel.js). */
+.finance-week-card-editing {
+  border-color: rgba(37,99,235,0.35);
+  background: rgba(37,99,235,0.03);
 }
 
 .finance-week-card-header {
