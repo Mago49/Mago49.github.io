@@ -124,3 +124,60 @@ não inclui a semana em aberto de nenhuma plataforma.
 
 **Arquivos modificados**: `js/finance-logic.js`, `js/ui-finance-panel.js`,
 `js/main-financeiro.js`, `financeiro.html`, `css/finance.css`.
+
+---
+
+## Redesenho — Saldo (Balance) vira 100% calculado, e depósito ganha edição na Página 4
+
+**Saldo deixou de ser algo digitado.** O fluxo real é:
+`Depósito → Saldo → Aposta → Resultado (R.B.) → Saldo → (domingo) + Bônus → Saldo`.
+Ou seja, o Saldo é sempre uma CONSEQUÊNCIA do que já aconteceu — nunca
+mais existe uma caixa pra digitar ele à mão. A fórmula
+(`computeLiveBalance` em `js/finance-logic.js`) é:
+
+```
+Saldo = (todos os Depósitos) − (todos os Saques)
+      + (todos os R.B. das apostas) + (todos os Bônus já recebidos)
+```
+
+É **vitalício**: soma tudo desde o início (via `depositLog`,
+`withdrawals`, `betEntries` e o `bonus` de cada semana em
+`financeWeeks`), e nenhum desses arrays é zerado por Fim/Reinício do
+ciclo VIP — então o Saldo nunca reseta sozinho.
+
+**Onde o Saldo aparece agora:**
+- **Badge do nome da plataforma** (antes de abrir o acordeão): mostra só
+  o Saldo, ao vivo — substituiu o antigo badge de "Diferença da semana".
+- **Semana atual**: novo 7° campo no grid ao vivo (Depósito, Saque,
+  Diferença, Apostado, N° Apostas, R.B., **Saldo**).
+- **Fechar semana** (domingo): não pede mais Saldo — ele é travado
+  sozinho no momento do fechamento ("saldo de domingo"), já somando o
+  Bônus daquela semana. O formulário só pede o Bônus.
+- **Semana fechada (Histórico)**: mostra o Saldo TRAVADO naquele
+  domingo — uma foto do passado, editável à mão via "Editar" (mesmo
+  padrão dos outros 6 campos brutos) se precisar corrigir depois.
+- **Total da plataforma** e **Painel Geral**: sempre o Saldo ATUAL, ao
+  vivo, recalculado a cada abertura da tela — nunca uma soma entre
+  semanas (Saldo é uma foto do momento, não um fluxo que se acumula). No
+  Painel Geral, o Saldo soma o saldo atual de cada plataforma e **não
+  respeita o filtro De/Até**, porque representa "quanto tem parado agora
+  em todas as plataformas juntas", não uma métrica de um período.
+
+**Novo — editar depósito no histórico (Página 4)**: o modal "Histórico de
+Depósitos" (`edicao.html` → `showHistoryModal` em
+`js/ui-platform-manage.js`) ganhou um botão "Editar" ao lado de
+"Excluir". Só o VALOR é editável — data e horário do depósito nunca
+mudam, de propósito, pra não confundir quem não está acostumado com
+planilha. Ao salvar, o valor é corrigido em `deposits` **e** no
+`depositLog` correspondente (localizado pela mesma data) — é assim que o
+Financeiro reconhece a correção automaticamente na semana atual (e no
+Saldo) na próxima vez que a tela abrir.
+
+**Atenção**: "Excluir" continua só removendo de `deposits` (não mexe em
+`depositLog`, que é o histórico permanente usado pelo Saldo) — pra
+corrigir um depósito lançado errado de forma que o Saldo também reflita,
+use "Editar", não "Excluir".
+
+**Arquivos modificados**: `js/finance-logic.js`, `js/ui-finance-panel.js`,
+`js/ui-platform-manage.js`, `financeiro.html`, `css/modals.css`,
+`css/base.css`.

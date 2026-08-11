@@ -1,10 +1,11 @@
 <!-- Página 5 — Financeiro. Substitui a planilha externa: cada plataforma
      tem a semana atual (ao vivo, editável), o total acumulado de todas as
-     semanas fechadas dela, e o histórico de semanas já fechadas
-     (congelado, só leitura, com busca por data). Semana = segunda a
-     domingo, igual ao pagamento do bônus VIP semanal — independente do
+     semanas fechadas dela + Saldo atual, e o histórico de semanas já
+     fechadas (congelado, só leitura, com busca por data). Semana = segunda
+     a domingo, igual ao pagamento do bônus VIP semanal — independente do
      ciclo de nível de cada plataforma (ver js/finance-logic.js). No topo,
-     o Painel Geral soma todas as plataformas juntas, com filtro de data. -->
+     o Painel Geral soma todas as plataformas juntas, com filtro de data
+     (Saldo não é afetado pelo filtro — é sempre o valor atual). -->
 <!doctype html>
 <html lang="pt-br">
 <head>
@@ -90,7 +91,7 @@
         <button type="button" id="financeOverviewClearBtn" class="btn-cancel-modal">Limpar filtro</button>
       </div>
 
-      <p class="finance-close-week-note">Soma de todas as plataformas com base nas semanas já fechadas. Sem filtro, mostra todo o histórico.</p>
+      <p class="finance-close-week-note">Soma de todas as plataformas com base nas semanas já fechadas. Sem filtro, mostra todo o histórico. O Saldo (Balance) é sempre o valor atual de todas as plataformas juntas e não é afetado pelo filtro de datas.</p>
 
       <div id="financeOverviewStats" class="finance-stats-grid"></div>
     </section>
