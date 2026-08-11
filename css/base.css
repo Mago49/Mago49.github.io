@@ -182,6 +182,8 @@ body {
 .top-nav button:hover,
 .top-nav button:focus-visible,
 .history-delete-btn:hover,
+.history-edit-btn:hover,
+.history-cancel-btn:hover,
 .history-close:hover,
 .btn-confirm:hover,
 .btn-cancel-modal:hover,
