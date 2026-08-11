@@ -9,10 +9,13 @@
 //
 // SALDO (Balance): fluxo Depósito → Saldo → Aposta → Resultado → Saldo →
 // (domingo) + Bônus → Saldo. Nunca é digitado — é sempre calculado
-// (computeLiveBalance em finance-logic.js), vitalício. O badge ao lado do
-// nome da plataforma (antes de abrir o acordeão) mostra esse Saldo ao
-// vivo. Nas semanas fechadas, o Saldo mostrado é o que foi travado no
-// momento do fechamento ("saldo de domingo"); no Total da plataforma e
+// (computeLiveBalance em finance-logic.js), vitalício, com piso em
+// R$ 0,00 (saldo de plataforma nunca é negativo na prática). O badge ao
+// lado do nome da plataforma (antes de abrir o acordeão) mostra esse
+// Saldo ao vivo. Nas semanas fechadas, o Saldo mostrado é o que foi
+// travado no momento do fechamento ("saldo de domingo") — aqui também
+// aplicamos o piso na hora de exibir, por segurança, caso alguma semana
+// tenha sido fechada antes dessa regra existir. No Total da plataforma e
 // no Painel Geral, é sempre o Saldo ATUAL, recalculado a cada render — no
 // Painel Geral ele não é afetado pelo filtro De/Até.
 
@@ -58,7 +61,12 @@ function statBox(label, value, cls = '') {
 // Usado no card do histórico (semana fechada), no "Total da plataforma" e
 // no "Painel Geral" — todos têm o mesmo formato de 9 campos (o 9° é
 // Saldo). A "Semana atual" (ao vivo) tem seu próprio grid, à parte.
+// Saldo é travado em R$ 0,00 aqui na exibição também (defensivo): o Total
+// da plataforma e o Painel Geral já vêm com piso de computeLiveBalance,
+// mas uma semana fechada antiga (gravada antes dessa regra existir)
+// poderia ter um valor negativo salvo — nunca mostramos isso na tela.
 function statsGridHtml(totals) {
+  const safeBalance = Math.max(0, Number(totals.balance) || 0);
   return `
     ${statBox('Depósito', formatCurrency(totals.deposit))}
     ${statBox('Saque', formatCurrency(totals.withdrawal))}
@@ -68,7 +76,7 @@ function statsGridHtml(totals) {
     ${statBox('Bônus', formatCurrency(totals.bonus))}
     ${statBox('R.B.', formatCurrency(totals.resultBetting), totals.resultBetting >= 0 ? 'positive' : 'negative')}
     ${statBox('R.B. + Bônus', formatCurrency(totals.rbPlusBonus), totals.rbPlusBonus >= 0 ? 'positive' : 'negative')}
-    ${statBox('Saldo (Balance)', formatCurrency(totals.balance), totals.balance >= 0 ? 'positive' : 'negative')}
+    ${statBox('Saldo (Balance)', formatCurrency(safeBalance), 'positive')}
   `;
 }
 
@@ -152,9 +160,9 @@ function buildRow(p) {
 
   const balanceBadge = document.createElement('span');
   balanceBadge.className = 'platform-total-badge';
-  balanceBadge.style.background = liveBalance >= 0 ? '#dcfce7' : '#fecaca';
+  balanceBadge.style.background = '#dcfce7';
   balanceBadge.textContent = `Saldo ${formatCurrency(liveBalance)}`;
-  balanceBadge.title = 'Depósitos - saques + resultado das apostas (R.B.) + bônus recebidos, desde o início';
+  balanceBadge.title = 'Depósitos - saques + resultado das apostas (R.B.) + bônus recebidos, desde o início (mínimo R$ 0,00)';
   badges.appendChild(balanceBadge);
 
   if (closed) {
@@ -218,7 +226,7 @@ function buildCurrentWeekSection(p, live, closed, liveBalance) {
       ${statBox('Apostado', formatCurrency(live.wagered))}
       ${statBox('N° Apostas', String(live.betCount))}
       ${statBox('R.B.', formatCurrency(live.resultBetting), live.resultBetting >= 0 ? 'positive' : 'negative')}
-      ${statBox('Saldo (Balance)', formatCurrency(liveBalance), liveBalance >= 0 ? 'positive' : 'negative')}
+      ${statBox('Saldo (Balance)', formatCurrency(liveBalance), 'positive')}
     </div>`;
   section.appendChild(statsWrap);
 
@@ -498,7 +506,8 @@ function buildWeekCardReadOnly(p, w) {
 // (ver updateClosedWeek em finance-logic.js) — editá-los direto poderia
 // deixar o registro inconsistente (ex: Diferença que não bate com
 // Saque - Depósito). Saldo continua editável: é um valor travado no
-// fechamento, então pode ser corrigido à mão como os outros.
+// fechamento, então pode ser corrigido à mão como os outros — mas nunca
+// fica negativo (ver updateClosedWeek, piso em R$ 0,00).
 function buildWeekCardEditing(p, w) {
   const card = document.createElement('div');
   card.className = 'finance-week-card finance-week-card-editing';
@@ -510,7 +519,7 @@ function buildWeekCardEditing(p, w) {
 
   const note = document.createElement('p');
   note.className = 'finance-close-week-note';
-  note.textContent = 'Diferença e R.B. + Bônus são recalculados automaticamente ao salvar.';
+  note.textContent = 'Diferença e R.B. + Bônus são recalculados automaticamente ao salvar. Saldo nunca fica abaixo de R$ 0,00.';
   card.appendChild(note);
 
   const row1 = document.createElement('div');
@@ -540,6 +549,7 @@ function buildWeekCardEditing(p, w) {
   const row4 = document.createElement('div');
   row4.className = 'finance-entry-form';
   const balanceInput = numberInput('Saldo (Balance)', w.balance);
+  balanceInput.min = '0';
   row4.appendChild(balanceInput);
   card.appendChild(row4);
 
