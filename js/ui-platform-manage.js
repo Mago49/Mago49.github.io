@@ -426,6 +426,11 @@ const historyTitle = document.getElementById('historyTitle');
 const historyList = document.getElementById('historyList');
 const historyCloseBtn = document.getElementById('historyCloseBtn');
 
+// Depósito atualmente em edição dentro do modal de histórico — guardamos
+// pela `date` (chave natural, já que não existe um id próprio por
+// depósito). null quando nenhum item está em edição.
+let editingDepositDate = null;
+
 function showHistoryModal(platform) {
   historyTitle.textContent = `Histórico de Depósitos - ${platform.name}`;
   historyList.innerHTML = '';
@@ -451,29 +456,84 @@ function showHistoryModal(platform) {
       const dateSpan = document.createElement('span');
       dateSpan.className = 'history-date';
       dateSpan.textContent = `${dia}/${mes}/${ano} ${horas}:${minutos}`;
-
-      const valueSpan = document.createElement('span');
-      valueSpan.className = 'history-value';
-      valueSpan.textContent = formatCurrency(dep.value);
-
       itemContent.appendChild(dateSpan);
-      itemContent.appendChild(valueSpan);
-      item.appendChild(itemContent);
 
-      const deleteBtn = document.createElement('button');
-      deleteBtn.className = 'history-delete-btn';
-      deleteBtn.textContent = 'Excluir';
-      deleteBtn.addEventListener('click', async () => {
-        const ok = await showAppConfirm(`Deseja excluir este depósito de ${formatCurrency(dep.value)}?`);
-        if (ok) {
-          platform.deposits.splice(platform.deposits.indexOf(dep), 1);
+      const isEditingThis = editingDepositDate === dep.date;
+
+      if (isEditingThis) {
+        // Modo edição: só o VALOR é editável — data/hora nunca mudam, pra
+        // não confundir quem não está acostumado com planilha.
+        const valueInput = document.createElement('input');
+        valueInput.type = 'number';
+        valueInput.min = '0';
+        valueInput.step = '0.01';
+        valueInput.value = dep.value;
+        valueInput.className = 'history-value-input';
+        itemContent.appendChild(valueInput);
+        item.appendChild(itemContent);
+
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'history-edit-btn';
+        saveBtn.textContent = 'Salvar';
+        saveBtn.addEventListener('click', async () => {
+          const newValue = parseFloat(valueInput.value);
+          if (isNaN(newValue) || newValue <= 0) {
+            await showAppAlert('Digite um valor válido');
+            return;
+          }
+          dep.value = newValue;
+          // Sincroniza com depositLog (histórico permanente que o
+          // Financeiro usa) pela mesma data — é assim que financeiro.html
+          // reconhece a correção na semana atual (e no Saldo).
+          const logEntry = (platform.depositLog || []).find(d => d.date === dep.date);
+          if (logEntry) logEntry.value = newValue;
           savePlatforms(state.currentUid, state.platforms);
+          editingDepositDate = null;
           openRowId = platform.id;
           renderManageList();
           showHistoryModal(platform);
-        }
-      });
-      item.appendChild(deleteBtn);
+        });
+        item.appendChild(saveBtn);
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'history-cancel-btn';
+        cancelBtn.textContent = 'Cancelar';
+        cancelBtn.addEventListener('click', () => {
+          editingDepositDate = null;
+          showHistoryModal(platform);
+        });
+        item.appendChild(cancelBtn);
+      } else {
+        const valueSpan = document.createElement('span');
+        valueSpan.className = 'history-value';
+        valueSpan.textContent = formatCurrency(dep.value);
+        itemContent.appendChild(valueSpan);
+        item.appendChild(itemContent);
+
+        const editBtn = document.createElement('button');
+        editBtn.className = 'history-edit-btn';
+        editBtn.textContent = 'Editar';
+        editBtn.addEventListener('click', () => {
+          editingDepositDate = dep.date;
+          showHistoryModal(platform);
+        });
+        item.appendChild(editBtn);
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'history-delete-btn';
+        deleteBtn.textContent = 'Excluir';
+        deleteBtn.addEventListener('click', async () => {
+          const ok = await showAppConfirm(`Deseja excluir este depósito de ${formatCurrency(dep.value)}?`);
+          if (ok) {
+            platform.deposits.splice(platform.deposits.indexOf(dep), 1);
+            savePlatforms(state.currentUid, state.platforms);
+            openRowId = platform.id;
+            renderManageList();
+            showHistoryModal(platform);
+          }
+        });
+        item.appendChild(deleteBtn);
+      }
 
       historyList.appendChild(item);
     });
@@ -482,9 +542,15 @@ function showHistoryModal(platform) {
   historyModal.style.display = 'flex';
 }
 
-historyCloseBtn.addEventListener('click', () => { historyModal.style.display = 'none'; });
+historyCloseBtn.addEventListener('click', () => {
+  editingDepositDate = null;
+  historyModal.style.display = 'none';
+});
 historyModal.addEventListener('click', (e) => {
-  if (e.target === historyModal) historyModal.style.display = 'none';
+  if (e.target === historyModal) {
+    editingDepositDate = null;
+    historyModal.style.display = 'none';
+  }
 });
 
 // ---------- MODAL: REINÍCIO DE CICLO ----------

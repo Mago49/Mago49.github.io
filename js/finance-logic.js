@@ -5,10 +5,16 @@
 // a planilha externa: os campos brutos (depósito, saque, aposta, R.B. por
 // aposta) são somados AO VIVO durante a semana; no domingo, só falta
 // informar o Bônus e a semana é CONGELADA pra sempre em
-// platform.financeWeeks — depois disso os 8 campos não recalculam mais
+// platform.financeWeeks — depois disso os campos não recalculam mais
 // sozinhos (só editando manualmente, ver updateClosedWeek), viram um
 // retrato fixo daquela semana (igual uma linha já preenchida na planilha
 // antiga).
+//
+// SALDO (Balance): fluxo Depósito → Saldo → Aposta → Resultado → Saldo →
+// (domingo) + Bônus → Saldo. Por isso o Saldo NÃO é digitado em lugar
+// nenhum — é sempre CALCULADO (ver computeLiveBalance), vitalício (soma
+// desde o início, nunca reseta com Fim/Reinício do ciclo VIP, que mexe só
+// em `deposits`, nunca em depositLog/withdrawals/betEntries/financeWeeks).
 
 // Segunda-feira 00:00:00 da semana que contém `date`.
 export function getWeekStart(date = new Date()) {
@@ -40,10 +46,10 @@ function sumInRange(events, weekStart, weekEnd, key) {
 // Totais AO VIVO da semana em aberto — recalculados toda vez que a tela é
 // aberta, a partir de depositLog (histórico permanente, nunca zerado por
 // Fim/Reinício — ver ui-platform-manage.js) + withdrawals + betEntries.
-// R.B. também é ao vivo agora: cada "Registrar aposta" já pede o R.B.
-// daquela aposta (ver ui-finance-panel.js), então dá pra somar a semana
-// toda igual Apostado/N° de apostas — só o Bônus continua exigindo espera
-// até domingo, porque é a plataforma que informa esse valor de uma vez.
+// R.B. também é ao vivo: cada "Registrar aposta" já pede o R.B. daquela
+// aposta, então dá pra somar a semana toda igual Apostado/N° de apostas —
+// só o Bônus continua exigindo espera até domingo, porque é a plataforma
+// que informa esse valor de uma vez.
 export function computeCurrentWeekLive(platform, refDate = new Date()) {
   const weekStart = getWeekStart(refDate);
   const weekEnd = getWeekEnd(weekStart);
@@ -73,22 +79,42 @@ export function isCurrentWeekClosed(platform, refDate = new Date()) {
 }
 
 // O bloco "Fechar semana" (que hoje só pede o Bônus — R.B. já vem somado
-// ao vivo) só aparece aos domingos: é o dia em que normalmente dá pra
-// saber o valor total do bônus da semana na plataforma.
+// ao vivo, Saldo é calculado sozinho) só aparece aos domingos: é o dia em
+// que normalmente dá pra saber o valor total do bônus da semana na
+// plataforma.
 export function canCloseCurrentWeek(refDate = new Date()) {
   return refDate.getDay() === 0;
 }
 
+// SALDO (Balance) AO VIVO de uma plataforma — vitalício, calculado a
+// partir de tudo que já aconteceu com ela desde o início:
+//   Saldo = (todos os Depósitos) − (todos os Saques)
+//         + (todos os R.B. das apostas) + (todos os Bônus já recebidos)
+// Usa depositLog (não deposits — que Fim/Reinício zeram de propósito pro
+// ciclo VIP), withdrawals, betEntries e o bônus de cada semana já
+// fechada em financeWeeks. Nenhum desses arrays é afetado por
+// Fim/Reinício, então o Saldo nunca reseta sozinho.
+export function computeLiveBalance(platform) {
+  const depositTotal = (platform.depositLog || []).reduce((s, d) => s + (Number(d.value) || 0), 0);
+  const withdrawalTotal = (platform.withdrawals || []).reduce((s, w) => s + (Number(w.value) || 0), 0);
+  const resultBettingTotal = (platform.betEntries || []).reduce((s, b) => s + (Number(b.resultBetting) || 0), 0);
+  const bonusTotal = (platform.financeWeeks || []).reduce((s, w) => s + (Number(w.bonus) || 0), 0);
+
+  return depositTotal - withdrawalTotal + resultBettingTotal + bonusTotal;
+}
+
 // CONGELA a semana atual: pega os valores ao vivo (deposit, withdrawal,
 // wagered, betCount, resultBetting), soma o Bônus informado na hora do
-// fechamento, e grava fixo em platform.financeWeeks. Depois de fechada,
-// esse registro só muda se o usuário editar manualmente (ver
-// updateClosedWeek) — nunca recalcula sozinho, mesmo que novos
-// depósitos/saques/apostas sejam lançados depois com data retroativa por
-// engano.
+// fechamento, e grava fixo em platform.financeWeeks. O Saldo também é
+// travado nesse momento — "o saldo de domingo" — somando o Bônus desta
+// semana ao Saldo ao vivo (que, neste instante, ainda não inclui o bônus
+// desta semana, já que ela ainda não está em financeWeeks). Depois de
+// fechada, esse registro só muda se o usuário editar manualmente (ver
+// updateClosedWeek) — nunca recalcula sozinho.
 export function closeWeek(platform, bonus, refDate = new Date()) {
   const live = computeCurrentWeekLive(platform, refDate);
   const bonusNum = Number(bonus) || 0;
+  const balanceAtClose = computeLiveBalance(platform) + bonusNum;
 
   const entry = {
     weekStart: live.weekStart.toISOString().slice(0, 10),
@@ -101,6 +127,7 @@ export function closeWeek(platform, bonus, refDate = new Date()) {
     bonus: bonusNum,
     resultBetting: live.resultBetting,
     rbPlusBonus: live.resultBetting + bonusNum,
+    balance: balanceAtClose,
     closedAt: new Date().toISOString()
   };
 
@@ -109,12 +136,13 @@ export function closeWeek(platform, bonus, refDate = new Date()) {
   return entry;
 }
 
-// EDITA uma semana JÁ FECHADA. Os 6 campos brutos (deposit, withdrawal,
-// wagered, betCount, bonus, resultBetting) podem ser corrigidos à mão —
-// por exemplo, se algum valor foi digitado errado no fechamento ou numa
-// das apostas da semana. Diferença e R.B.+Bônus NUNCA são editados
-// diretamente: são sempre recalculados aqui a partir dos outros campos,
-// pra nunca ficarem inconsistentes com o resto do registro.
+// EDITA uma semana JÁ FECHADA. Os 7 campos brutos (deposit, withdrawal,
+// wagered, betCount, bonus, resultBetting, balance) podem ser corrigidos
+// à mão — por exemplo, se algum valor foi digitado errado no fechamento
+// ou numa das apostas da semana, ou se o Saldo travado precisa de ajuste.
+// Diferença e R.B.+Bônus NUNCA são editados diretamente: são sempre
+// recalculados aqui a partir dos outros campos, pra nunca ficarem
+// inconsistentes com o resto do registro.
 export function updateClosedWeek(platform, weekStart, updatedFields) {
   const entry = (platform.financeWeeks || []).find(w => w.weekStart === weekStart);
   if (!entry) return null;
@@ -125,6 +153,7 @@ export function updateClosedWeek(platform, weekStart, updatedFields) {
   const betCount = Number(updatedFields.betCount) || 0;
   const bonus = Number(updatedFields.bonus) || 0;
   const resultBetting = Number(updatedFields.resultBetting) || 0;
+  const balance = Number(updatedFields.balance) || 0;
 
   entry.deposit = deposit;
   entry.withdrawal = withdrawal;
@@ -134,17 +163,21 @@ export function updateClosedWeek(platform, weekStart, updatedFields) {
   entry.bonus = bonus;
   entry.resultBetting = resultBetting;
   entry.rbPlusBonus = resultBetting + bonus;
+  entry.balance = balance;
   entry.editedAt = new Date().toISOString();
 
   return entry;
 }
 
 // Soma TODAS as semanas fechadas de UMA plataforma — usado no card "Total
-// da plataforma" (Página 5). Só considera semanas já congeladas
-// (financeWeeks); a semana em aberto não entra aqui de propósito, porque
-// ainda pode mudar até ser fechada.
+// da plataforma" (Página 5). Os 7 campos de fluxo (deposit, withdrawal,
+// difference, wagered, betCount, bonus, resultBetting, rbPlusBonus) só
+// consideram semanas já congeladas (financeWeeks); a semana em aberto não
+// entra aqui de propósito, porque ainda pode mudar até ser fechada.
+// Saldo é diferente: é sempre o valor ATUAL ao vivo (computeLiveBalance),
+// nunca uma soma das semanas.
 export function computePlatformTotals(platform) {
-  return (platform.financeWeeks || []).reduce((acc, w) => {
+  const totals = (platform.financeWeeks || []).reduce((acc, w) => {
     acc.deposit += w.deposit;
     acc.withdrawal += w.withdrawal;
     acc.difference += w.difference;
@@ -155,15 +188,21 @@ export function computePlatformTotals(platform) {
     acc.rbPlusBonus += w.rbPlusBonus;
     return acc;
   }, { deposit: 0, withdrawal: 0, difference: 0, wagered: 0, betCount: 0, bonus: 0, resultBetting: 0, rbPlusBonus: 0 });
+
+  totals.balance = computeLiveBalance(platform);
+  return totals;
 }
 
 // Soma as semanas fechadas de TODAS as plataformas — usado no "Painel
 // Geral" no topo da Página 5. from/to são strings 'AAAA-MM-DD' (ou null
 // pra não filtrar), comparadas contra o weekStart de cada semana fechada
 // — comparação de texto funciona porque o formato ISO já ordena igual a
-// uma data de verdade.
+// uma data de verdade. Saldo é somado por plataforma (cada uma contribui
+// com seu Saldo atual, ao vivo) e NUNCA é afetado pelo filtro de datas —
+// representa "quanto tem parado agora em todas as plataformas juntas",
+// não uma métrica de um período específico.
 export function computeOverallTotals(platforms, from = null, to = null) {
-  const totals = { deposit: 0, withdrawal: 0, difference: 0, wagered: 0, betCount: 0, bonus: 0, resultBetting: 0, rbPlusBonus: 0 };
+  const totals = { deposit: 0, withdrawal: 0, difference: 0, wagered: 0, betCount: 0, bonus: 0, resultBetting: 0, rbPlusBonus: 0, balance: 0 };
 
   (platforms || []).forEach(platform => {
     (platform.financeWeeks || []).forEach(w => {
@@ -178,6 +217,8 @@ export function computeOverallTotals(platforms, from = null, to = null) {
       totals.resultBetting += w.resultBetting;
       totals.rbPlusBonus += w.rbPlusBonus;
     });
+
+    totals.balance += computeLiveBalance(platform);
   });
 
   return totals;

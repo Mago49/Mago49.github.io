@@ -2,21 +2,26 @@
 // Cada linha mostra: a semana atual ao vivo (registrar saque, registrar
 // aposta com R.B. já incluso, e — só aos domingos — Bônus pra fechar a
 // semana); o "Total da plataforma" (soma de todas as semanas já
-// fechadas dela); e o Histórico com uma busca por data pra pular direto
-// pra uma semana específica. Reaproveita o visual do acordeão que já
-// existe em manage-panel.css (mesmas classes .platform-manage-row*) — só
-// o conteúdo de dentro de cada linha é diferente da Página 4.
+// fechadas + Saldo atual); e o Histórico com busca por data. Reaproveita
+// o visual do acordeão que já existe em manage-panel.css (mesmas classes
+// .platform-manage-row*) — só o conteúdo de dentro de cada linha é
+// diferente da Página 4.
 //
-// Acima da lista de plataformas fica o Painel Geral (#financeOverview no
-// HTML): soma TODAS as plataformas juntas, com filtro De/Até por data —
-// ver renderFinanceOverview().
+// SALDO (Balance): fluxo Depósito → Saldo → Aposta → Resultado → Saldo →
+// (domingo) + Bônus → Saldo. Nunca é digitado — é sempre calculado
+// (computeLiveBalance em finance-logic.js), vitalício. O badge ao lado do
+// nome da plataforma (antes de abrir o acordeão) mostra esse Saldo ao
+// vivo. Nas semanas fechadas, o Saldo mostrado é o que foi travado no
+// momento do fechamento ("saldo de domingo"); no Total da plataforma e
+// no Painel Geral, é sempre o Saldo ATUAL, recalculado a cada render — no
+// Painel Geral ele não é afetado pelo filtro De/Até.
 
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
 import {
   getWeekStart,
   computeCurrentWeekLive, closeWeek, isCurrentWeekClosed, canCloseCurrentWeek,
-  updateClosedWeek, computePlatformTotals, computeOverallTotals
+  updateClosedWeek, computePlatformTotals, computeOverallTotals, computeLiveBalance
 } from './finance-logic.js';
 import { savePlatforms } from './platforms-store.js';
 
@@ -50,6 +55,9 @@ function statBox(label, value, cls = '') {
     </div>`;
 }
 
+// Usado no card do histórico (semana fechada), no "Total da plataforma" e
+// no "Painel Geral" — todos têm o mesmo formato de 9 campos (o 9° é
+// Saldo). A "Semana atual" (ao vivo) tem seu próprio grid, à parte.
 function statsGridHtml(totals) {
   return `
     ${statBox('Depósito', formatCurrency(totals.deposit))}
@@ -60,6 +68,7 @@ function statsGridHtml(totals) {
     ${statBox('Bônus', formatCurrency(totals.bonus))}
     ${statBox('R.B.', formatCurrency(totals.resultBetting), totals.resultBetting >= 0 ? 'positive' : 'negative')}
     ${statBox('R.B. + Bônus', formatCurrency(totals.rbPlusBonus), totals.rbPlusBonus >= 0 ? 'positive' : 'negative')}
+    ${statBox('Saldo (Balance)', formatCurrency(totals.balance), totals.balance >= 0 ? 'positive' : 'negative')}
   `;
 }
 
@@ -128,8 +137,9 @@ function buildRow(p) {
 
   const live = computeCurrentWeekLive(p);
   const closed = isCurrentWeekClosed(p);
+  const liveBalance = computeLiveBalance(p);
 
-  // --- header (fechado): nome + badge de diferença + status da semana ---
+  // --- header (fechado): nome + badge de Saldo (ao vivo) + status da semana ---
   const header = document.createElement('div');
   header.className = 'platform-manage-row-header';
 
@@ -140,11 +150,12 @@ function buildRow(p) {
   const badges = document.createElement('div');
   badges.className = 'platform-manage-row-badges';
 
-  const diffBadge = document.createElement('span');
-  diffBadge.className = 'platform-total-badge';
-  diffBadge.style.background = live.difference >= 0 ? '#dcfce7' : '#fecaca';
-  diffBadge.textContent = `Δ ${formatCurrency(live.difference)}`;
-  badges.appendChild(diffBadge);
+  const balanceBadge = document.createElement('span');
+  balanceBadge.className = 'platform-total-badge';
+  balanceBadge.style.background = liveBalance >= 0 ? '#dcfce7' : '#fecaca';
+  balanceBadge.textContent = `Saldo ${formatCurrency(liveBalance)}`;
+  balanceBadge.title = 'Depósitos - saques + resultado das apostas (R.B.) + bônus recebidos, desde o início';
+  badges.appendChild(balanceBadge);
 
   if (closed) {
     const doneBadge = document.createElement('span');
@@ -170,7 +181,7 @@ function buildRow(p) {
   // --- body (aberto): Semana atual + Total da plataforma + Histórico ---
   const body = document.createElement('div');
   body.className = 'platform-manage-row-body';
-  body.appendChild(buildCurrentWeekSection(p, live, closed));
+  body.appendChild(buildCurrentWeekSection(p, live, closed, liveBalance));
   body.appendChild(dividerEl());
   body.appendChild(buildPlatformTotalSection(p));
   body.appendChild(dividerEl());
@@ -183,7 +194,7 @@ function buildRow(p) {
 
 // ---------- SEÇÃO "SEMANA ATUAL" (ao vivo + registrar + fechar) ----------
 
-function buildCurrentWeekSection(p, live, closed) {
+function buildCurrentWeekSection(p, live, closed, liveBalance) {
   const section = document.createElement('div');
   section.className = 'manage-actions-section';
 
@@ -207,6 +218,7 @@ function buildCurrentWeekSection(p, live, closed) {
       ${statBox('Apostado', formatCurrency(live.wagered))}
       ${statBox('N° Apostas', String(live.betCount))}
       ${statBox('R.B.', formatCurrency(live.resultBetting), live.resultBetting >= 0 ? 'positive' : 'negative')}
+      ${statBox('Saldo (Balance)', formatCurrency(liveBalance), liveBalance >= 0 ? 'positive' : 'negative')}
     </div>`;
   section.appendChild(statsWrap);
 
@@ -287,8 +299,9 @@ function buildCurrentWeekSection(p, live, closed) {
   betForm.appendChild(betBtn);
   section.appendChild(betForm);
 
-  // --- fechar semana: só aos domingos, e só pede o Bônus (R.B. já vem
-  //     somado ao vivo das apostas registradas acima) ---
+  // --- fechar semana: só aos domingos. Pede só o Bônus — R.B. já vem
+  //     somado ao vivo, e o Saldo é calculado sozinho (Saldo atual +
+  //     Bônus desta semana) ao confirmar. ---
   if (canCloseCurrentWeek()) {
     const closeSection = document.createElement('div');
     closeSection.className = 'finance-close-week';
@@ -300,7 +313,7 @@ function buildCurrentWeekSection(p, live, closed) {
 
     const closeNote = document.createElement('p');
     closeNote.className = 'finance-close-week-note';
-    closeNote.textContent = `R.B. da semana já somado automaticamente: ${formatCurrency(live.resultBetting)}. Falta só informar o Bônus.`;
+    closeNote.textContent = `R.B. da semana já somado automaticamente: ${formatCurrency(live.resultBetting)}. Saldo atual (antes do Bônus desta semana): ${formatCurrency(liveBalance)}. Falta só informar o Bônus — o Saldo final é calculado sozinho ao fechar.`;
     closeSection.appendChild(closeNote);
 
     const closeForm = document.createElement('div');
@@ -339,7 +352,7 @@ function buildCurrentWeekSection(p, live, closed) {
   return section;
 }
 
-// ---------- SEÇÃO "TOTAL DA PLATAFORMA" (soma de todas as semanas fechadas) ----------
+// ---------- SEÇÃO "TOTAL DA PLATAFORMA" (soma das semanas fechadas + Saldo atual) ----------
 
 function buildPlatformTotalSection(p) {
   const section = document.createElement('div');
@@ -351,15 +364,6 @@ function buildPlatformTotalSection(p) {
   section.appendChild(label);
 
   const weeks = p.financeWeeks || [];
-
-  if (weeks.length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'finance-empty';
-    empty.textContent = 'Nenhuma semana fechada ainda.';
-    section.appendChild(empty);
-    return section;
-  }
-
   const totals = computePlatformTotals(p);
 
   const card = document.createElement('div');
@@ -369,6 +373,11 @@ function buildPlatformTotalSection(p) {
   header.className = 'finance-week-card-header';
   header.innerHTML = `<span>${weeks.length} semana(s) fechada(s)</span>`;
   card.appendChild(header);
+
+  const note = document.createElement('p');
+  note.className = 'finance-close-week-note';
+  note.textContent = 'Saldo (Balance) é sempre o valor ATUAL, ao vivo — não é uma soma das semanas fechadas.';
+  card.appendChild(note);
 
   const stats = document.createElement('div');
   stats.className = 'finance-stats-grid';
@@ -485,10 +494,11 @@ function buildWeekCardReadOnly(p, w) {
 }
 
 // Diferença e R.B.+Bônus NÃO viram input: ficam de fora do formulário de
-// propósito, porque são sempre recalculados a partir dos outros 6 campos
+// propósito, porque são sempre recalculados a partir dos outros 7 campos
 // (ver updateClosedWeek em finance-logic.js) — editá-los direto poderia
 // deixar o registro inconsistente (ex: Diferença que não bate com
-// Saque - Depósito).
+// Saque - Depósito). Saldo continua editável: é um valor travado no
+// fechamento, então pode ser corrigido à mão como os outros.
 function buildWeekCardEditing(p, w) {
   const card = document.createElement('div');
   card.className = 'finance-week-card finance-week-card-editing';
@@ -527,6 +537,12 @@ function buildWeekCardEditing(p, w) {
   row3.appendChild(resultInput);
   card.appendChild(row3);
 
+  const row4 = document.createElement('div');
+  row4.className = 'finance-entry-form';
+  const balanceInput = numberInput('Saldo (Balance)', w.balance);
+  row4.appendChild(balanceInput);
+  card.appendChild(row4);
+
   const actions = document.createElement('div');
   actions.className = 'reset-modal-buttons';
 
@@ -541,13 +557,14 @@ function buildWeekCardEditing(p, w) {
     const betCount = parseInt(betCountInput.value, 10);
     const bonus = parseFloat(bonusInput.value);
     const resultBetting = parseFloat(resultInput.value);
+    const balance = parseFloat(balanceInput.value);
 
-    if ([deposit, withdrawal, wagered, betCount, bonus, resultBetting].some(v => isNaN(v))) {
+    if ([deposit, withdrawal, wagered, betCount, bonus, resultBetting, balance].some(v => isNaN(v))) {
       await showAppAlert('Preencha todos os campos com valores válidos.');
       return;
     }
 
-    updateClosedWeek(p, w.weekStart, { deposit, withdrawal, wagered, betCount, bonus, resultBetting });
+    updateClosedWeek(p, w.weekStart, { deposit, withdrawal, wagered, betCount, bonus, resultBetting, balance });
     savePlatforms(state.currentUid, state.platforms);
     editingWeek = null;
     openRowId = p.id;
