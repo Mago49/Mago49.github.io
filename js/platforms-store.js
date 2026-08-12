@@ -23,15 +23,19 @@ export const DEFAULT_PLATFORMS = Array.from({ length: 33 }, (_, i) => ({
   withdrawals: [],
   betEntries: [],
   financeWeeks: [],
-  depositLog: []
+  depositLog: [],
+  balancePhases: []
 }));
 
 // depositLog: histórico PERMANENTE de depósitos, usado só pelo Financeiro
 // (Página 5). Diferente de `deposits` (que Fim/Reinício do ciclo VIP zeram
 // de propósito, ver ui-platform-manage.js), depositLog nunca é apagado —
 // segue a mesma regra dos outros dados de histórico (withdrawals,
-// betEntries): todo depósito lançado entra aqui e fica pra sempre, pra
-// auditoria e pro cálculo da semana financeira nunca sumir sem querer.
+// betEntries): todo depósito lançado entra aqui e fica pra sempre.
+//
+// balancePhases: lista de fronteiras de fase do Saldo (ver startNewPhase
+// em finance-logic.js) — array vazio quando nenhuma fase foi criada
+// ainda (o Saldo conta desde o início, comportamento padrão).
 export function normalizePlatformData(parsed) {
   if (!Array.isArray(parsed)) return null;
   return parsed.map((p, i) => {
@@ -40,8 +44,7 @@ export function normalizePlatformData(parsed) {
     // Migração única: contas que ainda não tinham depositLog (campo novo)
     // ganham uma cópia do `deposits` atual como ponto de partida. Depois
     // dessa primeira normalização, o Firestore já salva depositLog de
-    // verdade e essa cópia nunca mais roda pra essa conta (a condição do
-    // if só é verdadeira quando o campo simplesmente não existe no doc).
+    // verdade e essa cópia nunca mais roda pra essa conta.
     const depositLog = Array.isArray(p.depositLog) ? p.depositLog : deposits.slice();
 
     return {
@@ -56,7 +59,8 @@ export function normalizePlatformData(parsed) {
       withdrawals: Array.isArray(p.withdrawals) ? p.withdrawals : [],
       betEntries: Array.isArray(p.betEntries) ? p.betEntries : [],
       financeWeeks: Array.isArray(p.financeWeeks) ? p.financeWeeks : [],
-      depositLog
+      depositLog,
+      balancePhases: Array.isArray(p.balancePhases) ? p.balancePhases : []
     };
   });
 }

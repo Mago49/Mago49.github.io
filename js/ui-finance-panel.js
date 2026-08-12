@@ -2,29 +2,26 @@
 // Cada linha mostra: a semana atual ao vivo (registrar saque, registrar
 // aposta com R.B. já incluso, e — só aos domingos — Bônus pra fechar a
 // semana); o "Total da plataforma" (soma de todas as semanas já
-// fechadas + Saldo atual); e o Histórico com busca por data. Reaproveita
-// o visual do acordeão que já existe em manage-panel.css (mesmas classes
+// fechadas + Saldo da fase atual); "Fases do Saldo" (ver abaixo); e o
+// Histórico de semanas com busca por data. Reaproveita o visual do
+// acordeão que já existe em manage-panel.css (mesmas classes
 // .platform-manage-row*) — só o conteúdo de dentro de cada linha é
 // diferente da Página 4.
 //
-// SALDO (Balance): fluxo Depósito → Saldo → Aposta → Resultado → Saldo →
-// (domingo) + Bônus → Saldo. Nunca é digitado — é sempre calculado
-// (computeLiveBalance em finance-logic.js), vitalício, com piso em
-// R$ 0,00 (saldo de plataforma nunca é negativo na prática). O badge ao
-// lado do nome da plataforma (antes de abrir o acordeão) mostra esse
-// Saldo ao vivo. Nas semanas fechadas, o Saldo mostrado é o que foi
-// travado no momento do fechamento ("saldo de domingo") — aqui também
-// aplicamos o piso na hora de exibir, por segurança, caso alguma semana
-// tenha sido fechada antes dessa regra existir. No Total da plataforma e
-// no Painel Geral, é sempre o Saldo ATUAL, recalculado a cada render — no
-// Painel Geral ele não é afetado pelo filtro De/Até.
+// FASES: quando o histórico antigo é incompleto ou tem números
+// conhecidamente errados, "Iniciar nova fase" fecha a fase atual (o
+// resultado dela fica visível pra sempre em "Fases do Saldo") e o Saldo
+// passa a contar DO ZERO a partir dali — sem carregar nenhum valor
+// anterior. O badge do nome, "Semana atual" e "Total da plataforma"
+// sempre mostram o Saldo da fase ATUAL (a mais recente).
 
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
 import {
   getWeekStart,
   computeCurrentWeekLive, closeWeek, isCurrentWeekClosed, canCloseCurrentWeek,
-  updateClosedWeek, computePlatformTotals, computeOverallTotals, computeLiveBalance
+  updateClosedWeek, computePlatformTotals, computeOverallTotals, computeLiveBalance,
+  computePhaseHistory, startNewPhase, removeLastPhase
 } from './finance-logic.js';
 import { savePlatforms } from './platforms-store.js';
 
@@ -39,10 +36,17 @@ let editingWeek = null;
 // Data digitada na busca do histórico (dentro da linha aberta) — string
 // 'AAAA-MM-DD' ou null. Reseta toda vez que uma linha é aberta/fechada.
 let historyDateFilter = null;
+// Id da plataforma mostrando o formulário "Iniciar nova fase" — só uma
+// por vez. Reseta junto com o resto ao abrir/fechar uma linha.
+let startingPhaseId = null;
 
 function formatDatePt(isoDateStr) {
   const [y, m, d] = isoDateStr.split('-');
   return `${d}/${m}`;
+}
+
+function formatDateTimePt(isoStr) {
+  return new Date(isoStr).toLocaleDateString('pt-BR');
 }
 
 function getVisibleList() {
@@ -58,15 +62,18 @@ function statBox(label, value, cls = '') {
     </div>`;
 }
 
-// Usado no card do histórico (semana fechada), no "Total da plataforma" e
-// no "Painel Geral" — todos têm o mesmo formato de 9 campos (o 9° é
-// Saldo). A "Semana atual" (ao vivo) tem seu próprio grid, à parte.
-// Saldo é travado em R$ 0,00 aqui na exibição também (defensivo): o Total
-// da plataforma e o Painel Geral já vêm com piso de computeLiveBalance,
-// mas uma semana fechada antiga (gravada antes dessa regra existir)
-// poderia ter um valor negativo salvo — nunca mostramos isso na tela.
-function statsGridHtml(totals) {
+// Usado no card do histórico (semana fechada), no "Total da plataforma",
+// no "Painel Geral" e nos cards de "Fases do Saldo" — todos têm o mesmo
+// formato de 9 campos (o 9° é Saldo). A "Semana atual" (ao vivo) tem seu
+// próprio grid, à parte.
+//
+// opts.balanceLabel troca o rótulo do 9° campo pra deixar claro do que se
+// trata em cada contexto (semana fechada = travado; fase = da fase;
+// padrão = Saldo ao vivo da fase atual). Saldo é travado em R$ 0,00 aqui
+// na exibição também (defensivo).
+function statsGridHtml(totals, opts = {}) {
   const safeBalance = Math.max(0, Number(totals.balance) || 0);
+  const balanceLabel = opts.balanceLabel || 'Saldo (Balance)';
   return `
     ${statBox('Depósito', formatCurrency(totals.deposit))}
     ${statBox('Saque', formatCurrency(totals.withdrawal))}
@@ -76,7 +83,7 @@ function statsGridHtml(totals) {
     ${statBox('Bônus', formatCurrency(totals.bonus))}
     ${statBox('R.B.', formatCurrency(totals.resultBetting), totals.resultBetting >= 0 ? 'positive' : 'negative')}
     ${statBox('R.B. + Bônus', formatCurrency(totals.rbPlusBonus), totals.rbPlusBonus >= 0 ? 'positive' : 'negative')}
-    ${statBox('Saldo (Balance)', formatCurrency(safeBalance), 'positive')}
+    ${statBox(balanceLabel, formatCurrency(safeBalance), 'positive')}
   `;
 }
 
@@ -86,6 +93,7 @@ export function initFinanceOverview() {
   const fromEl = document.getElementById('financeOverviewFrom');
   const toEl = document.getElementById('financeOverviewTo');
   const clearBtn = document.getElementById('financeOverviewClearBtn');
+  const newPhaseAllBtn = document.getElementById('financeOverviewNewPhaseAllBtn');
 
   if (fromEl) fromEl.addEventListener('change', renderFinanceOverview);
   if (toEl) toEl.addEventListener('change', renderFinanceOverview);
@@ -94,6 +102,21 @@ export function initFinanceOverview() {
       if (fromEl) fromEl.value = '';
       if (toEl) toEl.value = '';
       renderFinanceOverview();
+    });
+  }
+  if (newPhaseAllBtn) {
+    newPhaseAllBtn.addEventListener('click', async () => {
+      const count = state.platforms.length;
+      const ok = await showAppConfirm(
+        `Iniciar uma nova fase pra todas as ${count} plataformas, a partir de agora? ` +
+        `O resultado da fase atual de cada uma continua guardado (visível em "Fases do Saldo" ` +
+        `dentro de cada plataforma), e o Saldo de todas volta a contar do zero a partir de agora.`
+      );
+      if (!ok) return;
+      const now = new Date();
+      state.platforms.forEach(p => startNewPhase(p, now));
+      savePlatforms(state.currentUid, state.platforms);
+      renderFinanceList();
     });
   }
 }
@@ -147,7 +170,8 @@ function buildRow(p) {
   const closed = isCurrentWeekClosed(p);
   const liveBalance = computeLiveBalance(p);
 
-  // --- header (fechado): nome + badge de Saldo (ao vivo) + status da semana ---
+  // --- header (fechado): nome + badge de Saldo (ao vivo, da fase atual)
+  //     + status da semana ---
   const header = document.createElement('div');
   header.className = 'platform-manage-row-header';
 
@@ -162,7 +186,7 @@ function buildRow(p) {
   balanceBadge.className = 'platform-total-badge';
   balanceBadge.style.background = '#dcfce7';
   balanceBadge.textContent = `Saldo ${formatCurrency(liveBalance)}`;
-  balanceBadge.title = 'Depósitos - saques + resultado das apostas (R.B.) + bônus recebidos, desde o início (mínimo R$ 0,00)';
+  balanceBadge.title = 'Depósitos - saques + resultado das apostas (R.B.) + bônus recebidos, desde o início da fase atual (mínimo R$ 0,00)';
   badges.appendChild(balanceBadge);
 
   if (closed) {
@@ -183,15 +207,19 @@ function buildRow(p) {
     openRowId = (openRowId === p.id) ? null : p.id;
     editingWeek = null;
     historyDateFilter = null;
+    startingPhaseId = null;
     renderFinanceList();
   });
 
-  // --- body (aberto): Semana atual + Total da plataforma + Histórico ---
+  // --- body (aberto): Semana atual + Total da plataforma + Fases do
+  //     Saldo + Histórico ---
   const body = document.createElement('div');
   body.className = 'platform-manage-row-body';
   body.appendChild(buildCurrentWeekSection(p, live, closed, liveBalance));
   body.appendChild(dividerEl());
   body.appendChild(buildPlatformTotalSection(p));
+  body.appendChild(dividerEl());
+  body.appendChild(buildPhaseSection(p));
   body.appendChild(dividerEl());
   body.appendChild(buildHistorySection(p));
 
@@ -360,7 +388,7 @@ function buildCurrentWeekSection(p, live, closed, liveBalance) {
   return section;
 }
 
-// ---------- SEÇÃO "TOTAL DA PLATAFORMA" (soma das semanas fechadas + Saldo atual) ----------
+// ---------- SEÇÃO "TOTAL DA PLATAFORMA" (soma das semanas fechadas + Saldo da fase atual) ----------
 
 function buildPlatformTotalSection(p) {
   const section = document.createElement('div');
@@ -384,7 +412,7 @@ function buildPlatformTotalSection(p) {
 
   const note = document.createElement('p');
   note.className = 'finance-close-week-note';
-  note.textContent = 'Saldo (Balance) é sempre o valor ATUAL, ao vivo — não é uma soma das semanas fechadas.';
+  note.textContent = 'Saldo (Balance) é sempre o valor ATUAL da fase atual, ao vivo — não é uma soma das semanas fechadas nem das fases anteriores.';
   card.appendChild(note);
 
   const stats = document.createElement('div');
@@ -394,6 +422,140 @@ function buildPlatformTotalSection(p) {
 
   section.appendChild(card);
   return section;
+}
+
+// ---------- SEÇÃO "FASES DO SALDO" ----------
+
+function buildPhaseSection(p) {
+  const section = document.createElement('div');
+  section.className = 'manage-data-section';
+
+  const label = document.createElement('div');
+  label.className = 'manage-section-label';
+  label.textContent = 'Fases do Saldo';
+  section.appendChild(label);
+
+  const note = document.createElement('p');
+  note.className = 'finance-close-week-note';
+  note.textContent = 'Cada fase conta do ZERO, a partir da data em que começou — nada de fases anteriores é carregado. "Iniciar nova fase" fecha a fase atual (o resultado dela fica guardado aqui pra sempre) e começa a contar do zero dali em diante. Útil quando o histórico antigo é incompleto ou tem números errados.';
+  section.appendChild(note);
+
+  section.appendChild(buildPhaseControls(p));
+
+  const phases = computePhaseHistory(p);
+  const list = document.createElement('div');
+  list.className = 'finance-history';
+  [...phases].reverse().forEach(phase => {
+    list.appendChild(buildPhaseCard(phase));
+  });
+  section.appendChild(list);
+
+  return section;
+}
+
+function buildPhaseControls(p) {
+  const wrap = document.createElement('div');
+  wrap.className = 'finance-checkpoint';
+
+  if (startingPhaseId === p.id) {
+    const dateInput = document.createElement('input');
+    dateInput.type = 'date';
+    dateInput.value = new Date().toISOString().slice(0, 10);
+    dateInput.setAttribute('aria-label', 'Data de início da nova fase');
+
+    const row = document.createElement('div');
+    row.className = 'finance-entry-form';
+    row.appendChild(dateInput);
+    wrap.appendChild(row);
+
+    const actions = document.createElement('div');
+    actions.className = 'reset-modal-buttons';
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = 'btn-confirm';
+    confirmBtn.textContent = 'Confirmar';
+    confirmBtn.addEventListener('click', async () => {
+      if (!dateInput.value) {
+        await showAppAlert('Escolha uma data.');
+        return;
+      }
+      const dateLabel = dateInput.value.split('-').reverse().join('/');
+      const ok = await showAppConfirm(`Fechar a fase atual de ${p.name} e começar a contar do zero a partir de ${dateLabel}? O resultado da fase que está fechando fica guardado pra sempre em "Fases do Saldo".`);
+      if (!ok) return;
+      startNewPhase(p, `${dateInput.value}T23:59:59`);
+      savePlatforms(state.currentUid, state.platforms);
+      startingPhaseId = null;
+      openRowId = p.id;
+      renderFinanceList();
+    });
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'btn-cancel-modal';
+    cancelBtn.textContent = 'Cancelar';
+    cancelBtn.addEventListener('click', () => {
+      startingPhaseId = null;
+      renderFinanceList();
+    });
+
+    actions.appendChild(confirmBtn);
+    actions.appendChild(cancelBtn);
+    wrap.appendChild(actions);
+    return wrap;
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'reset-modal-buttons';
+
+  const startBtn = document.createElement('button');
+  startBtn.type = 'button';
+  startBtn.className = 'bet-manage-btn';
+  startBtn.textContent = '🔒 Iniciar nova fase';
+  startBtn.addEventListener('click', () => {
+    startingPhaseId = p.id;
+    openRowId = p.id;
+    renderFinanceList();
+  });
+  actions.appendChild(startBtn);
+
+  if ((p.balancePhases || []).length > 0) {
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'btn-cancel-modal';
+    removeBtn.textContent = 'Remover última fase';
+    removeBtn.addEventListener('click', async () => {
+      const ok = await showAppConfirm('Remover a última fase? Ela se junta de volta com a fase anterior (o Saldo passa a contar de novo a partir de antes dela).');
+      if (!ok) return;
+      removeLastPhase(p);
+      savePlatforms(state.currentUid, state.platforms);
+      openRowId = p.id;
+      renderFinanceList();
+    });
+    actions.appendChild(removeBtn);
+  }
+
+  wrap.appendChild(actions);
+  return wrap;
+}
+
+function buildPhaseCard(phase) {
+  const card = document.createElement('div');
+  card.className = 'finance-week-card' + (phase.isCurrent ? ' finance-total-card' : '');
+
+  const header = document.createElement('div');
+  header.className = 'finance-week-card-header';
+  const startLabel = phase.startDate ? formatDateTimePt(phase.startDate) : 'início';
+  const endLabel = phase.endDate ? formatDateTimePt(phase.endDate) : 'agora (atual)';
+  header.innerHTML = `<span>Fase ${phase.phaseNumber}: ${startLabel} – ${endLabel}</span>`;
+  card.appendChild(header);
+
+  const stats = document.createElement('div');
+  stats.className = 'finance-stats-grid';
+  stats.innerHTML = statsGridHtml(phase, { balanceLabel: phase.isCurrent ? 'Saldo da fase atual' : 'Saldo da fase' });
+  card.appendChild(stats);
+
+  return card;
 }
 
 // ---------- SEÇÃO "HISTÓRICO" (semanas fechadas — editável + busca por data) ----------
@@ -495,19 +657,19 @@ function buildWeekCardReadOnly(p, w) {
 
   const stats = document.createElement('div');
   stats.className = 'finance-stats-grid';
-  stats.innerHTML = statsGridHtml(w);
+  stats.innerHTML = statsGridHtml(w, { balanceLabel: 'Saldo (travado nesta semana)' });
   card.appendChild(stats);
 
   return card;
 }
 
 // Diferença e R.B.+Bônus NÃO viram input: ficam de fora do formulário de
-// propósito, porque são sempre recalculados a partir dos outros 7 campos
+// propósito, porque são sempre recalculados a partir dos outros campos
 // (ver updateClosedWeek em finance-logic.js) — editá-los direto poderia
-// deixar o registro inconsistente (ex: Diferença que não bate com
-// Saque - Depósito). Saldo continua editável: é um valor travado no
-// fechamento, então pode ser corrigido à mão como os outros — mas nunca
-// fica negativo (ver updateClosedWeek, piso em R$ 0,00).
+// deixar o registro inconsistente. Saldo TAMBÉM não é editável aqui: é um
+// retrato fixo do momento do fechamento que não alimenta nenhum outro
+// cálculo do app — correções em Bônus/R.B. aqui já entram sozinhas no
+// próximo cálculo ao vivo da fase atual.
 function buildWeekCardEditing(p, w) {
   const card = document.createElement('div');
   card.className = 'finance-week-card finance-week-card-editing';
@@ -519,7 +681,7 @@ function buildWeekCardEditing(p, w) {
 
   const note = document.createElement('p');
   note.className = 'finance-close-week-note';
-  note.textContent = 'Diferença e R.B. + Bônus são recalculados automaticamente ao salvar. Saldo nunca fica abaixo de R$ 0,00.';
+  note.textContent = 'Diferença e R.B. + Bônus são recalculados automaticamente ao salvar. O Saldo travado desta semana é fixo e não pode ser editado — o Saldo que realmente importa (o da fase atual, ao vivo) aparece em "Total da plataforma" e no nome da plataforma, e já reflete qualquer correção feita aqui.';
   card.appendChild(note);
 
   const row1 = document.createElement('div');
@@ -546,13 +708,6 @@ function buildWeekCardEditing(p, w) {
   row3.appendChild(resultInput);
   card.appendChild(row3);
 
-  const row4 = document.createElement('div');
-  row4.className = 'finance-entry-form';
-  const balanceInput = numberInput('Saldo (Balance)', w.balance);
-  balanceInput.min = '0';
-  row4.appendChild(balanceInput);
-  card.appendChild(row4);
-
   const actions = document.createElement('div');
   actions.className = 'reset-modal-buttons';
 
@@ -567,14 +722,13 @@ function buildWeekCardEditing(p, w) {
     const betCount = parseInt(betCountInput.value, 10);
     const bonus = parseFloat(bonusInput.value);
     const resultBetting = parseFloat(resultInput.value);
-    const balance = parseFloat(balanceInput.value);
 
-    if ([deposit, withdrawal, wagered, betCount, bonus, resultBetting, balance].some(v => isNaN(v))) {
+    if ([deposit, withdrawal, wagered, betCount, bonus, resultBetting].some(v => isNaN(v))) {
       await showAppAlert('Preencha todos os campos com valores válidos.');
       return;
     }
 
-    updateClosedWeek(p, w.weekStart, { deposit, withdrawal, wagered, betCount, bonus, resultBetting, balance });
+    updateClosedWeek(p, w.weekStart, { deposit, withdrawal, wagered, betCount, bonus, resultBetting });
     savePlatforms(state.currentUid, state.platforms);
     editingWeek = null;
     openRowId = p.id;

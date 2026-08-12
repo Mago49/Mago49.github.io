@@ -406,7 +406,8 @@ function initAddRow() {
       withdrawals: [],
       betEntries: [],
       financeWeeks: [],
-      depositLog: []
+      depositLog: [],
+      balancePhases: []
     });
 
     savePlatforms(state.currentUid, state.platforms);
@@ -484,7 +485,7 @@ function showHistoryModal(platform) {
           dep.value = newValue;
           // Sincroniza com depositLog (histórico permanente que o
           // Financeiro usa) pela mesma data — é assim que financeiro.html
-          // reconhece a correção na semana atual (e no Saldo).
+          // reconhece a correção na semana/fase atual (e no Saldo).
           const logEntry = (platform.depositLog || []).find(d => d.date === dep.date);
           if (logEntry) logEntry.value = newValue;
           savePlatforms(state.currentUid, state.platforms);
