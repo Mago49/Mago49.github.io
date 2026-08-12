@@ -4,8 +4,9 @@
    em vez de #platformManagePanel). Aqui ficam as classes específicas
    dessa página: Painel Geral (topo, todas as plataformas), busca,
    badge de semana fechada, grids de estatística (semana atual ao vivo,
-   total da plataforma e histórico congelado) e o modo de edição do
-   histórico (.finance-week-card-editing). */
+   total da plataforma, fases do saldo e histórico congelado), o modo de
+   edição do histórico (.finance-week-card-editing) e os controles de
+   fase/checkpoint (.finance-checkpoint). */
 
 .finance-panel {
   padding: 1.1rem;
@@ -113,10 +114,10 @@
   margin: 0;
 }
 
-/* Grid de estatísticas — usado na semana atual (6 itens, ao vivo), no
-   Total da plataforma e em cada card do histórico (8 itens, congelado) e
-   no Painel Geral (8 itens). auto-fit evita precisar de layouts
-   diferentes pras várias quantidades. */
+/* Grid de estatísticas — usado na semana atual (7 itens, ao vivo), no
+   Total da plataforma, nas Fases do Saldo, em cada card do histórico e no
+   Painel Geral (9 itens). auto-fit evita precisar de layouts diferentes
+   pras várias quantidades. */
 .finance-stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
@@ -190,6 +191,17 @@
   gap: 0.5rem;
 }
 
+/* Controles de fase (Iniciar/Remover) e o botão em massa do Painel
+   Geral — mesmo visual de separador tracejado usado em .finance-close-week. */
+.finance-checkpoint {
+  border-top: 1px dashed rgba(15,23,42,0.12);
+  padding-top: 0.6rem;
+  margin-top: 0.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
 .finance-history {
   display: flex;
   flex-direction: column;
@@ -203,9 +215,10 @@
   background: #fff;
 }
 
-/* Card "Total da plataforma" — mesmo visual de .finance-week-card, com um
-   contorno verde (cor de destaque do app) pra diferenciar de um card de
-   semana individual. */
+/* Card "Total da plataforma" e card da fase ATUAL (dentro de "Fases do
+   Saldo") — mesmo visual de .finance-week-card, com um contorno verde
+   (cor de destaque do app) pra diferenciar de um card de semana/fase
+   individual passada. */
 .finance-total-card {
   border-color: rgba(21,128,61,0.25);
   background: rgba(21,128,61,0.03);
