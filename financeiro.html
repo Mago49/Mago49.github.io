@@ -1,11 +1,13 @@
 <!-- Página 5 — Financeiro. Substitui a planilha externa: cada plataforma
      tem a semana atual (ao vivo, editável), o total acumulado de todas as
-     semanas fechadas dela + Saldo atual, e o histórico de semanas já
-     fechadas (congelado, só leitura, com busca por data). Semana = segunda
-     a domingo, igual ao pagamento do bônus VIP semanal — independente do
-     ciclo de nível de cada plataforma (ver js/finance-logic.js). No topo,
-     o Painel Geral soma todas as plataformas juntas, com filtro de data
-     (Saldo não é afetado pelo filtro — é sempre o valor atual). -->
+     semanas fechadas dela + Saldo da fase atual, as "Fases do Saldo"
+     (histórico de fechamentos de fase, cada uma contando do zero — ver
+     js/finance-logic.js), e o histórico de semanas já fechadas
+     (congelado, só leitura, com busca por data). Semana = segunda a
+     domingo, igual ao pagamento do bônus VIP semanal — independente do
+     ciclo de nível de cada plataforma. No topo, o Painel Geral soma todas
+     as plataformas juntas, com filtro de data (Saldo não é afetado pelo
+     filtro — é sempre o valor atual da fase atual de cada uma). -->
 <!doctype html>
 <html lang="pt-br">
 <head>
@@ -91,9 +93,13 @@
         <button type="button" id="financeOverviewClearBtn" class="btn-cancel-modal">Limpar filtro</button>
       </div>
 
-      <p class="finance-close-week-note">Soma de todas as plataformas com base nas semanas já fechadas. Sem filtro, mostra todo o histórico. O Saldo (Balance) é sempre o valor atual de todas as plataformas juntas e não é afetado pelo filtro de datas.</p>
+      <p class="finance-close-week-note">Soma de todas as plataformas com base nas semanas já fechadas. Sem filtro, mostra todo o histórico. O Saldo (Balance) é sempre o valor atual da fase atual de cada plataforma e não é afetado pelo filtro de datas.</p>
 
       <div id="financeOverviewStats" class="finance-stats-grid"></div>
+
+      <div class="finance-checkpoint">
+        <button type="button" id="financeOverviewNewPhaseAllBtn" class="btn-cancel-modal">🔒 Iniciar nova fase em todas as plataformas</button>
+      </div>
     </section>
 
     <section class="card-shell finance-panel" aria-label="Financeiro por plataforma">
