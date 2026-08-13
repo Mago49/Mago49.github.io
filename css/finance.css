@@ -5,8 +5,9 @@
    dessa página: Painel Geral (topo, todas as plataformas), busca,
    badge de semana fechada, grids de estatística (semana atual ao vivo,
    total da plataforma, fases do saldo e histórico congelado), o modo de
-   edição do histórico (.finance-week-card-editing) e os controles de
-   fase/checkpoint (.finance-checkpoint). */
+   edição do histórico (.finance-week-card-editing), o agrupamento de
+   botões Editar/Excluir (.finance-week-card-actions) e os controles de
+   fase/backfill (.finance-checkpoint). */
 
 .finance-panel {
   padding: 1.1rem;
@@ -191,8 +192,9 @@
   gap: 0.5rem;
 }
 
-/* Controles de fase (Iniciar/Remover) e o botão em massa do Painel
-   Geral — mesmo visual de separador tracejado usado em .finance-close-week. */
+/* Controles de fase (Iniciar/Remover), o botão em massa do Painel Geral,
+   e o formulário "Adicionar semana antiga" — mesmo visual de separador
+   tracejado usado em .finance-close-week. */
 .finance-checkpoint {
   border-top: 1px dashed rgba(15,23,42,0.12);
   padding-top: 0.6rem;
@@ -213,6 +215,15 @@
   border-radius: 14px;
   padding: 0.7rem;
   background: #fff;
+}
+
+/* Agrupa os botões Editar/Excluir no cabeçalho do card de uma semana
+   fechada, pra ficarem juntos à direita (o cabeçalho é
+   justify-content:space-between, então precisa de um wrapper pros dois
+   botões não se espalharem pelo meio). */
+.finance-week-card-actions {
+  display: flex;
+  gap: 0.4rem;
 }
 
 /* Card "Total da plataforma" e card da fase ATUAL (dentro de "Fases do
