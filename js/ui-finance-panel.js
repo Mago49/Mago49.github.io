@@ -2,11 +2,11 @@
 // Cada linha mostra: a semana atual ao vivo (registrar saque, registrar
 // aposta com R.B. já incluso, e — só aos domingos — Bônus pra fechar a
 // semana); o "Total da plataforma" (soma de todas as semanas já
-// fechadas + Saldo da fase atual); "Fases do Saldo" (ver abaixo); e o
-// Histórico de semanas com busca por data. Reaproveita o visual do
-// acordeão que já existe em manage-panel.css (mesmas classes
-// .platform-manage-row*) — só o conteúdo de dentro de cada linha é
-// diferente da Página 4.
+// fechadas + Saldo da fase atual); "Fases do Saldo"; e o Histórico de
+// semanas (editar, excluir, adicionar semana antiga, busca por data).
+// Reaproveita o visual do acordeão que já existe em manage-panel.css
+// (mesmas classes .platform-manage-row*) — só o conteúdo de dentro de
+// cada linha é diferente da Página 4.
 //
 // FASES: quando o histórico antigo é incompleto ou tem números
 // conhecidamente errados, "Iniciar nova fase" fecha a fase atual (o
@@ -14,13 +14,18 @@
 // passa a contar DO ZERO a partir dali — sem carregar nenhum valor
 // anterior. O badge do nome, "Semana atual" e "Total da plataforma"
 // sempre mostram o Saldo da fase ATUAL (a mais recente).
+//
+// BACKFILL: "+ Adicionar semana antiga" (dentro do Histórico) insere uma
+// semana já fechada direto no sistema — útil pra trazer dados de uma
+// planilha externa antes de fechar uma fase.
 
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
 import {
-  getWeekStart,
+  getWeekStart, getWeekEnd,
   computeCurrentWeekLive, closeWeek, isCurrentWeekClosed, canCloseCurrentWeek,
-  updateClosedWeek, computePlatformTotals, computeOverallTotals, computeLiveBalance,
+  updateClosedWeek, deleteClosedWeek, addHistoricalWeek,
+  computePlatformTotals, computeOverallTotals, computeLiveBalance,
   computePhaseHistory, startNewPhase, removeLastPhase
 } from './finance-logic.js';
 import { savePlatforms } from './platforms-store.js';
@@ -39,6 +44,9 @@ let historyDateFilter = null;
 // Id da plataforma mostrando o formulário "Iniciar nova fase" — só uma
 // por vez. Reseta junto com o resto ao abrir/fechar uma linha.
 let startingPhaseId = null;
+// Id da plataforma mostrando o formulário "Adicionar semana antiga" — só
+// uma por vez. Reseta junto com o resto ao abrir/fechar uma linha.
+let addingHistoricalWeekId = null;
 
 function formatDatePt(isoDateStr) {
   const [y, m, d] = isoDateStr.split('-');
@@ -208,6 +216,7 @@ function buildRow(p) {
     editingWeek = null;
     historyDateFilter = null;
     startingPhaseId = null;
+    addingHistoricalWeekId = null;
     renderFinanceList();
   });
 
@@ -558,7 +567,8 @@ function buildPhaseCard(phase) {
   return card;
 }
 
-// ---------- SEÇÃO "HISTÓRICO" (semanas fechadas — editável + busca por data) ----------
+// ---------- SEÇÃO "HISTÓRICO" (semanas fechadas — editável, excluível,
+//            com busca por data e opção de adicionar semana antiga) ----------
 
 function buildHistorySection(p) {
   const section = document.createElement('div');
@@ -568,6 +578,8 @@ function buildHistorySection(p) {
   label.className = 'manage-section-label';
   label.textContent = 'Histórico (semanas fechadas)';
   section.appendChild(label);
+
+  section.appendChild(buildAddHistoricalWeekControls(p));
 
   // Busca por data: escolher qualquer dia dentro de uma semana já fechada
   // pula direto pra ela, sem precisar rolar a lista inteira.
@@ -631,6 +643,127 @@ function buildHistorySection(p) {
   return section;
 }
 
+// "+ Adicionar semana antiga" — insere uma semana já fechada direto no
+// histórico (backfill), fora do fluxo normal de fechamento aos domingos.
+// Útil pra trazer dados de uma planilha externa antes de fechar uma fase.
+function buildAddHistoricalWeekControls(p) {
+  const wrap = document.createElement('div');
+  wrap.className = 'finance-checkpoint';
+
+  if (addingHistoricalWeekId !== p.id) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'bet-manage-btn';
+    btn.textContent = '+ Adicionar semana antiga';
+    btn.addEventListener('click', () => {
+      addingHistoricalWeekId = p.id;
+      openRowId = p.id;
+      renderFinanceList();
+    });
+    wrap.appendChild(btn);
+    return wrap;
+  }
+
+  const note = document.createElement('p');
+  note.className = 'finance-close-week-note';
+  note.textContent = 'Escolha qualquer dia dentro da semana que quer inserir (a semana inteira, de segunda a domingo, é calculada a partir dele). Diferença e R.B. + Bônus são calculados sozinhos.';
+  wrap.appendChild(note);
+
+  const dateRow = document.createElement('div');
+  dateRow.className = 'finance-entry-form';
+  const dateInput = document.createElement('input');
+  dateInput.type = 'date';
+  dateInput.setAttribute('aria-label', 'Data dentro da semana antiga');
+  dateRow.appendChild(dateInput);
+  wrap.appendChild(dateRow);
+
+  const row1 = document.createElement('div');
+  row1.className = 'finance-entry-form';
+  const depositInput = numberInput('Depósito', 0); depositInput.min = '0';
+  const withdrawalInput = numberInput('Saque', 0); withdrawalInput.min = '0';
+  row1.appendChild(depositInput);
+  row1.appendChild(withdrawalInput);
+  wrap.appendChild(row1);
+
+  const row2 = document.createElement('div');
+  row2.className = 'finance-entry-form';
+  const wageredInput = numberInput('Apostado', 0); wageredInput.min = '0';
+  const betCountInput = numberInput('N° de apostas', 0, '1'); betCountInput.min = '0';
+  row2.appendChild(wageredInput);
+  row2.appendChild(betCountInput);
+  wrap.appendChild(row2);
+
+  const row3 = document.createElement('div');
+  row3.className = 'finance-entry-form';
+  const bonusInput = numberInput('Bônus', 0);
+  const resultInput = numberInput('Result Betting (R.B.)', 0);
+  row3.appendChild(bonusInput);
+  row3.appendChild(resultInput);
+  wrap.appendChild(row3);
+
+  const actions = document.createElement('div');
+  actions.className = 'reset-modal-buttons';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'btn-confirm';
+  saveBtn.textContent = 'Adicionar semana';
+  saveBtn.addEventListener('click', async () => {
+    if (!dateInput.value) {
+      await showAppAlert('Escolha uma data dentro da semana.');
+      return;
+    }
+    const deposit = parseFloat(depositInput.value);
+    const withdrawal = parseFloat(withdrawalInput.value);
+    const wagered = parseFloat(wageredInput.value);
+    const betCount = parseInt(betCountInput.value, 10);
+    const bonus = parseFloat(bonusInput.value);
+    const resultBetting = parseFloat(resultInput.value);
+
+    if ([deposit, withdrawal, wagered, betCount, bonus, resultBetting].some(v => isNaN(v))) {
+      await showAppAlert('Preencha todos os campos com valores válidos.');
+      return;
+    }
+
+    const chosenDate = new Date(`${dateInput.value}T12:00:00`);
+    const wStart = getWeekStart(chosenDate);
+    const wEnd = getWeekEnd(wStart);
+    const rangeLabel = `${wStart.toLocaleDateString('pt-BR')} – ${wEnd.toLocaleDateString('pt-BR')}`;
+
+    const ok = await showAppConfirm(`Adicionar a semana de ${rangeLabel} pra ${p.name}, com Depósito ${formatCurrency(deposit)} e Saque ${formatCurrency(withdrawal)}?`);
+    if (!ok) return;
+
+    const result = addHistoricalWeek(p, chosenDate, { deposit, withdrawal, wagered, betCount, bonus, resultBetting });
+    if (!result.ok) {
+      const msg = result.reason === 'current-week'
+        ? 'Essa é a semana atual — ela já é registrada automaticamente pelos campos de "Semana atual" acima, não precisa (e não dá) inserir por aqui.'
+        : 'Já existe uma semana fechada nesse período pra essa plataforma. Use "Editar" nela se precisar corrigir algo, ou "Excluir" e adicione de novo.';
+      await showAppAlert(msg);
+      return;
+    }
+
+    savePlatforms(state.currentUid, state.platforms);
+    addingHistoricalWeekId = null;
+    openRowId = p.id;
+    renderFinanceList();
+  });
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'btn-cancel-modal';
+  cancelBtn.textContent = 'Cancelar';
+  cancelBtn.addEventListener('click', () => {
+    addingHistoricalWeekId = null;
+    renderFinanceList();
+  });
+
+  actions.appendChild(saveBtn);
+  actions.appendChild(cancelBtn);
+  wrap.appendChild(actions);
+
+  return wrap;
+}
+
 function buildWeekCardReadOnly(p, w) {
   const card = document.createElement('div');
   card.className = 'finance-week-card';
@@ -640,6 +773,9 @@ function buildWeekCardReadOnly(p, w) {
 
   const rangeSpan = document.createElement('span');
   rangeSpan.textContent = `${formatDatePt(w.weekStart)} – ${formatDatePt(w.weekEnd)}`;
+
+  const btnGroup = document.createElement('div');
+  btnGroup.className = 'finance-week-card-actions';
 
   const editBtn = document.createElement('button');
   editBtn.type = 'button';
@@ -651,8 +787,24 @@ function buildWeekCardReadOnly(p, w) {
     renderFinanceList();
   });
 
+  const deleteBtn = document.createElement('button');
+  deleteBtn.type = 'button';
+  deleteBtn.className = 'history-delete-btn';
+  deleteBtn.textContent = 'Excluir';
+  deleteBtn.addEventListener('click', async () => {
+    const ok = await showAppConfirm(`Excluir a semana de ${formatDatePt(w.weekStart)} – ${formatDatePt(w.weekEnd)} de ${p.name}? Essa ação não pode ser desfeita.`);
+    if (!ok) return;
+    deleteClosedWeek(p, w.weekStart);
+    savePlatforms(state.currentUid, state.platforms);
+    openRowId = p.id;
+    renderFinanceList();
+  });
+
+  btnGroup.appendChild(editBtn);
+  btnGroup.appendChild(deleteBtn);
+
   header.appendChild(rangeSpan);
-  header.appendChild(editBtn);
+  header.appendChild(btnGroup);
   card.appendChild(header);
 
   const stats = document.createElement('div');
@@ -681,7 +833,7 @@ function buildWeekCardEditing(p, w) {
 
   const note = document.createElement('p');
   note.className = 'finance-close-week-note';
-  note.textContent = 'Diferença e R.B. + Bônus são recalculados automaticamente ao salvar. O Saldo travado desta semana é fixo e não pode ser editado — o Saldo que realmente importa (o da fase atual, ao vivo) aparece em "Total da plataforma" e no nome da plataforma, e já reflete qualquer correção feita aqui.';
+  note.textContent = 'Diferença e R.B. + Bônus são recalculados automaticamente ao salvar. O Saldo travado desta semana é fixo e não pode ser editado — o Saldo que realmente importa (o da fase atual, ao vivo) aparece em "Total da plataforma" e no nome da plataforma. Editar Depósito/Saque aqui corrige só o card desta semana; se precisar que a correção afete o Saldo/Fases, o mais seguro é excluir esta semana e adicionar de novo.';
   card.appendChild(note);
 
   const row1 = document.createElement('div');

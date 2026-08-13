@@ -25,6 +25,10 @@
 // dados brutos (nunca um retrato congelado que possa estar errado) — ver
 // computePhaseHistory. O Saldo do dia a dia (badge, Total da plataforma,
 // Painel Geral) é sempre o da fase ATUAL (a mais recente).
+//
+// BACKFILL: "Adicionar semana antiga" (ver addHistoricalWeek) insere uma
+// semana já fechada direto no histórico, fora do fluxo normal — usado
+// pra trazer dados de uma planilha externa antes de fechar uma fase.
 
 // Segunda-feira 00:00:00 da semana que contém `date`.
 export function getWeekStart(date = new Date()) {
@@ -283,6 +287,14 @@ export function closeWeek(platform, bonus, refDate = new Date()) {
 // fixo daquele momento e nunca é a fonte usada por Saldo/fases/Total da
 // plataforma/Painel Geral; correções em bonus/resultBetting já entram
 // sozinhas no próximo cálculo ao vivo.
+//
+// IMPORTANTE: editar deposit/withdrawal aqui corrige o que aparece no
+// card da semana, mas NÃO ajusta o evento correspondente em
+// depositLog/withdrawals (usados pelo cálculo de Saldo/Fases) — isso já
+// era assim antes dessa funcionalidade de fases existir. Se precisar que
+// uma correção de valor realmente afete o Saldo, o caminho mais seguro é
+// excluir a semana (ver deleteClosedWeek) e adicionar de novo com o
+// valor certo.
 export function updateClosedWeek(platform, weekStart, updatedFields) {
   const entry = (platform.financeWeeks || []).find(w => w.weekStart === weekStart);
   if (!entry) return null;
@@ -305,6 +317,117 @@ export function updateClosedWeek(platform, weekStart, updatedFields) {
   entry.editedAt = new Date().toISOString();
 
   return entry;
+}
+
+// Remove uma semana FECHADA do histórico (usado tanto pra semanas
+// fechadas normalmente quanto pras inseridas via "Adicionar semana
+// antiga"). Se a semana foi criada via addHistoricalWeek (backfilled),
+// TAMBÉM remove os eventos sintéticos que essa função criou em
+// depositLog/withdrawals — senão ficariam "fantasmas" contando pra
+// sempre no Saldo/Fases, sem nenhuma semana visível correspondente.
+//
+// Semanas fechadas NORMALMENTE (pelo botão "Fechar semana") não mexem em
+// depositLog/withdrawals ao serem excluídas: os depósitos e saques delas
+// foram eventos reais e independentes, lançados um a um pela Página 4 ou
+// pelo "Registrar saque" — excluir o RETRATO da semana não deveria apagar
+// esses eventos reais.
+export function deleteClosedWeek(platform, weekStart) {
+  const list = platform.financeWeeks || [];
+  const index = list.findIndex(w => w.weekStart === weekStart);
+  if (index === -1) return false;
+
+  const entry = list[index];
+
+  if (entry.backfilled) {
+    const eventDate = new Date(weekStart);
+    eventDate.setHours(12, 0, 0, 0);
+    const eventDateStr = eventDate.toISOString();
+
+    if (platform.depositLog) {
+      const di = platform.depositLog.findIndex(d => d.date === eventDateStr && Number(d.value) === entry.deposit);
+      if (di !== -1) platform.depositLog.splice(di, 1);
+    }
+    if (platform.withdrawals) {
+      const wi = platform.withdrawals.findIndex(w => w.date === eventDateStr && Number(w.value) === entry.withdrawal);
+      if (wi !== -1) platform.withdrawals.splice(wi, 1);
+    }
+  }
+
+  list.splice(index, 1);
+  return true;
+}
+
+// Insere uma semana ANTIGA já fechada direto no histórico, sem passar
+// pelo fluxo normal (que exige a semana estar em aberto e fechar só aos
+// domingos). Usado pra trazer dados de uma planilha externa. `dateInWeek`
+// pode ser qualquer dia dentro da semana desejada — a semana (segunda a
+// domingo) é calculada a partir dele.
+//
+// Recusa se: (a) a semana escolhida for a semana ATUAL (que já é
+// registrada pelo fluxo normal, não por aqui), ou (b) já existir uma
+// semana fechada com esse mesmo weekStart pra essa plataforma (evita
+// duplicar).
+//
+// Também grava um evento em depositLog e em withdrawals com os valores
+// informados, datado dentro da semana escolhida (meio-dia de segunda) —
+// sem isso, o Depósito/Saque apareceriam certos no card da própria
+// semana, mas NÃO entrariam no cálculo de nenhuma fase (que soma
+// depositLog/withdrawals brutos, não os campos já congelados de
+// financeWeeks). Ver deleteClosedWeek pra como isso é desfeito.
+export function addHistoricalWeek(platform, dateInWeek, fields, refDate = new Date()) {
+  const weekStart = getWeekStart(new Date(dateInWeek));
+  const weekEnd = getWeekEnd(weekStart);
+  const weekStartStr = weekStart.toISOString().slice(0, 10);
+
+  const currentWeekStartStr = getWeekStart(refDate).toISOString().slice(0, 10);
+  if (weekStartStr === currentWeekStartStr) {
+    return { ok: false, reason: 'current-week' };
+  }
+
+  const alreadyExists = (platform.financeWeeks || []).some(w => w.weekStart === weekStartStr);
+  if (alreadyExists) {
+    return { ok: false, reason: 'duplicate' };
+  }
+
+  const deposit = Number(fields.deposit) || 0;
+  const withdrawal = Number(fields.withdrawal) || 0;
+  const wagered = Number(fields.wagered) || 0;
+  const betCount = Number(fields.betCount) || 0;
+  const bonus = Number(fields.bonus) || 0;
+  const resultBetting = Number(fields.resultBetting) || 0;
+
+  const entry = {
+    weekStart: weekStartStr,
+    weekEnd: weekEnd.toISOString().slice(0, 10),
+    deposit,
+    withdrawal,
+    difference: withdrawal - deposit,
+    wagered,
+    betCount,
+    bonus,
+    resultBetting,
+    rbPlusBonus: resultBetting + bonus,
+    balance: 0, // não é significativo pra semanas retroativas — ver "Fases do Saldo"
+    closedAt: new Date().toISOString(),
+    backfilled: true
+  };
+
+  if (!platform.financeWeeks) platform.financeWeeks = [];
+  platform.financeWeeks.push(entry);
+
+  const eventDate = new Date(weekStart);
+  eventDate.setHours(12, 0, 0, 0);
+
+  if (deposit > 0) {
+    if (!platform.depositLog) platform.depositLog = [];
+    platform.depositLog.push({ date: eventDate.toISOString(), value: deposit });
+  }
+  if (withdrawal > 0) {
+    if (!platform.withdrawals) platform.withdrawals = [];
+    platform.withdrawals.push({ date: eventDate.toISOString(), value: withdrawal });
+  }
+
+  return { ok: true, entry };
 }
 
 // Soma TODAS as semanas fechadas de UMA plataforma — usado no card "Total
