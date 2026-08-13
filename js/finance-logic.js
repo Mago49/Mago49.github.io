@@ -30,6 +30,14 @@
 // semana já fechada direto no histórico, fora do fluxo normal — usado
 // pra trazer dados de uma planilha externa antes de fechar uma fase.
 
+// Função auxiliar para formatar a data como YYYY-MM-DD mantendo o fuso horário local
+function toLocalDateString(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 // Segunda-feira 00:00:00 da semana que contém `date`.
 export function getWeekStart(date = new Date()) {
   const d = new Date(date);
@@ -86,9 +94,9 @@ export function computeCurrentWeekLive(platform, refDate = new Date()) {
   };
 }
 
-// Já existe um registro fechado pra semana atual?
+// Substitua o trecho antigo por este:
 export function isCurrentWeekClosed(platform, refDate = new Date()) {
-  const weekStartStr = getWeekStart(refDate).toISOString().slice(0, 10);
+  const weekStartStr = toLocalDateString(getWeekStart(refDate));
   return (platform.financeWeeks || []).some(w => w.weekStart === weekStartStr);
 }
 
@@ -260,8 +268,8 @@ export function closeWeek(platform, bonus, refDate = new Date()) {
   const balanceAtClose = Math.max(0, computeLiveBalance(platform, refDate) + bonusNum);
 
   const entry = {
-    weekStart: live.weekStart.toISOString().slice(0, 10),
-    weekEnd: live.weekEnd.toISOString().slice(0, 10),
+    weekStart: toLocalDateString(live.weekStart),
+    weekEnd: toLocalDateString(live.weekEnd),
     deposit: live.deposit,
     withdrawal: live.withdrawal,
     difference: live.difference,
