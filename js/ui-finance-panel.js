@@ -22,10 +22,9 @@
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
 import {
-  getWeekStart, getWeekEnd,
+  getWeekStart, toLocalDateString,
   computeCurrentWeekLive, closeWeek, isCurrentWeekClosed, canCloseCurrentWeek,
-  updateClosedWeek, deleteClosedWeek, addHistoricalWeek,
-  computePlatformTotals, computeOverallTotals, computeLiveBalance,
+  updateClosedWeek, computePlatformTotals, computeOverallTotals, computeLiveBalance,
   computePhaseHistory, startNewPhase, removeLastPhase
 } from './finance-logic.js';
 import { savePlatforms } from './platforms-store.js';
@@ -49,7 +48,9 @@ let startingPhaseId = null;
 let addingHistoricalWeekId = null;
 
 function formatDatePt(isoDateStr) {
-  const [y, m, d] = isoDateStr.split('-');
+  if (!isoDateStr) return '';
+  const cleanStr = isoDateStr.split('T')[0];
+  const [y, m, d] = cleanStr.split('-');
   return `${d}/${m}`;
 }
 
@@ -613,8 +614,10 @@ function buildHistorySection(p) {
 
   let weeks = [...(p.financeWeeks || [])].sort((a, b) => b.weekStart.localeCompare(a.weekStart));
 
-  if (historyDateFilter) {
-    const targetWeekStart = getWeekStart(new Date(historyDateFilter + 'T00:00:00')).toISOString().slice(0, 10);
+    if (historyDateFilter) {
+    const [y, m, d] = historyDateFilter.split('-').map(Number);
+    const filterDate = new Date(y, m - 1, d, 12, 0, 0);
+    const targetWeekStart = toLocalDateString(getWeekStart(filterDate));
     weeks = weeks.filter(w => w.weekStart === targetWeekStart);
   }
 
