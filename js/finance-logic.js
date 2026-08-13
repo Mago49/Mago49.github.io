@@ -385,9 +385,9 @@ export function deleteClosedWeek(platform, weekStart) {
 export function addHistoricalWeek(platform, dateInWeek, fields, refDate = new Date()) {
   const weekStart = getWeekStart(new Date(dateInWeek));
   const weekEnd = getWeekEnd(weekStart);
-  const weekStartStr = weekStart.toISOString().slice(0, 10);
+  const weekStartStr = toLocalDateString(weekStart);
 
-  const currentWeekStartStr = getWeekStart(refDate).toISOString().slice(0, 10);
+  const currentWeekStartStr = toLocalDateString(getWeekStart(refDate));
   if (weekStartStr === currentWeekStartStr) {
     return { ok: false, reason: 'current-week' };
   }
@@ -406,7 +406,7 @@ export function addHistoricalWeek(platform, dateInWeek, fields, refDate = new Da
 
   const entry = {
     weekStart: weekStartStr,
-    weekEnd: weekEnd.toISOString().slice(0, 10),
+    weekEnd: toLocalDateString(weekEnd),
     deposit,
     withdrawal,
     difference: withdrawal - deposit,
@@ -415,7 +415,7 @@ export function addHistoricalWeek(platform, dateInWeek, fields, refDate = new Da
     bonus,
     resultBetting,
     rbPlusBonus: resultBetting + bonus,
-    balance: 0, // não é significativo pra semanas retroativas — ver "Fases do Saldo"
+    balance: 0,
     closedAt: new Date().toISOString(),
     backfilled: true
   };
