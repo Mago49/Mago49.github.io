@@ -31,7 +31,7 @@
 // pra trazer dados de uma planilha externa antes de fechar uma fase.
 
 // Função auxiliar para formatar a data como YYYY-MM-DD mantendo o fuso horário local
-function toLocalDateString(date) {
+export function toLocalDateString(date) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');

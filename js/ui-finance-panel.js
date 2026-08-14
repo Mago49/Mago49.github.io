@@ -22,9 +22,10 @@
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
 import {
-  getWeekStart, toLocalDateString,
+  getWeekStart, getWeekEnd, toLocalDateString,
   computeCurrentWeekLive, closeWeek, isCurrentWeekClosed, canCloseCurrentWeek,
-  updateClosedWeek, computePlatformTotals, computeOverallTotals, computeLiveBalance,
+  updateClosedWeek, deleteClosedWeek, addHistoricalWeek,
+  computePlatformTotals, computeOverallTotals, computeLiveBalance,
   computePhaseHistory, startNewPhase, removeLastPhase
 } from './finance-logic.js';
 import { savePlatforms } from './platforms-store.js';
