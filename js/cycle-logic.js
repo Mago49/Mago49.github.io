@@ -54,6 +54,40 @@ export function getCurrentCycleDay(platform, refDate = new Date()) {
   return daysSinceCycleStart + 1;
 }
 
+// Data do depósito mais recente registrado em depositLog (histórico
+// PERMANENTE — nunca é zerado por Fim/Reinício, ao contrário de
+// `deposits`). Retorna null se a plataforma nunca recebeu nenhum
+// depósito. Usada só pra alimentar o badge "Depósito: X dias" (ver
+// getDaysSinceLastDeposit logo abaixo).
+export function getLastDepositDate(platform) {
+  const log = platform.depositLog || [];
+  if (log.length === 0) return null;
+  return log.reduce((latest, d) => {
+    const dt = new Date(d.date);
+    return (!latest || dt > latest) ? dt : latest;
+  }, null);
+}
+
+// Dias desde o último depósito registrado (dia do depósito = Dia 1),
+// contado sempre a partir de depositLog — por isso NÃO reseta quando a
+// plataforma passa por "Fim" ou "Reinício" (que só zeram `deposits`,
+// nunca `depositLog`). Retorna null se a plataforma nunca recebeu
+// nenhum depósito; quem chama decide o que fazer nesse caso (ver
+// buildRow em ui-platform-manage.js, que omite o badge).
+export function getDaysSinceLastDeposit(platform, refDate = new Date()) {
+  const lastDate = getLastDepositDate(platform);
+  if (!lastDate) return null;
+
+  const start = new Date(lastDate);
+  start.setHours(0, 0, 0, 0);
+
+  const today = new Date(refDate);
+  today.setHours(0, 0, 0, 0);
+
+  const daysSince = Math.floor((today - start) / (1000 * 60 * 60 * 24));
+  return daysSince + 1;
+}
+
 // Dias do ciclo em que o bônus é emitido (2°, 3°, 7°, 15°, 30°)
 // cycleStart = Dia 1, por isso subtraímos 1 pra achar o deslocamento em dias.
 export function computeEmissionDates(platform, refDate = new Date()) {

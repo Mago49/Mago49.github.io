@@ -17,10 +17,18 @@
 // nível/depósito (lastResetDate); misturar os dois fazia "Apostei hoje"
 // da própria data do Reinício sumir por causa de um bug de fuso (string
 // só-de-data comparada com limite de ciclo local) — ver changelog.
+//
+// "DEPÓSITO: X DIAS": badge no cabeçalho que mostra há quantos dias foi
+// feito o último depósito (dia do depósito = Dia 1), baseado em
+// depositLog (histórico PERMANENTE — não reseta com Fim/Reinício, ao
+// contrário do badge "Dia X" que usa lastResetDate). Só aparece quando a
+// contagem está entre 7 e 12 dias — funciona como um aviso de janela
+// pra reforçar depósito, não como um contador permanente na tela (ver
+// getDaysSinceLastDeposit em cycle-logic.js).
 
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
-import { getMonthStart, getCurrentCycleDay, getTotalDepositsSinceCycle, colorForLevel } from './cycle-logic.js';
+import { getMonthStart, getCurrentCycleDay, getTotalDepositsSinceCycle, getDaysSinceLastDeposit, colorForLevel } from './cycle-logic.js';
 import { savePlatforms, deletePlatformDoc } from './platforms-store.js';
 import { sortPlatforms, filterPlatforms, SORT_ONLY_MODES } from './platform-sort.js';
 import { initSortMenu } from './ui-sort.js';
@@ -107,6 +115,19 @@ function buildRow(p) {
   badges.appendChild(cycleBadge);
   badges.appendChild(totalBadge);
 
+  // Badge "Depósito: X dias" — baseado em depositLog (permanente, não
+  // reseta com Fim/Reinício). Só aparece na janela de aviso (7 a 12 dias
+  // desde o último depósito); fora dela — inclusive quando a plataforma
+  // nunca recebeu depósito — o badge fica omitido de propósito.
+  const daysSinceDeposit = getDaysSinceLastDeposit(p);
+  if (daysSinceDeposit !== null && daysSinceDeposit >= 7 && daysSinceDeposit <= 12) {
+    const depositDayBadge = document.createElement('span');
+    depositDayBadge.className = 'cycle-day deposit-day-badge';
+    depositDayBadge.textContent = `Depósito: ${daysSinceDeposit} dias`;
+    depositDayBadge.title = `${daysSinceDeposit} dias desde o último depósito registrado (aviso ativo do 7º ao 12º dia)`;
+    badges.appendChild(depositDayBadge);
+  }
+
   const chevron = document.createElement('span');
   chevron.className = 'platform-manage-chevron';
   chevron.textContent = '▾';
@@ -182,8 +203,8 @@ function buildActionsSection(p) {
       const entry = { date: new Date().toISOString(), value };
       p.deposits.push(entry);
       // depositLog é o histórico PERMANENTE usado pelo Financeiro (Página
-      // 5) — ao contrário de p.deposits, Fim/Reinício (mais abaixo) NUNCA
-      // apagam este array.
+      // 5) e também pelo badge "Depósito: X dias" — ao contrário de
+      // p.deposits, Fim/Reinício (mais abaixo) NUNCA apagam este array.
       if (!p.depositLog) p.depositLog = [];
       p.depositLog.push({ ...entry });
       savePlatforms(state.currentUid, state.platforms);
