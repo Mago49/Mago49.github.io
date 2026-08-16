@@ -10,10 +10,14 @@
 //
 // FASES: quando o histórico antigo é incompleto ou tem números
 // conhecidamente errados, "Iniciar nova fase" fecha a fase atual (o
-// resultado dela fica visível pra sempre em "Fases do Saldo") e o Saldo
-// passa a contar DO ZERO a partir dali — sem carregar nenhum valor
-// anterior. O badge do nome, "Semana atual" e "Total da plataforma"
-// sempre mostram o Saldo da fase ATUAL (a mais recente).
+// resultado dela fica visível pra sempre em "Fases do Saldo") e pede um
+// SALDO INICIAL (obrigatório) — pensado pra migração da planilha
+// externa: no dia da virada de ciclo, você digita o Saldo real de cada
+// plataforma e o sistema passa a somar os movimentos dali pra frente em
+// cima desse valor, sem carregar nenhum cálculo da fase anterior. O
+// badge do nome, "Semana atual" e "Total da plataforma" sempre mostram o
+// Saldo da fase ATUAL (a mais recente, já com o Saldo Inicial dela
+// somado).
 //
 // BACKFILL: "+ Adicionar semana antiga" (dentro do Histórico) insere uma
 // semana já fechada direto no sistema — útil pra trazer dados de uma
@@ -77,14 +81,23 @@ function statBox(label, value, cls = '') {
 // formato de 9 campos (o 9° é Saldo). A "Semana atual" (ao vivo) tem seu
 // próprio grid, à parte.
 //
-// opts.balanceLabel troca o rótulo do 9° campo pra deixar claro do que se
-// trata em cada contexto (semana fechada = travado; fase = da fase;
-// padrão = Saldo ao vivo da fase atual). Saldo é travado em R$ 0,00 aqui
-// na exibição também (defensivo).
+// opts.balanceLabel troca o rótulo do último campo pra deixar claro do
+// que se trata em cada contexto (semana fechada = travado; fase = da
+// fase; padrão = Saldo ao vivo da fase atual). Saldo é travado em
+// R$ 0,00 aqui na exibição também (defensivo).
+//
+// opts.showInitialBalance adiciona um box extra no INÍCIO do grid com o
+// Saldo Inicial daquela fase — só usado nos cards de "Fases do Saldo",
+// onde faz sentido separar "o que veio de fora" (Saldo Inicial) do que
+// foi calculado a partir dos movimentos dentro da fase.
 function statsGridHtml(totals, opts = {}) {
   const safeBalance = Math.max(0, Number(totals.balance) || 0);
   const balanceLabel = opts.balanceLabel || 'Saldo (Balance)';
+  const initialBalanceBox = opts.showInitialBalance
+    ? statBox('Saldo Inicial', formatCurrency(Math.max(0, Number(totals.initialBalance) || 0)))
+    : '';
   return `
+    ${initialBalanceBox}
     ${statBox('Depósito', formatCurrency(totals.deposit))}
     ${statBox('Saque', formatCurrency(totals.withdrawal))}
     ${statBox('Diferença', formatCurrency(totals.difference), totals.difference >= 0 ? 'positive' : 'negative')}
@@ -118,13 +131,15 @@ export function initFinanceOverview() {
     newPhaseAllBtn.addEventListener('click', async () => {
       const count = state.platforms.length;
       const ok = await showAppConfirm(
-        `Iniciar uma nova fase pra todas as ${count} plataformas, a partir de agora? ` +
+        `Iniciar uma nova fase pra todas as ${count} plataformas, a partir de agora, com Saldo Inicial R$ 0,00 pra todas? ` +
         `O resultado da fase atual de cada uma continua guardado (visível em "Fases do Saldo" ` +
-        `dentro de cada plataforma), e o Saldo de todas volta a contar do zero a partir de agora.`
+        `dentro de cada plataforma), e o Saldo de todas volta a contar a partir de agora. ` +
+        `Se cada plataforma tiver um Saldo real diferente pra migrar, prefira abrir a fase ` +
+        `individualmente em cada uma (lá dá pra informar o Saldo Inicial de cada uma).`
       );
       if (!ok) return;
       const now = new Date();
-      state.platforms.forEach(p => startNewPhase(p, now));
+      state.platforms.forEach(p => startNewPhase(p, now, 0));
       savePlatforms(state.currentUid, state.platforms);
       renderFinanceList();
     });
@@ -196,7 +211,7 @@ function buildRow(p) {
   balanceBadge.className = 'platform-total-badge';
   balanceBadge.style.background = '#dcfce7';
   balanceBadge.textContent = `Saldo ${formatCurrency(liveBalance)}`;
-  balanceBadge.title = 'Depósitos - saques + resultado das apostas (R.B.) + bônus recebidos, desde o início da fase atual (mínimo R$ 0,00)';
+  balanceBadge.title = 'Saldo Inicial da fase atual (se houver) + depósitos - saques + resultado das apostas (R.B.) + bônus recebidos, desde o início da fase atual (mínimo R$ 0,00)';
   badges.appendChild(balanceBadge);
 
   if (closed) {
@@ -423,7 +438,7 @@ function buildPlatformTotalSection(p) {
 
   const note = document.createElement('p');
   note.className = 'finance-close-week-note';
-  note.textContent = 'Saldo (Balance) é sempre o valor ATUAL da fase atual, ao vivo — não é uma soma das semanas fechadas nem das fases anteriores.';
+  note.textContent = 'Saldo (Balance) é sempre o valor ATUAL da fase atual, ao vivo (já com o Saldo Inicial dela, se houver) — não é uma soma das semanas fechadas nem das fases anteriores.';
   card.appendChild(note);
 
   const stats = document.createElement('div');
@@ -448,7 +463,7 @@ function buildPhaseSection(p) {
 
   const note = document.createElement('p');
   note.className = 'finance-close-week-note';
-  note.textContent = 'Cada fase conta do ZERO, a partir da data em que começou — nada de fases anteriores é carregado. "Iniciar nova fase" fecha a fase atual (o resultado dela fica guardado aqui pra sempre) e começa a contar do zero dali em diante. Útil quando o histórico antigo é incompleto ou tem números errados.';
+  note.textContent = 'Cada fase começa com um Saldo Inicial (informado na hora de abrir a fase) e soma os movimentos a partir dali — nada de fases anteriores é carregado além desse valor. "Iniciar nova fase" fecha a fase atual (o resultado dela fica guardado aqui pra sempre) e pede o Saldo Inicial da fase nova. Útil quando o histórico antigo é incompleto, tem números errados, ou quando você está migrando de uma planilha externa e quer começar do valor real de hoje.';
   section.appendChild(note);
 
   section.appendChild(buildPhaseControls(p));
@@ -471,12 +486,22 @@ function buildPhaseControls(p) {
   if (startingPhaseId === p.id) {
     const dateInput = document.createElement('input');
     dateInput.type = 'date';
-    dateInput.value = new Date().toISOString().slice(0, 10);
+    // toLocalDateString (não toISOString!) — evita que o campo mostre o dia
+    // seguinte à noite em fusos atrás de UTC, como o Brasil (ver changelog).
+    dateInput.value = toLocalDateString(new Date());
     dateInput.setAttribute('aria-label', 'Data de início da nova fase');
+
+    const initialBalanceInput = document.createElement('input');
+    initialBalanceInput.type = 'number';
+    initialBalanceInput.min = '0';
+    initialBalanceInput.step = '0.01';
+    initialBalanceInput.placeholder = 'Saldo Inicial da nova fase';
+    initialBalanceInput.setAttribute('aria-label', 'Saldo Inicial da nova fase');
 
     const row = document.createElement('div');
     row.className = 'finance-entry-form';
     row.appendChild(dateInput);
+    row.appendChild(initialBalanceInput);
     wrap.appendChild(row);
 
     const actions = document.createElement('div');
@@ -491,10 +516,21 @@ function buildPhaseControls(p) {
         await showAppAlert('Escolha uma data.');
         return;
       }
+
+      const initialBalance = parseFloat(initialBalanceInput.value);
+      if (initialBalanceInput.value.trim() === '' || isNaN(initialBalance) || initialBalance < 0) {
+        await showAppAlert('Informe o Saldo Inicial da nova fase (obrigatório, maior ou igual a zero).');
+        return;
+      }
+
       const dateLabel = dateInput.value.split('-').reverse().join('/');
-      const ok = await showAppConfirm(`Fechar a fase atual de ${p.name} e começar a contar do zero a partir de ${dateLabel}? O resultado da fase que está fechando fica guardado pra sempre em "Fases do Saldo".`);
+      const ok = await showAppConfirm(
+        `Fechar a fase atual de ${p.name} e começar uma nova a partir de ${dateLabel}, com Saldo Inicial de ${formatCurrency(initialBalance)}? ` +
+        `O resultado da fase que está fechando fica guardado pra sempre em "Fases do Saldo".`
+      );
       if (!ok) return;
-      startNewPhase(p, `${dateInput.value}T23:59:59`);
+
+      startNewPhase(p, `${dateInput.value}T23:59:59`, initialBalance);
       savePlatforms(state.currentUid, state.platforms);
       startingPhaseId = null;
       openRowId = p.id;
@@ -536,7 +572,7 @@ function buildPhaseControls(p) {
     removeBtn.className = 'btn-cancel-modal';
     removeBtn.textContent = 'Remover última fase';
     removeBtn.addEventListener('click', async () => {
-      const ok = await showAppConfirm('Remover a última fase? Ela se junta de volta com a fase anterior (o Saldo passa a contar de novo a partir de antes dela).');
+      const ok = await showAppConfirm('Remover a última fase (e o Saldo Inicial dela)? O Saldo passa a contar de novo a partir de antes dela.');
       if (!ok) return;
       removeLastPhase(p);
       savePlatforms(state.currentUid, state.platforms);
@@ -563,7 +599,10 @@ function buildPhaseCard(phase) {
 
   const stats = document.createElement('div');
   stats.className = 'finance-stats-grid';
-  stats.innerHTML = statsGridHtml(phase, { balanceLabel: phase.isCurrent ? 'Saldo da fase atual' : 'Saldo da fase' });
+  stats.innerHTML = statsGridHtml(phase, {
+    balanceLabel: phase.isCurrent ? 'Saldo da fase atual' : 'Saldo da fase',
+    showInitialBalance: true
+  });
   card.appendChild(stats);
 
   return card;
