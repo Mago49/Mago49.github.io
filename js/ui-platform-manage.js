@@ -10,10 +10,17 @@
 // antigo ui-platform-panel.js, aqui NÃO chamamos updateCalendarEvents()
 // nem renderVipPanel() — cada página só atualiza o que é dela. Ao navegar
 // para outra página, os dados são recarregados do Firestore do zero.
+//
+// "APOSTEI HOJE": a contagem de dias de aposta (usada pro bônus VIP
+// diário) usa getMonthStart (não getCycleStart) — conta sempre a partir
+// do dia 1 do mês, independente de Reinício. Reinício mexe só no ciclo de
+// nível/depósito (lastResetDate); misturar os dois fazia "Apostei hoje"
+// da própria data do Reinício sumir por causa de um bug de fuso (string
+// só-de-data comparada com limite de ciclo local) — ver changelog.
 
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
-import { getCycleStart, getCurrentCycleDay, getTotalDepositsSinceCycle, colorForLevel } from './cycle-logic.js';
+import { getMonthStart, getCurrentCycleDay, getTotalDepositsSinceCycle, colorForLevel } from './cycle-logic.js';
 import { savePlatforms, deletePlatformDoc } from './platforms-store.js';
 import { sortPlatforms, filterPlatforms, SORT_ONLY_MODES } from './platform-sort.js';
 import { initSortMenu } from './ui-sort.js';
@@ -235,9 +242,15 @@ function buildBetSection(p) {
 
   const now = new Date();
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  const cycleStart = getCycleStart(p, new Date());
-  const betDaysInCycle = (p.betDays || []).filter(d => new Date(d) >= cycleStart);
-  const alreadyBetToday = betDaysInCycle.some(d => d.slice(0, 10) === todayStr);
+  // "Apostei hoje" conta sempre a partir do dia 1 do mês — independente de
+  // Reinício/lastResetDate (ver getMonthStart em cycle-logic.js).
+  const monthStart = getMonthStart(now);
+  const betDaysInMonth = (p.betDays || []).filter(d => {
+    // Força interpretação LOCAL: string só-de-data ("2026-08-16") seria
+    // lida como meia-noite UTC — 3h antes da meia-noite local no Brasil.
+    return new Date(`${d.slice(0, 10)}T00:00:00`) >= monthStart;
+  });
+  const alreadyBetToday = betDaysInMonth.some(d => d.slice(0, 10) === todayStr);
 
   const betTodayBtn = document.createElement('button');
   betTodayBtn.className = 'bet-today-btn' + (alreadyBetToday ? ' already-bet' : '');
@@ -253,7 +266,7 @@ function buildBetSection(p) {
 
   const betCount = document.createElement('span');
   betCount.className = 'bet-count-badge';
-  betCount.textContent = `🎲 ${betDaysInCycle.length} dia(s)`;
+  betCount.textContent = `🎲 ${betDaysInMonth.length} dia(s)`;
 
   const betManageBtn = document.createElement('button');
   betManageBtn.className = 'bet-manage-btn';
@@ -591,7 +604,9 @@ resetConfirmBtn.addEventListener('click', async () => {
     currentResetPlatform.lastResetDate = `${resetDateInput.value}T00:00:00`;
     currentResetPlatform.cycleEnded = false;
     // Reinício também zera os depósitos — garantia extra caso alguém clique
-    // direto em "Reinício" sem passar por "Fim" antes.
+    // direto em "Reinício" sem passar por "Fim" antes. NÃO mexe em betDays
+    // de propósito: "Apostei hoje" é contado por mês (getMonthStart), não
+    // pelo ciclo — reiniciar o ciclo de depósito não deve afetar isso.
     currentResetPlatform.deposits = [];
     openRowId = currentResetPlatform.id;
     savePlatforms(state.currentUid, state.platforms);
@@ -631,15 +646,16 @@ function renderBetList() {
   betList.innerHTML = '';
   if (!currentBetPlatform) return;
 
-  const cycleStart = getCycleStart(currentBetPlatform, new Date());
+  // Mesma regra de buildBetSection: mês atual (getMonthStart), não ciclo.
+  const monthStart = getMonthStart(new Date());
   const days = (currentBetPlatform.betDays || [])
-    .filter(d => new Date(d) >= cycleStart)
+    .filter(d => new Date(`${d.slice(0, 10)}T00:00:00`) >= monthStart)
     .map(d => d.slice(0, 10))
     .filter((v, i, arr) => arr.indexOf(v) === i)
     .sort((a, b) => b.localeCompare(a));
 
   if (days.length === 0) {
-    betList.innerHTML = '<div class="bet-empty">Nenhuma aposta registrada neste ciclo.</div>';
+    betList.innerHTML = '<div class="bet-empty">Nenhuma aposta registrada neste mês.</div>';
     return;
   }
 

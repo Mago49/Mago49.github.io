@@ -33,6 +33,16 @@ export function getCycleStart(platform, refDate = new Date()) {
   return new Date(refDate.getFullYear(), refDate.getMonth(), 1, 0, 0, 0, 0);
 }
 
+// Início do mês atual (local, meia-noite) — base FIXA usada só pra contar
+// dias de aposta do bônus VIP diário ("Apostei hoje"). Diferente de
+// getCycleStart: NÃO depende de lastResetDate/Reinício — o bônus diário é
+// mensal por definição, então não pode reiniciar quando o ciclo manual de
+// depósito/nível é reiniciado (ver buildBetSection/renderBetList em
+// ui-platform-manage.js, que usam esta função em vez de getCycleStart).
+export function getMonthStart(refDate = new Date()) {
+  return new Date(refDate.getFullYear(), refDate.getMonth(), 1, 0, 0, 0, 0);
+}
+
 export function getCurrentCycleDay(platform, refDate = new Date()) {
   const cycleStart = getCycleStart(platform, refDate);
   const today = new Date(refDate);
@@ -158,10 +168,6 @@ export function getVipBonus(platform) {
   const weekly = Number(cfg.weekly) || 0;
   const monthly = Number(cfg.monthly) || 0;
 
-  const cycleStart = getCycleStart(platform, hoje);
-  const start = new Date(cycleStart);
-  start.setHours(0, 0, 0, 0);
-
   const ano = hoje.getFullYear();
   const mes = hoje.getMonth();
   const diasNoMes = new Date(ano, mes + 1, 0).getDate();
@@ -178,13 +184,20 @@ export function getVipBonus(platform) {
 
   let dailyTotal = daily * diasNoMes;
 
-  // apenas o diário das plataformas "com" depende do botão "Apostei hoje"
+  // apenas o diário das plataformas "com" depende do botão "Apostei hoje".
+  // Conta SEMPRE a partir do dia 1 do mês (getMonthStart) — não do ciclo
+  // manual (getCycleStart) — porque o bônus diário é mensal por definição
+  // e não pode ser afetado por um Reinício no meio do mês.
   if (platform.group === 'com') {
+    const start = getMonthStart(hoje);
     const uniqueBetDays = new Set(
       (platform.betDays || [])
         .filter(dateStr => {
-          const d = new Date(dateStr);
-          d.setHours(0, 0, 0, 0);
+          // Força interpretação LOCAL da data. Uma string só-de-data
+          // ("2026-08-16") seria lida pelo JS como meia-noite UTC — 3h
+          // ANTES da meia-noite local no Brasil — empurrando o dia pra
+          // trás na comparação. Anexar "T00:00:00" corrige isso.
+          const d = new Date(`${dateStr.slice(0, 10)}T00:00:00`);
           return d >= start && d <= hoje;
         })
         .map(dateStr => dateStr.slice(0, 10))
