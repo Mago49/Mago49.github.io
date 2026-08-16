@@ -27,6 +27,16 @@
   color: #92400e;
 }
 
+/* Badge "Depósito: X dias" (Página 4) — janela de aviso de 7 a 12 dias
+   desde o último depósito registrado em depositLog (ver
+   getDaysSinceLastDeposit em cycle-logic.js). Cor teal própria pra não
+   confundir com o indigo do ciclo (.cycle-day) nem com o verde do total
+   (.platform-total-badge). */
+.deposit-day-badge {
+  background: #ccfbf1;
+  color: #115e59;
+}
+
 .reset-date {
   font-size:0.8rem;
   color:#64748b;
