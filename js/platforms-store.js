@@ -82,11 +82,31 @@ export async function loadPlatformsFromFirestore(uid) {
   return initial;
 }
 
+// Salva TODAS as plataformas de uma vez — reescreve os 33 documentos.
+// USAR SÓ pra ações em massa de verdade (ex: "Iniciar nova fase em todas
+// as plataformas" no Painel Geral do Financeiro). Chamar isso a partir de
+// uma aba com dados desatualizados em memória sobrescreve no Firestore
+// qualquer alteração feita por OUTRA aba nesse meio tempo — foi essa a
+// causa da perda de dados de nível VIP/depósitos quando várias páginas
+// ficam abertas ao mesmo tempo. Pra qualquer ação que mexe em UMA única
+// plataforma (a grande maioria dos botões do app), usar savePlatform.
 export function savePlatforms(uid, list) {
   if (!uid) return;
   const colRef = collection(db, 'users', uid, 'platforms');
   const batch = writeBatch(db);
   list.forEach(p => batch.set(doc(colRef, p.id), p));
+  batch.commit().catch(err => console.error('Erro ao salvar no Firebase:', err));
+}
+
+// Salva UMA única plataforma (não reescreve as outras 32). Usar sempre
+// que a ação do usuário mexeu em só uma plataforma — o que é o caso da
+// grande maioria dos botões do app. Evita que uma aba com dados
+// desatualizados em memória apague alterações feitas por outra aba.
+export function savePlatform(uid, platform) {
+  if (!uid) return;
+  const colRef = collection(db, 'users', uid, 'platforms');
+  const batch = writeBatch(db);
+  batch.set(doc(colRef, platform.id), platform);
   batch.commit().catch(err => console.error('Erro ao salvar no Firebase:', err));
 }
 
