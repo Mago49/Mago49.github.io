@@ -22,6 +22,11 @@
 // BACKFILL: "+ Adicionar semana antiga" (dentro do Histórico) insere uma
 // semana já fechada direto no sistema — útil pra trazer dados de uma
 // planilha externa antes de fechar uma fase.
+//
+// SAVE: cada ação aqui mexe em UMA plataforma, então usa savePlatform
+// (grava só o doc dela). Só o botão de massa do Painel Geral
+// (initFinanceOverview) mexe em todas de propósito e usa savePlatforms —
+// ver nota em platforms-store.js sobre por que essa distinção existe.
 
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
@@ -32,7 +37,7 @@ import {
   computePlatformTotals, computeOverallTotals, computeLiveBalance,
   computePhaseHistory, startNewPhase, removeLastPhase
 } from './finance-logic.js';
-import { savePlatforms } from './platforms-store.js';
+import { savePlatforms, savePlatform } from './platforms-store.js';
 
 const financeListEl = document.getElementById('financeList');
 const financeSearchEl = document.getElementById('financeSearch');
@@ -140,6 +145,8 @@ export function initFinanceOverview() {
       if (!ok) return;
       const now = new Date();
       state.platforms.forEach(p => startNewPhase(p, now, 0));
+      // Ação em massa DE VERDADE (todas as plataformas mudaram) — aqui, e
+      // só aqui nesta página, savePlatforms (plural) é o correto.
       savePlatforms(state.currentUid, state.platforms);
       renderFinanceList();
     });
@@ -312,7 +319,7 @@ function buildCurrentWeekSection(p, live, closed, liveBalance) {
     }
     if (!p.withdrawals) p.withdrawals = [];
     p.withdrawals.push({ date: new Date().toISOString(), value });
-    savePlatforms(state.currentUid, state.platforms);
+    savePlatform(state.currentUid, p);
     openRowId = p.id;
     renderFinanceList();
   });
@@ -351,7 +358,7 @@ function buildCurrentWeekSection(p, live, closed, liveBalance) {
     }
     if (!p.betEntries) p.betEntries = [];
     p.betEntries.push({ date: new Date().toISOString(), wagered, betCount, resultBetting });
-    savePlatforms(state.currentUid, state.platforms);
+    savePlatform(state.currentUid, p);
     openRowId = p.id;
     renderFinanceList();
   });
@@ -402,7 +409,7 @@ function buildCurrentWeekSection(p, live, closed, liveBalance) {
       const ok = await showAppConfirm(`Fechar a semana de ${p.name}? Depois de fechada, os valores não mudam mais sozinhos.`);
       if (!ok) return;
       closeWeek(p, bonus);
-      savePlatforms(state.currentUid, state.platforms);
+      savePlatform(state.currentUid, p);
       openRowId = p.id;
       renderFinanceList();
     });
@@ -531,7 +538,7 @@ function buildPhaseControls(p) {
       if (!ok) return;
 
       startNewPhase(p, `${dateInput.value}T23:59:59`, initialBalance);
-      savePlatforms(state.currentUid, state.platforms);
+      savePlatform(state.currentUid, p);
       startingPhaseId = null;
       openRowId = p.id;
       renderFinanceList();
@@ -575,7 +582,7 @@ function buildPhaseControls(p) {
       const ok = await showAppConfirm('Remover a última fase (e o Saldo Inicial dela)? O Saldo passa a contar de novo a partir de antes dela.');
       if (!ok) return;
       removeLastPhase(p);
-      savePlatforms(state.currentUid, state.platforms);
+      savePlatform(state.currentUid, p);
       openRowId = p.id;
       renderFinanceList();
     });
@@ -785,13 +792,13 @@ function buildAddHistoricalWeekControls(p) {
       return;
     }
 
-    savePlatforms(state.currentUid, state.platforms);
+    savePlatform(state.currentUid, p);
     addingHistoricalWeekId = null;
     openRowId = p.id;
     renderFinanceList();
   });
 
-  const cancelBtn = document.createElement('button');
+const cancelBtn = document.createElement('button');
   cancelBtn.type = 'button';
   cancelBtn.className = 'btn-cancel-modal';
   cancelBtn.textContent = 'Cancelar';
@@ -838,7 +845,7 @@ function buildWeekCardReadOnly(p, w) {
     const ok = await showAppConfirm(`Excluir a semana de ${formatDatePt(w.weekStart)} – ${formatDatePt(w.weekEnd)} de ${p.name}? Essa ação não pode ser desfeita.`);
     if (!ok) return;
     deleteClosedWeek(p, w.weekStart);
-    savePlatforms(state.currentUid, state.platforms);
+    savePlatform(state.currentUid, p);
     openRowId = p.id;
     renderFinanceList();
   });
@@ -924,7 +931,7 @@ function buildWeekCardEditing(p, w) {
     }
 
     updateClosedWeek(p, w.weekStart, { deposit, withdrawal, wagered, betCount, bonus, resultBetting });
-    savePlatforms(state.currentUid, state.platforms);
+    savePlatform(state.currentUid, p);
     editingWeek = null;
     openRowId = p.id;
     renderFinanceList();
