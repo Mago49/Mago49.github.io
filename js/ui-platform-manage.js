@@ -25,11 +25,16 @@
 // contagem está entre 7 e 12 dias — funciona como um aviso de janela
 // pra reforçar depósito, não como um contador permanente na tela (ver
 // getDaysSinceLastDeposit em cycle-logic.js).
+//
+// SAVE: cada ação aqui mexe em UMA plataforma, então usa savePlatform
+// (grava só o doc dela, não reescreve as outras 32) — ver nota em
+// platforms-store.js sobre por que isso importa (evita que uma aba com
+// dados desatualizados em memória apague alterações feitas em outra aba).
 
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
 import { getMonthStart, getCurrentCycleDay, getTotalDepositsSinceCycle, getDaysSinceLastDeposit, colorForLevel } from './cycle-logic.js';
-import { savePlatforms, deletePlatformDoc } from './platforms-store.js';
+import { savePlatform, deletePlatformDoc } from './platforms-store.js';
 import { sortPlatforms, filterPlatforms, SORT_ONLY_MODES } from './platform-sort.js';
 import { initSortMenu } from './ui-sort.js';
 
@@ -207,7 +212,7 @@ function buildActionsSection(p) {
       // p.deposits, Fim/Reinício (mais abaixo) NUNCA apagam este array.
       if (!p.depositLog) p.depositLog = [];
       p.depositLog.push({ ...entry });
-      savePlatforms(state.currentUid, state.platforms);
+      savePlatform(state.currentUid, p);
       renderManageList();
     });
 
@@ -233,7 +238,7 @@ function buildActionsSection(p) {
     if (!ok) return;
     p.deposits = [];
     p.cycleEnded = true;
-    savePlatforms(state.currentUid, state.platforms);
+    savePlatform(state.currentUid, p);
     renderManageList();
   });
 
@@ -281,7 +286,7 @@ function buildBetSection(p) {
     if (alreadyBetToday) return;
     if (!p.betDays) p.betDays = [];
     p.betDays.push(todayStr);
-    savePlatforms(state.currentUid, state.platforms);
+    savePlatform(state.currentUid, p);
     renderManageList();
   });
 
@@ -376,7 +381,7 @@ function buildDataSection(p) {
     p.level = levelSelect.value === '' ? null : Number(levelSelect.value);
     p.group = groupSelect.value === '' ? null : groupSelect.value;
 
-    savePlatforms(state.currentUid, state.platforms);
+    savePlatform(state.currentUid, p);
     openRowId = p.id;
     renderManageList();
   });
@@ -393,7 +398,6 @@ function buildDataSection(p) {
     if (!ok) return;
     state.platforms = state.platforms.filter(pp => pp.id !== p.id);
     deletePlatformDoc(state.currentUid, p.id);
-    savePlatforms(state.currentUid, state.platforms);
     openRowId = null;
     renderManageList();
   });
@@ -429,7 +433,7 @@ function initAddRow() {
       return;
     }
 
-    state.platforms.push({
+    const newPlatform = {
       id: 'p' + Date.now(),
       name,
       lastResetDate: null,
@@ -443,9 +447,10 @@ function initAddRow() {
       financeWeeks: [],
       depositLog: [],
       balancePhases: []
-    });
+    };
+    state.platforms.push(newPlatform);
 
-    savePlatforms(state.currentUid, state.platforms);
+    savePlatform(state.currentUid, newPlatform);
     nameInput.value = '';
     levelSelect.value = '';
     groupSelect.value = '';
@@ -523,7 +528,7 @@ function showHistoryModal(platform) {
           // reconhece a correção na semana/fase atual (e no Saldo).
           const logEntry = (platform.depositLog || []).find(d => d.date === dep.date);
           if (logEntry) logEntry.value = newValue;
-          savePlatforms(state.currentUid, state.platforms);
+          savePlatform(state.currentUid, platform);
           editingDepositDate = null;
           openRowId = platform.id;
           renderManageList();
@@ -562,7 +567,7 @@ function showHistoryModal(platform) {
           const ok = await showAppConfirm(`Deseja excluir este depósito de ${formatCurrency(dep.value)}?`);
           if (ok) {
             platform.deposits.splice(platform.deposits.indexOf(dep), 1);
-            savePlatforms(state.currentUid, state.platforms);
+            savePlatform(state.currentUid, platform);
             openRowId = platform.id;
             renderManageList();
             showHistoryModal(platform);
@@ -630,7 +635,7 @@ resetConfirmBtn.addEventListener('click', async () => {
     // pelo ciclo — reiniciar o ciclo de depósito não deve afetar isso.
     currentResetPlatform.deposits = [];
     openRowId = currentResetPlatform.id;
-    savePlatforms(state.currentUid, state.platforms);
+    savePlatform(state.currentUid, currentResetPlatform);
     renderManageList();
   }
   closeResetModal();
@@ -694,7 +699,7 @@ function renderBetList() {
     removeBtn.addEventListener('click', () => {
       currentBetPlatform.betDays = (currentBetPlatform.betDays || [])
         .filter(dd => dd.slice(0, 10) !== dateStr);
-      savePlatforms(state.currentUid, state.platforms);
+      savePlatform(state.currentUid, currentBetPlatform);
       renderBetList();
       openRowId = currentBetPlatform.id;
       renderManageList();
@@ -718,7 +723,7 @@ betAddConfirm.addEventListener('click', async () => {
   }
 
   currentBetPlatform.betDays.push(dateStr);
-  savePlatforms(state.currentUid, state.platforms);
+  savePlatform(state.currentUid, currentBetPlatform);
   renderBetList();
   openRowId = currentBetPlatform.id;
   renderManageList();
