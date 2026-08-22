@@ -494,11 +494,14 @@ function buildPhaseControls(p) {
 
   if (startingPhaseId === p.id) {
     const dateInput = document.createElement('input');
-    dateInput.type = 'date';
-    // toLocalDateString (não toISOString!) — evita que o campo mostre o dia
-    // seguinte à noite em fusos atrás de UTC, como o Brasil (ver changelog).
-    dateInput.value = toLocalDateString(new Date());
-    dateInput.setAttribute('aria-label', 'Data de início da nova fase');
+    dateInput.type = 'datetime-local';
+    // Pré-seleciona hoje às 00:01 — cobre o dia inteiro por padrão, mas
+    // 100% editável (data E hora). toLocalDateTimeString, nunca
+    // toISOString, pelo mesmo motivo de sempre (fuso do Brasil).
+    const defaultPhaseStart = new Date();
+    defaultPhaseStart.setHours(0, 1, 0, 0);
+    dateInput.value = toLocalDateTimeString(defaultPhaseStart);
+    dateInput.setAttribute('aria-label', 'Data e hora de início da nova fase');
 
     const initialBalanceInput = document.createElement('input');
     initialBalanceInput.type = 'number';
