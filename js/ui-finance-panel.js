@@ -535,14 +535,20 @@ function buildPhaseControls(p) {
         return;
       }
 
-      const dateLabel = dateInput.value.split('-').reverse().join('/');
+      // dateInput.value vem como "AAAA-MM-DDTHH:mm" — new Date() interpreta
+      // como horário LOCAL (sem "Z"), então o instante gravado é
+      // exatamente o que foi escolhido, minuto a minuto.
+      const chosenInstant = new Date(dateInput.value);
+      const dateLabel = chosenInstant.toLocaleString('pt-BR', {
+        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+      });
       const ok = await showAppConfirm(
         `Fechar a fase atual de ${p.name} e começar uma nova a partir de ${dateLabel}, com Saldo Inicial de ${formatCurrency(initialBalance)}? ` +
-        `O resultado da fase que está fechando fica guardado pra sempre em "Fases do Saldo".`
+        `Tudo registrado ANTES desse instante continua contando na fase que está fechando (guardada pra sempre em "Fases do Saldo"); a partir dele, conta na fase nova.`
       );
       if (!ok) return;
 
-      startNewPhase(p, `${dateInput.value}T23:59:59`, initialBalance);
+      startNewPhase(p, dateInput.value, initialBalance);
       savePlatform(state.currentUid, p);
       startingPhaseId = null;
       openRowId = p.id;
