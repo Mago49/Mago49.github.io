@@ -43,6 +43,19 @@ export function toLocalDateString(date) {
   return `${y}-${m}-${d}`;
 }
 
+// Igual toLocalDateString, mas incluindo hora:minuto — formato aceito
+// pelo input type="datetime-local" ("AAAA-MM-DDTHH:mm"). Local (não
+// toISOString), pelo mesmo motivo de sempre: evita pular de dia em fusos
+// atrás de UTC como o Brasil.
+export function toLocalDateTimeString(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${d}T${hh}:${mm}`;
+}
+
 // Segunda-feira 00:00:00 da semana que contém `date`.
 export function getWeekStart(date = new Date()) {
   const d = new Date(date);
