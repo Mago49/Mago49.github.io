@@ -31,7 +31,7 @@
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
 import {
-  getWeekStart, getWeekEnd, toLocalDateString,
+  getWeekStart, getWeekEnd, toLocalDateString, toLocalDateTimeString,
   computeCurrentWeekLive, closeWeek, isCurrentWeekClosed, canCloseCurrentWeek,
   updateClosedWeek, deleteClosedWeek, addHistoricalWeek,
   computePlatformTotals, computeOverallTotals, computeLiveBalance,
@@ -65,7 +65,9 @@ function formatDatePt(isoDateStr) {
 }
 
 function formatDateTimePt(isoStr) {
-  return new Date(isoStr).toLocaleDateString('pt-BR');
+  return new Date(isoStr).toLocaleString('pt-BR', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
 }
 
 function getVisibleList() {
