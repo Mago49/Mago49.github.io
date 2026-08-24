@@ -6,8 +6,9 @@
    badge de semana fechada, grids de estatística (semana atual ao vivo,
    total da plataforma, fases do saldo e histórico congelado), o modo de
    edição do histórico (.finance-week-card-editing), o agrupamento de
-   botões Editar/Excluir (.finance-week-card-actions) e os controles de
-   fase/backfill (.finance-checkpoint). */
+   botões Editar/Excluir (.finance-week-card-actions), os controles de
+   fase/backfill (.finance-checkpoint), e o textarea de "Colar da
+   planilha" dentro de Adicionar semana antiga (.finance-spreadsheet-paste). */
 
 .finance-panel {
   padding: 1.1rem;
@@ -180,6 +181,33 @@
 }
 
 .finance-entry-form input:focus {
+  border-color: rgba(37,99,235,0.45);
+  box-shadow: 0 0 0 4px rgba(37,99,235,0.12);
+}
+
+/* Textarea de "Colar da planilha" (Histórico → Adicionar semana antiga →
+   Colar da planilha) — mesma linguagem visual dos inputs de
+   .finance-entry-form (borda, raio, foco), só que ocupando a largura
+   toda e com altura ajustável só na vertical, pra não estourar o layout
+   do acordeão. */
+.finance-spreadsheet-paste {
+  display: block;
+  width: 100%;
+  min-height: 180px;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 12px;
+  background: #fff;
+  font-family: inherit;
+  font-size: 0.88rem;
+  color: var(--text-dark);
+  outline: none;
+  resize: vertical;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.finance-spreadsheet-paste:focus {
   border-color: rgba(37,99,235,0.45);
   box-shadow: 0 0 0 4px rgba(37,99,235,0.12);
 }
