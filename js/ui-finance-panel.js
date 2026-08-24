@@ -20,13 +20,25 @@
 // somado).
 //
 // BACKFILL: "+ Adicionar semana antiga" (dentro do Histórico) insere uma
-// semana já fechada direto no sistema — útil pra trazer dados de uma
-// planilha externa antes de fechar uma fase.
+// semana já fechada direto no sistema. Duas formas de preencher, com um
+// botão "← Voltar" pra trocar de uma pra outra sem perder o contexto (ver
+// renderHistoricalWeekModeChoice):
+//   - Manual (buildManualHistoricalWeekControls): uma plataforma por vez,
+//     mesmo formulário de sempre.
+//   - Colar da planilha (buildSpreadsheetHistoricalWeekControls): cola um
+//     bloco copiado da planilha com várias plataformas em colunas de uma
+//     vez, interpretado por finance-spreadsheet-import.js (parser puro,
+//     sem tocar em finance-logic.js), com prévia antes de confirmar. Cada
+//     plataforma válida passa por addHistoricalWeek() — a MESMA porta de
+//     entrada única do modo manual, nenhuma regra financeira nova.
 //
 // SAVE: cada ação aqui mexe em UMA plataforma, então usa savePlatform
 // (grava só o doc dela). Só o botão de massa do Painel Geral
 // (initFinanceOverview) mexe em todas de propósito e usa savePlatforms —
-// ver nota em platforms-store.js sobre por que essa distinção existe.
+// ver nota em platforms-store.js sobre por que essa distinção importa.
+//
+// Este arquivo NÃO mexe em ciclo/nível VIP (lastResetDate, cycleEnded,
+// deposits) — essas ações continuam exclusivas de ui-platform-manage.js.
 
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
@@ -38,6 +50,9 @@ import {
   computePhaseHistory, startNewPhase, removeLastPhase
 } from './finance-logic.js';
 import { savePlatforms, savePlatform } from './platforms-store.js';
+import {
+  parseFinanceSpreadsheet, formatImportedFieldName, formatImportedNumber
+} from './finance-spreadsheet-import.js';
 
 const financeListEl = document.getElementById('financeList');
 const financeSearchEl = document.getElementById('financeSearch');
@@ -53,8 +68,9 @@ let historyDateFilter = null;
 // Id da plataforma mostrando o formulário "Iniciar nova fase" — só uma
 // por vez. Reseta junto com o resto ao abrir/fechar uma linha.
 let startingPhaseId = null;
-// Id da plataforma mostrando o formulário "Adicionar semana antiga" — só
-// uma por vez. Reseta junto com o resto ao abrir/fechar uma linha.
+// Id da plataforma mostrando a seção "Adicionar semana antiga" (escolha
+// de modo, manual ou planilha) — só uma por vez. Reseta junto com o
+// resto ao abrir/fechar uma linha.
 let addingHistoricalWeekId = null;
 
 function formatDatePt(isoDateStr) {
@@ -672,7 +688,7 @@ function buildHistorySection(p) {
 
   let weeks = [...(p.financeWeeks || [])].sort((a, b) => b.weekStart.localeCompare(a.weekStart));
 
-    if (historyDateFilter) {
+  if (historyDateFilter) {
     const [y, m, d] = historyDateFilter.split('-').map(Number);
     const filterDate = new Date(y, m - 1, d, 12, 0, 0);
     const targetWeekStart = toLocalDateString(getWeekStart(filterDate));
@@ -704,9 +720,35 @@ function buildHistorySection(p) {
   return section;
 }
 
+// Traduz o motivo de addHistoricalWeek() ter recusado uma semana em texto
+// que o cliente entende — usado no modo manual e na importação da
+// planilha, pra nunca mostrar o código interno ("current-week",
+// "duplicate") cru pra quem está usando o sistema.
+function describeAddHistoricalWeekFailure(reason) {
+  if (reason === 'current-week') {
+    return 'Essa é a semana atual — ela já é registrada automaticamente pelos campos de "Semana atual" acima, não precisa (e não dá) inserir por aqui.';
+  }
+  if (reason === 'duplicate') {
+    return 'Já existe uma semana fechada nesse período pra essa plataforma. Use "Editar" nela se precisar corrigir algo, ou "Excluir" e adicione de novo.';
+  }
+  return 'Não foi possível adicionar essa semana.';
+}
+
+// Versão curta da mesma tradução, pra uso dentro de uma lista com várias
+// plataformas de uma vez (resumo da importação em massa da planilha) —
+// nunca mostra o "reason" cru (ex: "current-week") pro usuário final.
+function shortAddHistoricalWeekFailureReason(reason) {
+  if (reason === 'current-week') return 'é a semana atual, não pode ser inserida por aqui';
+  if (reason === 'duplicate') return 'semana já cadastrada';
+  return 'não foi possível adicionar';
+}
+
 // "+ Adicionar semana antiga" — insere uma semana já fechada direto no
-// histórico (backfill), fora do fluxo normal de fechamento aos domingos.
-// Útil pra trazer dados de uma planilha externa antes de fechar uma fase.
+// histórico. Duas formas de preencher (ver renderHistoricalWeekModeChoice),
+// com "← Voltar" pra trocar de uma pra outra sem fechar a seção inteira:
+//   - Manual (buildManualHistoricalWeekControls): uma plataforma por vez.
+//   - Colar da planilha (buildSpreadsheetHistoricalWeekControls): várias
+//     plataformas de uma vez, via finance-spreadsheet-import.js.
 function buildAddHistoricalWeekControls(p) {
   const wrap = document.createElement('div');
   wrap.className = 'finance-checkpoint';
@@ -724,6 +766,49 @@ function buildAddHistoricalWeekControls(p) {
     wrap.appendChild(btn);
     return wrap;
   }
+
+  renderHistoricalWeekModeChoice(p, wrap);
+  return wrap;
+}
+
+// Tela de escolha entre os dois modos — extraída à parte pra poder ser
+// chamada de novo pelo botão "← Voltar" de dentro de cada modo, sem
+// precisar fechar a seção inteira (o que perderia a linha aberta no
+// acordeão e o filtro de busca do histórico).
+function renderHistoricalWeekModeChoice(p, wrap) {
+  wrap.innerHTML = '';
+
+  const modeRow = document.createElement('div');
+  modeRow.className = 'finance-entry-form';
+
+  const manualBtn = document.createElement('button');
+  manualBtn.type = 'button';
+  manualBtn.className = 'bet-manage-btn';
+  manualBtn.textContent = 'Preencher manualmente';
+  manualBtn.addEventListener('click', () => {
+    buildManualHistoricalWeekControls(p, wrap);
+  });
+
+  const pasteBtn = document.createElement('button');
+  pasteBtn.type = 'button';
+  pasteBtn.className = 'bet-manage-btn';
+  pasteBtn.textContent = 'Colar da planilha';
+  pasteBtn.addEventListener('click', () => {
+    buildSpreadsheetHistoricalWeekControls(p, wrap);
+  });
+
+  modeRow.appendChild(manualBtn);
+  modeRow.appendChild(pasteBtn);
+  wrap.appendChild(modeRow);
+
+  const note = document.createElement('p');
+  note.className = 'finance-close-week-note';
+  note.textContent = 'Escolha como deseja inserir a semana. "Colar da planilha" permite copiar várias plataformas de uma vez; o sistema calcula sozinho Diferença, Saldo e R.B. + Bônus.';
+  wrap.appendChild(note);
+}
+
+function buildManualHistoricalWeekControls(p, wrap) {
+  wrap.innerHTML = '';
 
   const note = document.createElement('p');
   note.className = 'finance-close-week-note';
@@ -774,6 +859,7 @@ function buildAddHistoricalWeekControls(p) {
       await showAppAlert('Escolha uma data dentro da semana.');
       return;
     }
+
     const deposit = parseFloat(depositInput.value);
     const withdrawal = parseFloat(withdrawalInput.value);
     const wagered = parseFloat(wageredInput.value);
@@ -796,10 +882,7 @@ function buildAddHistoricalWeekControls(p) {
 
     const result = addHistoricalWeek(p, chosenDate, { deposit, withdrawal, wagered, betCount, bonus, resultBetting });
     if (!result.ok) {
-      const msg = result.reason === 'current-week'
-        ? 'Essa é a semana atual — ela já é registrada automaticamente pelos campos de "Semana atual" acima, não precisa (e não dá) inserir por aqui.'
-        : 'Já existe uma semana fechada nesse período pra essa plataforma. Use "Editar" nela se precisar corrigir algo, ou "Excluir" e adicione de novo.';
-      await showAppAlert(msg);
+      await showAppAlert(describeAddHistoricalWeekFailure(result.reason));
       return;
     }
 
@@ -809,7 +892,15 @@ function buildAddHistoricalWeekControls(p) {
     renderFinanceList();
   });
 
-const cancelBtn = document.createElement('button');
+  const backBtn = document.createElement('button');
+  backBtn.type = 'button';
+  backBtn.className = 'bet-manage-btn';
+  backBtn.textContent = '← Voltar';
+  backBtn.addEventListener('click', () => {
+    renderHistoricalWeekModeChoice(p, wrap);
+  });
+
+  const cancelBtn = document.createElement('button');
   cancelBtn.type = 'button';
   cancelBtn.className = 'btn-cancel-modal';
   cancelBtn.textContent = 'Cancelar';
@@ -819,10 +910,245 @@ const cancelBtn = document.createElement('button');
   });
 
   actions.appendChild(saveBtn);
+  actions.appendChild(backBtn);
+  actions.appendChild(cancelBtn);
+  wrap.appendChild(actions);
+}
+
+function buildSpreadsheetHistoricalWeekControls(p, wrap) {
+  wrap.innerHTML = '';
+
+  const note = document.createElement('p');
+  note.className = 'finance-close-week-note';
+  note.textContent = 'Copie da planilha o bloco que contém os nomes das plataformas e as linhas Deposit, Withdrawal, Bonus, Amount wagered, N° Betting e Result Betting. Pode colar várias plataformas de uma vez.';
+  wrap.appendChild(note);
+
+  const dateRow = document.createElement('div');
+  dateRow.className = 'finance-entry-form';
+  const dateInput = document.createElement('input');
+  dateInput.type = 'date';
+  dateInput.setAttribute('aria-label', 'Data dentro da semana antiga');
+  dateRow.appendChild(dateInput);
+  wrap.appendChild(dateRow);
+
+  // Estilo do textarea vem de .finance-spreadsheet-paste (finance.css) —
+  // mesma linguagem visual dos outros inputs de .finance-entry-form.
+  const pasteInput = document.createElement('textarea');
+  pasteInput.className = 'finance-spreadsheet-paste';
+  pasteInput.rows = 10;
+  pasteInput.placeholder = 'Cole aqui (Ctrl+V) os dados copiados da planilha...';
+  pasteInput.setAttribute('aria-label', 'Dados da planilha');
+  wrap.appendChild(pasteInput);
+
+  const preview = document.createElement('div');
+  preview.className = 'finance-spreadsheet-preview';
+  wrap.appendChild(preview);
+
+  const analyzeBtn = document.createElement('button');
+  analyzeBtn.type = 'button';
+  analyzeBtn.className = 'bet-manage-btn';
+  analyzeBtn.textContent = 'Analisar dados';
+  wrap.appendChild(analyzeBtn);
+
+  const actions = document.createElement('div');
+  actions.className = 'reset-modal-buttons';
+
+  const importBtn = document.createElement('button');
+  importBtn.type = 'button';
+  importBtn.className = 'btn-confirm';
+  importBtn.textContent = 'Importar semanas';
+  importBtn.disabled = true;
+
+  const backBtn = document.createElement('button');
+  backBtn.type = 'button';
+  backBtn.className = 'bet-manage-btn';
+  backBtn.textContent = '← Voltar';
+  backBtn.addEventListener('click', () => {
+    renderHistoricalWeekModeChoice(p, wrap);
+  });
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'btn-cancel-modal';
+  cancelBtn.textContent = 'Cancelar';
+  cancelBtn.addEventListener('click', () => {
+    addingHistoricalWeekId = null;
+    renderFinanceList();
+  });
+
+  actions.appendChild(importBtn);
+  actions.appendChild(backBtn);
   actions.appendChild(cancelBtn);
   wrap.appendChild(actions);
 
-  return wrap;
+  let parsedResult = null;
+
+  function renderPreview(parsed) {
+    preview.innerHTML = '';
+
+    if (parsed.errors.length) {
+      const error = document.createElement('div');
+      error.className = 'finance-close-week-note';
+      error.textContent = parsed.errors.join(' ');
+      preview.appendChild(error);
+      importBtn.disabled = true;
+      return;
+    }
+
+    const title = document.createElement('p');
+    title.className = 'finance-close-week-note';
+    title.textContent = `Plataformas reconhecidas: ${parsed.platforms.length}. Apenas as linhas brutas serão importadas; Diferença, Saldo e R.B. + Bônus são ignorados.`;
+    preview.appendChild(title);
+
+    const list = document.createElement('div');
+    list.className = 'finance-spreadsheet-preview-list';
+
+    parsed.platforms.forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'finance-stat';
+
+      const label = document.createElement('span');
+      label.className = 'finance-stat-label';
+      label.textContent = item.platformName;
+
+      const values = document.createElement('span');
+      values.className = 'finance-stat-value';
+
+      if (item.valid) {
+        const f = item.fields;
+        values.textContent = `✓ Dep. ${formatImportedNumber(f.deposit)} | Saque ${formatImportedNumber(f.withdrawal)} | Apostado ${formatImportedNumber(f.wagered)} | ${formatImportedNumber(f.betCount)} apostas | Bônus ${formatImportedNumber(f.bonus)} | R.B. ${formatImportedNumber(f.resultBetting)}`;
+      } else {
+        const missing = item.missing.map(formatImportedFieldName);
+        const invalid = item.invalid.map(x => `${formatImportedFieldName(x.field)} (${x.raw})`);
+        const problems = [];
+        if (missing.length) problems.push(`faltando: ${missing.join(', ')}`);
+        if (invalid.length) problems.push(`inválido: ${invalid.join(', ')}`);
+        values.textContent = `⚠ ${problems.join(' | ')}`;
+      }
+
+      row.appendChild(label);
+      row.appendChild(values);
+      list.appendChild(row);
+    });
+
+    preview.appendChild(list);
+
+    if (parsed.warnings.length) {
+      const warning = document.createElement('p');
+      warning.className = 'finance-close-week-note';
+      warning.textContent = parsed.warnings.join(' ');
+      preview.appendChild(warning);
+    }
+
+    importBtn.disabled = !parsed.platforms.some(item => item.valid) || !dateInput.value;
+  }
+
+  function analyze() {
+    parsedResult = parseFinanceSpreadsheet(
+      pasteInput.value,
+      state.platforms.map(item => item.name)
+    );
+    renderPreview(parsedResult);
+  }
+
+  analyzeBtn.addEventListener('click', analyze);
+
+  dateInput.addEventListener('change', () => {
+    if (parsedResult) renderPreview(parsedResult);
+  });
+
+  pasteInput.addEventListener('paste', () => {
+    // O evento paste ocorre antes do conteúdo ser disponibilizado no
+    // textarea. Um pequeno atraso deixa o Ctrl+V completo antes da
+    // análise automática.
+    setTimeout(analyze, 0);
+  });
+
+  importBtn.addEventListener('click', async () => {
+    if (!dateInput.value) {
+      await showAppAlert('Escolha uma data dentro da semana.');
+      return;
+    }
+
+    if (!parsedResult) analyze();
+    if (!parsedResult || !parsedResult.platforms.some(item => item.valid)) {
+      await showAppAlert('Não há nenhuma plataforma válida pronta para importar.');
+      return;
+    }
+
+    const chosenDate = new Date(`${dateInput.value}T12:00:00`);
+    const wStart = getWeekStart(chosenDate);
+    const wEnd = getWeekEnd(wStart);
+    const rangeLabel = `${wStart.toLocaleDateString('pt-BR')} – ${wEnd.toLocaleDateString('pt-BR')}`;
+
+    const platformMap = new Map(state.platforms.map(item => [item.name.toLowerCase(), item]));
+    const candidates = parsedResult.platforms.filter(item => item.valid);
+    const unavailable = [];
+    const duplicate = [];
+    const ready = [];
+
+    candidates.forEach(item => {
+      const platform = platformMap.get(item.platformName.toLowerCase());
+      if (!platform) {
+        unavailable.push(item.platformName);
+        return;
+      }
+      const alreadyExists = (platform.financeWeeks || []).some(w => w.weekStart === toLocalDateString(wStart));
+      if (alreadyExists) {
+        duplicate.push(item.platformName);
+        return;
+      }
+      ready.push({ item, platform });
+    });
+
+    if (ready.length === 0) {
+      const details = [];
+      if (duplicate.length) details.push(`já cadastradas: ${duplicate.join(', ')}`);
+      if (unavailable.length) details.push(`não encontradas: ${unavailable.join(', ')}`);
+      await showAppAlert(`Nenhuma plataforma está pronta para importar a semana de ${rangeLabel}. ${details.join(' | ')}`);
+      return;
+    }
+
+    const previewText = ready.map(({ item }) => item.platformName).join(', ');
+    const skipped = [];
+    if (duplicate.length) skipped.push(`já cadastradas: ${duplicate.join(', ')}`);
+    if (unavailable.length) skipped.push(`não encontradas: ${unavailable.join(', ')}`);
+    const skippedText = skipped.length ? ` ${skipped.join(' | ')}.` : '';
+
+    const ok = await showAppConfirm(
+      `Importar a semana de ${rangeLabel} para ${ready.length} plataforma(s): ${previewText}?${skippedText}`
+    );
+    if (!ok) return;
+
+    const imported = [];
+    const failed = [];
+
+    for (const { item, platform } of ready) {
+      try {
+        const result = addHistoricalWeek(platform, chosenDate, item.fields);
+        if (!result.ok) {
+          failed.push(`${platform.name} (${shortAddHistoricalWeekFailureReason(result.reason)})`);
+          continue;
+        }
+        savePlatform(state.currentUid, platform);
+        imported.push(platform.name);
+      } catch (error) {
+        console.error('Erro ao importar semana da planilha:', error);
+        failed.push(`${platform.name} (erro inesperado ao salvar — tente novamente)`);
+      }
+    }
+
+    addingHistoricalWeekId = null;
+    openRowId = p.id;
+    renderFinanceList();
+
+    const messageParts = [];
+    if (imported.length) messageParts.push(`Importadas: ${imported.join(', ')}.`);
+    if (failed.length) messageParts.push(`Falharam: ${failed.join(', ')}.`);
+    if (duplicate.length) messageParts.push(`Ignoradas por duplicidade: ${duplicate.join(', ')}.`);
+    if (unavailable.length) messageParts.push(`Não encontradas no sistema: ${unavailable.join(', ')}.`);
+    await showAppAlert(messageParts.join(' '));
+  });
 }
 
 function buildWeekCardReadOnly(p, w) {
