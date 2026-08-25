@@ -2,7 +2,7 @@
 // Único módulo que fala diretamente com o Firestore.
 // Se um dia trocar de banco de dados, é aqui (e só aqui) que mexe.
 
-import { db, collection, doc, getDocs, deleteDoc, writeBatch } from './firebase-init.js';
+import { db, collection, doc, getDoc, getDocs, deleteDoc, writeBatch } from './firebase-init.js';
 
 export const PLATFORM_NAMES = [
   'A73', 'DDUU', 'EE44', 'FXX', 'HHH5', 'NNZZ', 'PP11', '1UUU', '11TT', '35C',
@@ -65,19 +65,75 @@ export function normalizePlatformData(parsed) {
   });
 }
 
+// Referência do doc-sentinela: a ÚNICA prova de que "esta conta já foi
+// inicializada alguma vez". Vive FORA da coleção `platforms` de propósito
+// (users/{uid}/meta/initialized) — assim nunca é tocado por engano por
+// nenhuma ação que mexe em plataformas (savePlatform, savePlatforms,
+// deletePlatformDoc). Uma vez gravado, nunca mais é escrito de novo.
+function getInitializedSentinelRef(uid) {
+  return doc(db, 'users', uid, 'meta', 'initialized');
+}
+
+// CORREÇÃO CRÍTICA (bug real, já causou perda de dados mais de uma vez):
+// antes, uma leitura vazia da coleção `platforms` (snap.empty === true)
+// era tratada como sinônimo de "conta nova" e disparava a criação dos 33
+// documentos padrão — SOBRESCREVENDO os 33 documentos existentes, já que
+// os ids (p1...p33) são sempre os mesmos. O problema: `snap.empty` não
+// distingue "conta realmente nova" de "a leitura falhou/veio incompleta
+// por instabilidade de rede" — o SDK do Firestore pode devolver uma
+// snapshot vazia sem lançar nenhuma exceção nesse cenário. Resultado:
+// perda total e silenciosa de nível VIP, depósitos, saques, semanas
+// fechadas e fases — sem nenhum erro visível avisando que algo deu
+// errado.
+//
+// SOLUÇÃO — doc-sentinela: `users/{uid}/meta/initialized` é gravado UMA
+// única vez, no mesmo batch atômico que cria as 33 plataformas padrão, e
+// nunca mais é tocado depois disso. Ele vira a fonte de verdade sobre
+// "essa conta já existiu antes", independente do que a leitura da
+// coleção `platforms` disser num instante específico:
+//   - coleção vazia + sentinela NÃO existe -> conta genuinamente nova,
+//     cria os 33 documentos padrão (comportamento de sempre).
+//   - coleção vazia + sentinela EXISTE -> leitura anômala (rede/cache),
+//     NUNCA escreve nada — lança um erro com code 'EMPTY_READ_ANOMALY'
+//     pra quem chamou decidir o que fazer (ver auth-guard.js, que trata
+//     esse erro de forma diferente de um erro de conexão comum: mostra
+//     um aviso específico e NÃO deixa a página seguir com dados vazios).
+//
+// Antes de sequer cogitar a leitura como "vazia de verdade", tenta ler a
+// coleção uma segunda vez (com uma pequena espera) — absorve soluços
+// passageiros de conexão sem gerar alarme falso nem, no outro extremo,
+// arriscar apagar dados por causa de uma falha momentânea.
 export async function loadPlatformsFromFirestore(uid) {
   const colRef = collection(db, 'users', uid, 'platforms');
-  const snap = await getDocs(colRef);
+  let snap = await getDocs(colRef);
+
+  if (snap.empty) {
+    await new Promise(resolve => setTimeout(resolve, 800));
+    snap = await getDocs(colRef);
+  }
 
   if (!snap.empty) {
     return normalizePlatformData(snap.docs.map(d => d.data())) || [];
   }
 
-  // Coleção vazia: usuário novo, ainda sem nenhuma plataforma salva no
-  // Firestore. Cria o conjunto padrão de 33 plataformas para ele.
+  const sentinelRef = getInitializedSentinelRef(uid);
+  const sentinelSnap = await getDoc(sentinelRef);
+
+  if (sentinelSnap.exists()) {
+    // Conta já foi inicializada antes (sentinela existe), mas a coleção
+    // de plataformas veio vazia mesmo após a segunda tentativa — isso
+    // nunca deveria acontecer numa leitura saudável. Recusa escrever
+    // qualquer coisa e devolve o erro pra camada de auth decidir a UI.
+    const err = new Error('Leitura vazia anômala: a conta já tem plataformas cadastradas, mas a coleção veio vazia nesta leitura. Nenhum dado foi apagado ou sobrescrito.');
+    err.code = 'EMPTY_READ_ANOMALY';
+    throw err;
+  }
+
+  // Sentinela não existe: primeira inicialização de verdade desta conta.
   const initial = DEFAULT_PLATFORMS.slice();
   const batch = writeBatch(db);
   initial.forEach(p => batch.set(doc(colRef, p.id), p));
+  batch.set(sentinelRef, { createdAt: new Date().toISOString() });
   await batch.commit();
   return initial;
 }

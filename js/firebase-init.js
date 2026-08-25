@@ -9,7 +9,7 @@ import {
   setPersistence, browserLocalPersistence
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
-  getFirestore, collection, doc, getDocs, deleteDoc, writeBatch
+  getFirestore, collection, doc, getDoc, getDocs, deleteDoc, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 // TODO: troque pelos valores do SEU projeto Firebase
@@ -39,7 +39,10 @@ export const authReady = setPersistence(auth, browserLocalPersistence)
   .catch(err => console.error('Erro ao configurar persistência de login:', err));
 
 // Reexporta as funções do SDK usadas no resto do app, pra tudo vir de um só lugar.
+// getDoc (singular) foi adicionado pra suportar o doc-sentinela em
+// platforms-store.js (ver loadPlatformsFromFirestore) — não muda nada do
+// que já existia, só soma uma leitura pontual nova.
 export {
   signInWithPopup, signOut, onAuthStateChanged,
-  collection, doc, getDocs, deleteDoc, writeBatch
+  collection, doc, getDoc, getDocs, deleteDoc, writeBatch
 };
