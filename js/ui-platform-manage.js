@@ -30,6 +30,45 @@
 // (grava só o doc dela, não reescreve as outras 32) — ver nota em
 // platforms-store.js sobre por que isso importa (evita que uma aba com
 // dados desatualizados em memória apague alterações feitas em outra aba).
+//
+// === RECONCILIAÇÃO DE DOM (correção de scroll/busca em mobile) ===
+// Antes, QUALQUER ação (até "Apostei hoje", sem nenhum campo de texto
+// envolvido) chamava renderManageList(), que apagava a lista inteira
+// (querySelectorAll + remove) e reconstruía do zero TODAS as linhas. Em
+// mobile isso causava dois sintomas: (1) a tela saltava pro topo, porque
+// o elemento com foco no momento do clique era destruído; (2) digitar no
+// campo de busca "comia" teclas, porque a cada tecla a lista inteira era
+// reconstruída de forma síncrona, brigando com o ciclo de composição do
+// teclado virtual (IME).
+//
+// A solução: um Map (rowElements) guarda o elemento <div> de cada linha
+// já presente na tela, indexado por platform.id. Duas funções substituem
+// o "sempre reconstruir tudo":
+//   - refreshRow(id): reconstrói e troca SÓ a linha daquela plataforma no
+//     lugar dela (replaceWith) — as outras ~40 linhas nunca são tocadas.
+//     Usada por ações que mudam só o conteúdo de UMA linha, sem afetar
+//     quem está visível ou a ordem (depósito, apostei hoje, editar
+//     histórico, abrir/fechar acordeão).
+//   - reconcileList(list): usada por renderManageList() quando o CONJUNTO
+//     ou a ORDEM de linhas pode mudar (busca, trocar Ordenar, Fim/
+//     Reinício/Salvar Dados — que podem afetar filtros ativos —, Nova
+//     plataforma, Remover). Em vez de apagar tudo: remove só quem saiu do
+//     filtro, cria só quem é novo, e reordena quem já existe com
+//     appendChild (que MOVE um nó já presente no DOM em vez de recriar —
+//     preserva foco e nunca deixa o container vazio, o que é a causa raiz
+//     do salto de scroll).
+//
+// Ações que mudam dado usado por filtro/ordenação (name, group,
+// lastResetDate, cycleEnded) chamam refreshRow (pra atualizar a própria
+// linha na hora) SEGUIDO de renderManageList() (pra corrigir posição/
+// visibilidade se algum filtro estiver ativo).
+//
+// O cache (rowElements) é zerado a cada login via resetManageListCache()
+// — chamada por main-edicao.js ANTES do primeiro renderManageList() de
+// cada sessão. Sem isso, um relogin na mesma aba poderia reaproveitar uma
+// linha antiga (mesmo id) com conteúdo desatualizado até alguma ação
+// forçar a atualização dela. Isso é só sobre o que a TELA mostra — nunca
+// afeta o que é lido/gravado no Firestore.
 
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
@@ -45,6 +84,10 @@ let currentSearch = '';
 let currentMode = null; // um dos SORT_MENU_OPTIONS.value, ou null (Padrão)
 let openRowId = null;
 
+// id da plataforma -> elemento <div class="platform-manage-row..."> já
+// presente no DOM. Fonte de verdade de "o que está renderizado agora".
+const rowElements = new Map();
+
 // ---------- LISTA PRINCIPAL (fundida) ----------
 
 function getVisibleList() {
@@ -59,13 +102,34 @@ function getVisibleList() {
   return list;
 }
 
-export function renderManageList() {
-  if (!manageListEl) return;
-  manageListEl.querySelectorAll('.platform-manage-row-existing').forEach(el => el.remove());
+// ---------- RECONCILIAÇÃO DE DOM ----------
 
-  const list = getVisibleList();
+// Reconstrói e substitui SÓ a linha de uma plataforma, no lugar dela no
+// DOM. Não mexe em nenhuma outra linha. Se a plataforma não estiver
+// renderizada agora (ex: escondida pela busca/filtro atual), não faz nada
+// — não há nada visível pra atualizar.
+function refreshRow(platformId) {
+  const platform = state.platforms.find(pp => pp.id === platformId);
+  if (!platform) return;
+  const oldEl = rowElements.get(platformId);
+  if (!oldEl) return;
+  const newEl = buildRow(platform);
+  oldEl.replaceWith(newEl);
+  rowElements.set(platformId, newEl);
+}
+
+// Sincroniza o DOM com a lista visível desejada: remove quem saiu, cria
+// quem é novo, e garante a ordem correta de quem já existe. appendChild
+// num nó JÁ presente no DOM apenas o move pro fim (não destrói/recria) —
+// por isso linhas que não mudaram de posição não perdem identidade nem
+// estado interno, e o container nunca fica vazio em nenhum instante.
+function reconcileList(list) {
+  const existingEmpty = manageListEl.querySelector('.platform-manage-row-existing.history-empty');
+  if (existingEmpty) existingEmpty.remove();
 
   if (list.length === 0) {
+    rowElements.forEach(el => el.remove());
+    rowElements.clear();
     const empty = document.createElement('div');
     empty.className = 'history-empty platform-manage-row-existing';
     empty.textContent = 'Nenhuma plataforma encontrada.';
@@ -73,7 +137,59 @@ export function renderManageList() {
     return;
   }
 
-  list.forEach(p => manageListEl.appendChild(buildRow(p)));
+  const visibleIds = new Set(list.map(p => p.id));
+
+  // Remove linhas que não estão mais visíveis (saíram do filtro/busca,
+  // ou a plataforma foi removida).
+  rowElements.forEach((el, id) => {
+    if (!visibleIds.has(id)) {
+      el.remove();
+      rowElements.delete(id);
+    }
+  });
+
+  // Cria as que são novas; garante a ordem correta das que já existem.
+  list.forEach(p => {
+    let el = rowElements.get(p.id);
+    if (!el) {
+      el = buildRow(p);
+      rowElements.set(p.id, el);
+    }
+    manageListEl.appendChild(el);
+  });
+}
+
+// Atualiza o CONTEÚDO de todas as linhas atualmente na tela, sem mudar
+// quais estão visíveis nem a ordem — usado só na virada do dia (o badge
+// "Dia X" muda sozinho mesmo sem nenhuma ação do usuário; ver
+// main-edicao.js).
+export function refreshAllRows() {
+  rowElements.forEach((oldEl, platformId) => {
+    const platform = state.platforms.find(p => p.id === platformId);
+    if (!platform) return;
+    const newEl = buildRow(platform);
+    oldEl.replaceWith(newEl);
+    rowElements.set(platformId, newEl);
+  });
+}
+
+// Zera o cache de linhas — DEVE ser chamado a cada novo login (ver
+// main-edicao.js), antes do primeiro renderManageList() da sessão. Sem
+// isso, um relogin na mesma aba poderia reaproveitar uma linha antiga
+// (mesmo id) com conteúdo de antes até alguma ação forçar a atualização
+// dela. Só afeta o que a TELA mostra — nunca o que é lido/gravado no
+// Firestore.
+export function resetManageListCache() {
+  rowElements.clear();
+  if (manageListEl) {
+    manageListEl.querySelectorAll('.platform-manage-row-existing').forEach(el => el.remove());
+  }
+  openRowId = null;
+}
+
+export function renderManageList() {
+  if (!manageListEl) return;
+  reconcileList(getVisibleList());
 }
 
 function buildRow(p) {
@@ -141,8 +257,13 @@ function buildRow(p) {
   header.appendChild(badges);
   header.appendChild(chevron);
   header.addEventListener('click', () => {
-    openRowId = (openRowId === p.id) ? null : p.id;
-    renderManageList();
+    const previousOpenRowId = openRowId;
+    const wasOpen = previousOpenRowId === p.id;
+    openRowId = wasOpen ? null : p.id;
+    if (!wasOpen && previousOpenRowId) {
+      refreshRow(previousOpenRowId); // fecha a linha que estava aberta antes
+    }
+    refreshRow(p.id); // aplica o novo estado (aberta ou fechada) nesta linha
   });
 
   // --- body (aberto): Ações + Dados ---
@@ -213,7 +334,9 @@ function buildActionsSection(p) {
       if (!p.depositLog) p.depositLog = [];
       p.depositLog.push({ ...entry });
       savePlatform(state.currentUid, p);
-      renderManageList();
+      // Só o conteúdo desta linha muda (total/badge) — depósito não afeta
+      // nenhum filtro/ordenação ativo, então basta atualizar esta linha.
+      refreshRow(p.id);
     });
 
     form.appendChild(input);
@@ -239,6 +362,9 @@ function buildActionsSection(p) {
     p.deposits = [];
     p.cycleEnded = true;
     savePlatform(state.currentUid, p);
+    // cycleEnded pode afetar filtros de Ativas/Inativas — atualiza a
+    // própria linha (badge "Encerrado") e reconcilia a lista visível.
+    refreshRow(p.id);
     renderManageList();
   });
 
@@ -287,7 +413,8 @@ function buildBetSection(p) {
     if (!p.betDays) p.betDays = [];
     p.betDays.push(todayStr);
     savePlatform(state.currentUid, p);
-    renderManageList();
+    // Não afeta filtro/ordenação — só o conteúdo desta linha muda.
+    refreshRow(p.id);
   });
 
   const betCount = document.createElement('span');
@@ -383,6 +510,9 @@ function buildDataSection(p) {
 
     savePlatform(state.currentUid, p);
     openRowId = p.id;
+    // Nome/grupo podem afetar busca e filtros Com/Sem — atualiza a
+    // própria linha e reconcilia a lista visível.
+    refreshRow(p.id);
     renderManageList();
   });
 
@@ -456,6 +586,8 @@ function initAddRow() {
     groupSelect.value = '';
     addRow.classList.remove('open');
 
+    // Plataforma nova: não existe linha pra reaproveitar, reconcileList
+    // cria do zero na posição correta.
     renderManageList();
   });
 }
@@ -531,7 +663,8 @@ function showHistoryModal(platform) {
           savePlatform(state.currentUid, platform);
           editingDepositDate = null;
           openRowId = platform.id;
-          renderManageList();
+          // Não afeta filtro/ordenação — só o conteúdo da linha muda.
+          refreshRow(platform.id);
           showHistoryModal(platform);
         });
         item.appendChild(saveBtn);
@@ -569,7 +702,8 @@ function showHistoryModal(platform) {
             platform.deposits.splice(platform.deposits.indexOf(dep), 1);
             savePlatform(state.currentUid, platform);
             openRowId = platform.id;
-            renderManageList();
+            // Não afeta filtro/ordenação — só o conteúdo da linha muda.
+            refreshRow(platform.id);
             showHistoryModal(platform);
           }
         });
@@ -636,6 +770,9 @@ resetConfirmBtn.addEventListener('click', async () => {
     currentResetPlatform.deposits = [];
     openRowId = currentResetPlatform.id;
     savePlatform(state.currentUid, currentResetPlatform);
+    // lastResetDate/cycleEnded podem afetar filtros de Ativas/Inativas e
+    // ordenação por dias no ciclo — atualiza a linha e reconcilia a lista.
+    refreshRow(currentResetPlatform.id);
     renderManageList();
   }
   closeResetModal();
@@ -702,7 +839,8 @@ function renderBetList() {
       savePlatform(state.currentUid, currentBetPlatform);
       renderBetList();
       openRowId = currentBetPlatform.id;
-      renderManageList();
+      // Não afeta filtro/ordenação — só o conteúdo da linha muda.
+      refreshRow(currentBetPlatform.id);
     });
 
     item.appendChild(label);
@@ -726,7 +864,8 @@ betAddConfirm.addEventListener('click', async () => {
   savePlatform(state.currentUid, currentBetPlatform);
   renderBetList();
   openRowId = currentBetPlatform.id;
-  renderManageList();
+  // Não afeta filtro/ordenação — só o conteúdo da linha muda.
+  refreshRow(currentBetPlatform.id);
 });
 
 betModalClose.addEventListener('click', () => {
@@ -752,9 +891,22 @@ export function initManageControls() {
   initAddRow();
 
   if (platformSearchEl) {
+    // A busca é adiada pro próximo frame (requestAnimationFrame) em vez de
+    // rodar de forma síncrona dentro do evento 'input'. Isso dá tempo do
+    // navegador/teclado virtual terminar de processar a tecla digitada
+    // antes de qualquer atualização de DOM — evita a disputa com o ciclo
+    // de composição do teclado (IME) que causava teclas "comidas" em
+    // telas pequenas. Some com isso: reconcileList (chamado por
+    // renderManageList) já só toca as linhas que realmente entram/saem do
+    // filtro, então o trabalho por tecla também é bem menor do que antes.
+    let searchFrame = null;
     platformSearchEl.addEventListener('input', (e) => {
       currentSearch = e.target.value;
-      renderManageList();
+      if (searchFrame) cancelAnimationFrame(searchFrame);
+      searchFrame = requestAnimationFrame(() => {
+        searchFrame = null;
+        renderManageList();
+      });
     });
   }
 
