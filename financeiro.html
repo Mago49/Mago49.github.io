@@ -34,6 +34,7 @@
   <link rel="stylesheet" href="css/manage-panel.css" />
   <link rel="stylesheet" href="css/finance.css" />
   <link rel="stylesheet" href="css/modals.css" />
+  <link rel="stylesheet" href="css/sort-menu.css" />
   <link rel="stylesheet" href="css/nav.css" />
   <link rel="stylesheet" href="css/responsive.css" />
 </head>
@@ -106,6 +107,10 @@
       <div class="finance-panel-header">
         <h3>Plataformas</h3>
         <input id="financeSearch" type="search" placeholder="Buscar plataforma" aria-label="Buscar plataforma" />
+        <div class="sort-menu">
+          <button type="button" id="financeSortBtn" class="sort-menu-toggle" aria-expanded="false">⇅ Ordenar</button>
+          <div class="sort-menu-dropdown" id="financeSortDropdown"></div>
+        </div>
       </div>
 
       <div id="financeList" role="list" aria-live="polite"></div>
