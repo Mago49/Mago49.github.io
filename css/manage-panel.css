@@ -193,6 +193,24 @@
   margin: 0.3rem 0 -0.15rem;
 }
 
+/* Ponto 8 — cabeçalho clicável da seção "Dados" (minimizável, recolhida
+   por padrão). Reaproveita o mesmo chevron (.platform-manage-chevron) do
+   cabeçalho principal da linha, mas aqui a rotação é uma classe própria
+   (.open direto no chevron), já que este cabeçalho não é filho de um
+   ".platform-manage-row.open" ancestral específico — é uma seção interna,
+   independente do estado aberto/fechado da linha inteira. */
+.manage-section-label-collapsible {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  margin-bottom: 0.1rem;
+}
+
+.manage-section-label-collapsible .platform-manage-chevron.open {
+  transform: rotate(180deg);
+}
+
 .manage-actions-section,
 .manage-data-section {
   display: flex;
