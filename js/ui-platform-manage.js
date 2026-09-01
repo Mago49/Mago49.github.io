@@ -69,12 +69,26 @@
 // linha antiga (mesmo id) com conteúdo desatualizado até alguma ação
 // forçar a atualização dela. Isso é só sobre o que a TELA mostra — nunca
 // afeta o que é lido/gravado no Firestore.
+//
+// === PONTO 1 — Ordenar (filtra + ordena) ===
+// getVisibleList() usa filterAndSortForManage() (platform-sort.js) em vez
+// da antiga dupla sortPlatforms/filterPlatforms — cada modo agora decide
+// quem aparece E em que ordem ao mesmo tempo (ex: "A - Z" só mostra quem
+// começa com letra, já ordenado). "Ativas"/"Inativas" também foram
+// corrigidas ali pra considerar cycleEnded, não só lastResetDate.
+//
+// === PONTO 8 — Minimizar "Dados" ===
+// A seção "Dados" (nome/nível/tipo) começa recolhida ao abrir uma
+// plataforma — só "Ações" fica sempre visível. expandedDataId guarda qual
+// plataforma tem "Dados" expandida (reseta junto com openRowId sempre que
+// a linha inteira é aberta/fechada). Expandir/recolher usa refreshRow —
+// nunca reconstrói a lista inteira.
 
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
 import { getMonthStart, getCurrentCycleDay, getTotalDepositsSinceCycle, getDaysSinceLastDeposit, colorForLevel } from './cycle-logic.js';
 import { savePlatform, deletePlatformDoc } from './platforms-store.js';
-import { sortPlatforms, filterPlatforms, SORT_ONLY_MODES } from './platform-sort.js';
+import { filterAndSortForManage } from './platform-sort.js';
 import { initSortMenu } from './ui-sort.js';
 
 const manageListEl = document.getElementById('platformManageList');
@@ -83,6 +97,10 @@ const platformSearchEl = document.getElementById('platformSearch');
 let currentSearch = '';
 let currentMode = null; // um dos SORT_MENU_OPTIONS.value, ou null (Padrão)
 let openRowId = null;
+// Ponto 8: id da plataforma cuja seção "Dados" está expandida (só uma por
+// vez, já que só uma linha fica aberta). Sempre recolhida por padrão —
+// reseta junto com openRowId sempre que uma linha é aberta/fechada.
+let expandedDataId = null;
 
 // id da plataforma -> elemento <div class="platform-manage-row..."> já
 // presente no DOM. Fonte de verdade de "o que está renderizado agora".
@@ -94,10 +112,12 @@ function getVisibleList() {
   const q = currentSearch.trim().toLowerCase();
   let list = state.platforms.filter(p => p.name.toLowerCase().includes(q));
 
+  // Ponto 1: cada modo agora filtra E ordena ao mesmo tempo (ex: "A - Z"
+  // só mostra quem começa com letra, já em ordem; "Ativas"/"Inativas"
+  // corrigidas pra considerar cycleEnded, não só lastResetDate). Ver
+  // filterAndSortForManage em platform-sort.js pra tabela completa.
   if (currentMode) {
-    list = SORT_ONLY_MODES.has(currentMode)
-      ? sortPlatforms(list, currentMode)
-      : filterPlatforms(list, currentMode); // com / sem / ativas / inativas -> filtra (esconde)
+    list = filterAndSortForManage(list, currentMode);
   }
   return list;
 }
@@ -260,6 +280,10 @@ function buildRow(p) {
     const previousOpenRowId = openRowId;
     const wasOpen = previousOpenRowId === p.id;
     openRowId = wasOpen ? null : p.id;
+    // Ponto 8: "Dados" sempre recolhida de novo ao abrir/fechar a linha —
+    // estado inicial igual pra todas as plataformas, sem lembrar escolha
+    // anterior (mesma regra já validada pros sub-acordeões do Financeiro).
+    expandedDataId = null;
     if (!wasOpen && previousOpenRowId) {
       refreshRow(previousOpenRowId); // fecha a linha que estava aberta antes
     }
@@ -439,10 +463,34 @@ function buildDataSection(p) {
   const section = document.createElement('div');
   section.className = 'manage-data-section';
 
+  // Ponto 8: "Dados" (nome/nível/tipo) é editado raramente — só depois de
+  // um processo longo de apostas até subir de nível — então fica
+  // recolhida por padrão ao abrir a plataforma. Clicar no cabeçalho
+  // expande/recolhe só esta seção, sem afetar "Ações" (sempre visível).
+  const isDataExpanded = expandedDataId === p.id;
+
   const label = document.createElement('div');
-  label.className = 'manage-section-label';
-  label.textContent = 'Dados';
+  label.className = 'manage-section-label manage-section-label-collapsible';
+  const labelText = document.createElement('span');
+  labelText.textContent = 'Dados';
+  const labelChevron = document.createElement('span');
+  labelChevron.className = 'platform-manage-chevron' + (isDataExpanded ? ' open' : '');
+  labelChevron.textContent = '▾';
+  label.appendChild(labelText);
+  label.appendChild(labelChevron);
+  label.addEventListener('click', () => {
+    expandedDataId = isDataExpanded ? null : p.id;
+    refreshRow(p.id);
+  });
   section.appendChild(label);
+
+  // Recolhida: nada mais é montado — qualquer alteração não salva nos
+  // campos abaixo (nome/nível/tipo) é descartada ao recolher, já que a
+  // seção inteira é reconstruída do zero na próxima vez que for expandida
+  // (mesma regra de segurança já usada nos sub-acordeões do Financeiro).
+  if (!isDataExpanded) {
+    return section;
+  }
 
   const fields = document.createElement('div');
   fields.className = 'platform-form-fields';
@@ -913,8 +961,8 @@ export function initManageControls() {
   initSortMenu({
     buttonId: 'manageSortBtn',
     dropdownId: 'manageSortDropdown',
-    // Página 4: 1-9/9-1/+Dias/-Dias reordenam; Com/Sem/Ativas/Inativas
-    // escondem quem não bate (ver getVisibleList / filterPlatforms).
+    // Página 4: cada modo filtra E ordena ao mesmo tempo (Ponto 1) — ver
+    // getVisibleList / filterAndSortForManage em platform-sort.js.
     onChange: (mode) => {
       currentMode = mode;
       renderManageList();

@@ -83,6 +83,7 @@
 
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
+import { colorForLevel } from './cycle-logic.js';
 import {
   getWeekStart, getWeekEnd, toLocalDateString, toLocalDateTimeString,
   computeCurrentWeekLive, closeWeek, isCurrentWeekClosed, canCloseCurrentWeek,
@@ -94,11 +95,15 @@ import { savePlatforms, savePlatform } from './platforms-store.js';
 import {
   parseFinanceSpreadsheet, formatImportedFieldName, formatImportedNumber
 } from './finance-spreadsheet-import.js';
+import { filterAndSortForManage } from './platform-sort.js';
+import { initSortMenu } from './ui-sort.js';
 
 const financeListEl = document.getElementById('financeList');
 const financeSearchEl = document.getElementById('financeSearch');
 
 let currentSearch = '';
+// Ponto 5.1: um dos FINANCE_SORT_MENU_OPTIONS.value, ou null (Padrão).
+let currentMode = null;
 let openRowId = null;
 // Semana do histórico atualmente em edição (no máximo uma por vez):
 // { platformId, weekStart } | null
@@ -113,10 +118,37 @@ let startingPhaseId = null;
 // de modo, manual ou planilha) — só uma por vez. Reseta junto com o
 // resto ao abrir/fechar uma linha.
 let addingHistoricalWeekId = null;
+// Ponto 6: quais das 3 seções colapsáveis ('total' | 'phases' | 'history')
+// estão expandidas na linha aberta agora — todas começam recolhidas,
+// reseta junto com o resto ao abrir/fechar uma linha (nunca lembra a
+// última escolha, nem entre plataformas nem entre sessões).
+let expandedSections = new Set();
 
 // id da plataforma -> elemento <div class="platform-manage-row..."> já
 // presente no DOM. Fonte de verdade de "o que está renderizado agora".
 const rowElements = new Map();
+
+// Ponto 5.1: rótulos próprios do menu Ordenar do Financeiro — reaproveita
+// os MESMOS valores ('az','za','1-9','9-1','com','sem','ativas','inativas')
+// que filterAndSortForManage (platform-sort.js) já sabe interpretar, só
+// com texto adaptado a esta página ("Com Aposta" no singular, sem "no
+// ciclo" em Ativas/Inativas). Maior/Menor Saldo são exclusivos desta
+// página — ordenam por computeLiveBalance(), resolvido localmente em
+// getVisibleList() (não vive em platform-sort.js de propósito: essa
+// função é pura sobre cycle-logic, nunca deveria depender de
+// finance-logic — ver regra de isolamento no guia de arquitetura).
+const FINANCE_SORT_MENU_OPTIONS = [
+  { value: 'saldo-desc', label: 'Maior Saldo' },
+  { value: 'saldo-asc', label: 'Menor Saldo' },
+  { value: 'az', label: 'A - Z' },
+  { value: 'za', label: 'Z - A' },
+  { value: '1-9', label: '1 – 9' },
+  { value: '9-1', label: '9 – 1' },
+  { value: 'com', label: 'Com Aposta' },
+  { value: 'sem', label: 'Sem Aposta' },
+  { value: 'ativas', label: 'Ativas' },
+  { value: 'inativas', label: 'Inativas' }
+];
 
 function formatDatePt(isoDateStr) {
   if (!isoDateStr) return '';
@@ -133,7 +165,27 @@ function formatDateTimePt(isoStr) {
 
 function getVisibleList() {
   const q = currentSearch.trim().toLowerCase();
-  return state.platforms.filter(p => p.name.toLowerCase().includes(q));
+  let list = state.platforms.filter(p => p.name.toLowerCase().includes(q));
+
+  // Maior/Menor Saldo são exclusivos desta página (dependem de
+  // computeLiveBalance, de finance-logic.js) — resolvidos aqui, não em
+  // filterAndSortForManage (platform-sort.js), que é pura sobre
+  // cycle-logic e nunca deveria depender de dado financeiro.
+  if (currentMode === 'saldo-desc') {
+    return [...list].sort((a, b) => computeLiveBalance(b) - computeLiveBalance(a));
+  }
+  if (currentMode === 'saldo-asc') {
+    return [...list].sort((a, b) => computeLiveBalance(a) - computeLiveBalance(b));
+  }
+
+  // Demais modos (az/za/1-9/9-1/com/sem/ativas/inativas) usam a MESMA
+  // função já validada e testada na Página 4 (Ponto 1) — mesmo
+  // comportamento de filtrar+ordenar juntos, mesma correção do bug de
+  // Ativas/Inativas.
+  if (currentMode) {
+    list = filterAndSortForManage(list, currentMode);
+  }
+  return list;
 }
 
 function statBox(label, value, cls = '') {
@@ -216,7 +268,11 @@ export function initFinanceOverview() {
       // reconcileList por si só só cuida de quem entra/sai da lista, não
       // reconstrói conteúdo de linhas que continuam visíveis.
       refreshAllRows();
-      renderFinanceOverview();
+      // renderFinanceList() já chama renderFinanceOverview() internamente
+      // e reconcilia a ordem/visibilidade — importa se o modo ativo for
+      // Maior/Menor Saldo (Ponto 5.1), já que TODAS as plataformas
+      // mudaram de Saldo de uma vez.
+      renderFinanceList();
     });
   }
 }
@@ -335,6 +391,56 @@ function dividerEl() {
   return hr;
 }
 
+// ---------- SEÇÕES COLAPSÁVEIS (Ponto 6) ----------
+// Envolve uma seção (Total da plataforma / Fases do Saldo / Histórico)
+// num cabeçalho clicável, recolhida por padrão — mesmo visual e mesma
+// classe (.manage-section-label-collapsible, manage-panel.css) já usados
+// pela seção "Dados" da Página 4 (Ponto 8). "Semana atual" NÃO passa por
+// aqui — continua sempre visível, montada direto em buildRow().
+//
+// sectionKey identifica qual seção é, pra: (a) lembrar se está expandida
+// (expandedSections), e (b) saber qual estado transitório descartar se a
+// seção for recolhida com uma edição em andamento dentro dela (regra já
+// validada: nunca fica escondido com dado não salvo por trás).
+function buildCollapsibleSection(p, sectionKey, label, buildContentFn) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'manage-data-section';
+
+  const isExpanded = expandedSections.has(sectionKey);
+
+  const header = document.createElement('div');
+  header.className = 'manage-section-label manage-section-label-collapsible';
+  const labelText = document.createElement('span');
+  labelText.textContent = label;
+  const chevron = document.createElement('span');
+  chevron.className = 'platform-manage-chevron' + (isExpanded ? ' open' : '');
+  chevron.textContent = '▾';
+  header.appendChild(labelText);
+  header.appendChild(chevron);
+  header.addEventListener('click', () => {
+    if (isExpanded) {
+      expandedSections.delete(sectionKey);
+      // Descarta formulário em andamento dentro da seção que está
+      // recolhendo — nunca fica escondido com dado não salvo por trás.
+      if (sectionKey === 'phases') startingPhaseId = null;
+      if (sectionKey === 'history') {
+        editingWeek = null;
+        historyDateFilter = null;
+        addingHistoricalWeekId = null;
+      }
+    } else {
+      expandedSections.add(sectionKey);
+    }
+    refreshRow(p.id);
+  });
+  wrapper.appendChild(header);
+
+  if (!isExpanded) return wrapper;
+
+  wrapper.appendChild(buildContentFn());
+  return wrapper;
+}
+
 function buildRow(p) {
   const row = document.createElement('div');
   row.className = 'platform-manage-row' + (p.id === openRowId ? ' open' : '');
@@ -358,7 +464,10 @@ function buildRow(p) {
 
   const balanceBadge = document.createElement('span');
   balanceBadge.className = 'platform-total-badge';
-  balanceBadge.style.background = '#dcfce7';
+  // Ponto 5.2: cor acompanha as mesmas faixas de valor que o calendário
+  // usa (colorForLevel, cycle-logic.js) — dá controle visual imediato de
+  // "quanto falta pro próximo patamar" só olhando o badge.
+  balanceBadge.style.background = colorForLevel(liveBalance);
   balanceBadge.textContent = `Saldo ${formatCurrency(liveBalance)}`;
   balanceBadge.title = 'Saldo Inicial da fase atual (se houver) + depósitos - saques + resultado das apostas (R.B.) + bônus recebidos, desde o início da fase atual (mínimo R$ 0,00)';
   badges.appendChild(balanceBadge);
@@ -385,23 +494,27 @@ function buildRow(p) {
     historyDateFilter = null;
     startingPhaseId = null;
     addingHistoricalWeekId = null;
+    // Ponto 6: as 3 seções colapsáveis sempre recolhem de novo ao abrir/
+    // fechar a linha — estado inicial igual pra todas as plataformas.
+    expandedSections = new Set();
     if (!wasOpen && previousOpenRowId) {
       refreshRow(previousOpenRowId); // fecha a linha que estava aberta antes
     }
     refreshRow(p.id); // aplica o novo estado (aberta ou fechada) nesta linha
   });
 
-  // --- body (aberto): Semana atual + Total da plataforma + Fases do
-  //     Saldo + Histórico ---
+  // --- body (aberto): Semana atual (sempre visível) + Total da
+  //     plataforma + Fases do Saldo + Histórico (as 3 últimas nascem
+  //     recolhidas — Ponto 6) ---
   const body = document.createElement('div');
   body.className = 'platform-manage-row-body';
   body.appendChild(buildCurrentWeekSection(p, live, closed, liveBalance));
   body.appendChild(dividerEl());
-  body.appendChild(buildPlatformTotalSection(p));
+  body.appendChild(buildCollapsibleSection(p, 'total', 'Total da plataforma', () => buildPlatformTotalContent(p)));
   body.appendChild(dividerEl());
-  body.appendChild(buildPhaseSection(p));
+  body.appendChild(buildCollapsibleSection(p, 'phases', 'Fases do Saldo', () => buildPhaseContent(p)));
   body.appendChild(dividerEl());
-  body.appendChild(buildHistorySection(p));
+  body.appendChild(buildCollapsibleSection(p, 'history', 'Histórico (semanas fechadas)', () => buildHistoryContent(p)));
 
   row.appendChild(header);
   row.appendChild(body);
@@ -468,9 +581,10 @@ function buildCurrentWeekSection(p, live, closed, liveBalance) {
     p.withdrawals.push({ date: new Date().toISOString(), value });
     savePlatform(state.currentUid, p);
     openRowId = p.id;
-    // Não afeta quem está visível (busca é só por nome) — só o conteúdo
-    // desta linha muda.
+    // Muda o Saldo — se o modo ativo for Maior/Menor Saldo (Ponto 5.1), a
+    // posição desta linha na lista pode mudar também.
     refreshRow(p.id);
+    renderFinanceList();
   });
   withdrawForm.appendChild(withdrawInput);
   withdrawForm.appendChild(withdrawBtn);
@@ -509,7 +623,9 @@ function buildCurrentWeekSection(p, live, closed, liveBalance) {
     p.betEntries.push({ date: new Date().toISOString(), wagered, betCount, resultBetting });
     savePlatform(state.currentUid, p);
     openRowId = p.id;
+    // Muda o Saldo — mesma razão do saque acima.
     refreshRow(p.id);
+    renderFinanceList();
   });
   betForm.appendChild(wageredInput);
   betForm.appendChild(betCountInput);
@@ -560,7 +676,9 @@ function buildCurrentWeekSection(p, live, closed, liveBalance) {
       closeWeek(p, bonus);
       savePlatform(state.currentUid, p);
       openRowId = p.id;
+      // Muda o Saldo — mesma razão das duas ações acima.
       refreshRow(p.id);
+      renderFinanceList();
     });
     closeActions.appendChild(closeBtn);
     closeSection.appendChild(closeActions);
@@ -572,15 +690,9 @@ function buildCurrentWeekSection(p, live, closed, liveBalance) {
 
 // ---------- SEÇÃO "TOTAL DA PLATAFORMA" (soma das semanas fechadas + Saldo da fase atual) ----------
 
-function buildPlatformTotalSection(p) {
-  const section = document.createElement('div');
-  section.className = 'manage-data-section';
-
-  const label = document.createElement('div');
-  label.className = 'manage-section-label';
-  label.textContent = 'Total da plataforma';
-  section.appendChild(label);
-
+// Ponto 6: conteúdo puro (sem label/wrapper próprio — quem monta isso é
+// buildCollapsibleSection, que já cuida do cabeçalho clicável).
+function buildPlatformTotalContent(p) {
   const weeks = p.financeWeeks || [];
   const totals = computePlatformTotals(p);
 
@@ -602,27 +714,23 @@ function buildPlatformTotalSection(p) {
   stats.innerHTML = statsGridHtml(totals);
   card.appendChild(stats);
 
-  section.appendChild(card);
-  return section;
+  return card;
 }
 
 // ---------- SEÇÃO "FASES DO SALDO" ----------
 
-function buildPhaseSection(p) {
-  const section = document.createElement('div');
-  section.className = 'manage-data-section';
-
-  const label = document.createElement('div');
-  label.className = 'manage-section-label';
-  label.textContent = 'Fases do Saldo';
-  section.appendChild(label);
+// Ponto 6: conteúdo puro (sem label/wrapper próprio). Retorna um
+// DocumentFragment porque tem 3 nós irmãos (nota + controles + lista) —
+// appendChild de um fragment insere todos os filhos de uma vez.
+function buildPhaseContent(p) {
+  const fragment = document.createDocumentFragment();
 
   const note = document.createElement('p');
   note.className = 'finance-close-week-note';
   note.textContent = 'Cada fase começa com um Saldo Inicial (informado na hora de abrir a fase) e soma os movimentos a partir dali — nada de fases anteriores é carregado além desse valor. "Iniciar nova fase" fecha a fase atual (o resultado dela fica guardado aqui pra sempre) e pede o Saldo Inicial da fase nova. Útil quando o histórico antigo é incompleto, tem números errados, ou quando você está migrando de uma planilha externa e quer começar do valor real de hoje.';
-  section.appendChild(note);
+  fragment.appendChild(note);
 
-  section.appendChild(buildPhaseControls(p));
+  fragment.appendChild(buildPhaseControls(p));
 
   const phases = computePhaseHistory(p);
   const list = document.createElement('div');
@@ -630,9 +738,9 @@ function buildPhaseSection(p) {
   [...phases].reverse().forEach(phase => {
     list.appendChild(buildPhaseCard(phase));
   });
-  section.appendChild(list);
+  fragment.appendChild(list);
 
-  return section;
+  return fragment;
 }
 
 function buildPhaseControls(p) {
@@ -699,7 +807,10 @@ function buildPhaseControls(p) {
       savePlatform(state.currentUid, p);
       startingPhaseId = null;
       openRowId = p.id;
+      // Muda o Saldo desta plataforma — se o modo ativo for Maior/Menor
+      // Saldo (Ponto 5.1), a posição dela na lista pode mudar também.
       refreshRow(p.id);
+      renderFinanceList();
     });
 
     const cancelBtn = document.createElement('button');
@@ -742,7 +853,9 @@ function buildPhaseControls(p) {
       removeLastPhase(p);
       savePlatform(state.currentUid, p);
       openRowId = p.id;
+      // Muda o Saldo desta plataforma — mesma razão do confirmBtn acima.
       refreshRow(p.id);
+      renderFinanceList();
     });
     actions.appendChild(removeBtn);
   }
@@ -776,16 +889,11 @@ function buildPhaseCard(phase) {
 // ---------- SEÇÃO "HISTÓRICO" (semanas fechadas — editável, excluível,
 //            com busca por data e opção de adicionar semana antiga) ----------
 
-function buildHistorySection(p) {
-  const section = document.createElement('div');
-  section.className = 'manage-data-section';
+// Ponto 6: conteúdo puro (sem label/wrapper próprio).
+function buildHistoryContent(p) {
+  const fragment = document.createDocumentFragment();
 
-  const label = document.createElement('div');
-  label.className = 'manage-section-label';
-  label.textContent = 'Histórico (semanas fechadas)';
-  section.appendChild(label);
-
-  section.appendChild(buildAddHistoricalWeekControls(p));
+  fragment.appendChild(buildAddHistoricalWeekControls(p));
 
   // Busca por data: escolher qualquer dia dentro de uma semana já fechada
   // pula direto pra ela, sem precisar rolar a lista inteira.
@@ -815,7 +923,7 @@ function buildHistorySection(p) {
     });
     searchRow.appendChild(clearBtn);
   }
-  section.appendChild(searchRow);
+  fragment.appendChild(searchRow);
 
   let weeks = [...(p.financeWeeks || [])].sort((a, b) => b.weekStart.localeCompare(a.weekStart));
 
@@ -832,8 +940,8 @@ function buildHistorySection(p) {
     empty.textContent = historyDateFilter
       ? 'Nenhuma semana fechada encontrada pra essa data.'
       : 'Nenhuma semana fechada ainda.';
-    section.appendChild(empty);
-    return section;
+    fragment.appendChild(empty);
+    return fragment;
   }
 
   const history = document.createElement('div');
@@ -847,8 +955,8 @@ function buildHistorySection(p) {
     history.appendChild(isEditing ? buildWeekCardEditing(p, w) : buildWeekCardReadOnly(p, w));
   });
 
-  section.appendChild(history);
-  return section;
+  fragment.appendChild(history);
+  return fragment;
 }
 
 // Traduz o motivo de addHistoricalWeek() ter recusado uma semana em texto
@@ -1020,7 +1128,10 @@ function buildManualHistoricalWeekControls(p, wrap) {
     savePlatform(state.currentUid, p);
     addingHistoricalWeekId = null;
     openRowId = p.id;
+    // Muda o Saldo (via depositLog/withdrawals sintéticos) — mesma razão
+    // já aplicada em registrar saque/aposta/fechar semana.
     refreshRow(p.id);
+    renderFinanceList();
   });
 
   const backBtn = document.createElement('button');
@@ -1273,9 +1384,12 @@ function buildSpreadsheetHistoricalWeekControls(p, wrap) {
     // Várias plataformas podem ter mudado (uma por linha da planilha
     // importada) — atualiza a linha de cada uma que realmente mudou, mais
     // a linha de "p" (onde o painel de importação estava aberto), caso
-    // ela mesma não tenha entrado em "ready".
+    // ela mesma não tenha entrado em "ready". Isso muda o Saldo de cada
+    // uma, então reconcilia a lista também (reordena se Maior/Menor Saldo
+    // estiver ativo).
     ready.forEach(({ platform }) => refreshRow(platform.id));
     refreshRow(p.id);
+    renderFinanceList();
 
     const messageParts = [];
     if (imported.length) messageParts.push(`Importadas: ${imported.join(', ')}.`);
@@ -1319,7 +1433,9 @@ function buildWeekCardReadOnly(p, w) {
     deleteClosedWeek(p, w.weekStart);
     savePlatform(state.currentUid, p);
     openRowId = p.id;
+    // Muda o Saldo (a semana excluída pode ter Bônus/R.B. computados).
     refreshRow(p.id);
+    renderFinanceList();
   });
 
   btnGroup.appendChild(editBtn);
@@ -1406,7 +1522,10 @@ function buildWeekCardEditing(p, w) {
     savePlatform(state.currentUid, p);
     editingWeek = null;
     openRowId = p.id;
+    // Bônus/R.B. editados aqui afetam o próximo cálculo de Saldo — mesma
+    // razão já aplicada nas outras ações financeiras desta página.
     refreshRow(p.id);
+    renderFinanceList();
   });
 
   const cancelBtn = document.createElement('button');
@@ -1435,7 +1554,7 @@ function numberInput(placeholder, value, step = '0.01') {
   return input;
 }
 
-// ---------- CONTROLE DO TOPO (busca de plataforma) ----------
+// ---------- CONTROLE DO TOPO (busca + ordenar) ----------
 
 export function initFinanceControls() {
   if (financeSearchEl) {
@@ -1453,4 +1572,17 @@ export function initFinanceControls() {
       });
     });
   }
+
+  // Ponto 5.1: lista de rótulos própria (FINANCE_SORT_MENU_OPTIONS) —
+  // Calendário e Edição não passam "options" e continuam com o padrão
+  // compartilhado (ver ui-sort.js).
+  initSortMenu({
+    buttonId: 'financeSortBtn',
+    dropdownId: 'financeSortDropdown',
+    options: FINANCE_SORT_MENU_OPTIONS,
+    onChange: (mode) => {
+      currentMode = mode;
+      renderFinanceList();
+    }
+  });
 }

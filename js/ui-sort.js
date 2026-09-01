@@ -3,6 +3,13 @@
 // em platform-sort.js). Este módulo só cuida da parte visual (abrir/fechar
 // dropdown, marcar item ativo) — o que cada opção FAZ (reordenar ou
 // esconder) é decidido por quem chama onChange, em cada main-*.js.
+//
+// Ponto 5.1 (Financeiro): a Página 5 precisa de rótulos próprios ("Maior
+// Saldo"/"Menor Saldo", "Com Aposta" no singular, etc.) — por isso
+// initSortMenu aceita um `options` opcional, com SORT_MENU_OPTIONS como
+// padrão. Calendário e Edição não passam esse parâmetro, então continuam
+// usando exatamente a mesma lista compartilhada de sempre, sem nenhuma
+// mudança de comportamento.
 
 import { SORT_MENU_OPTIONS } from './platform-sort.js';
 
@@ -12,8 +19,10 @@ import { SORT_MENU_OPTIONS } from './platform-sort.js';
  * @param {string} options.dropdownId id do container onde as opções são inseridas
  * @param {(mode: string|null) => void} options.onChange
  *        chamado com o value da opção clicada, ou null quando "Padrão" é escolhido
+ * @param {Array<{value: string, label: string}>} [options.options]
+ *        lista de opções a exibir; padrão é SORT_MENU_OPTIONS (Calendário/Edição)
  */
-export function initSortMenu({ buttonId, dropdownId, onChange }) {
+export function initSortMenu({ buttonId, dropdownId, onChange, options = SORT_MENU_OPTIONS }) {
   const btn = document.getElementById(buttonId);
   const dropdown = document.getElementById(dropdownId);
   if (!btn || !dropdown) return;
@@ -21,7 +30,7 @@ export function initSortMenu({ buttonId, dropdownId, onChange }) {
   let activeMode = null;
 
   function renderOptions() {
-    const items = [{ value: null, label: 'Padrão' }, ...SORT_MENU_OPTIONS];
+    const items = [{ value: null, label: 'Padrão' }, ...options];
     dropdown.innerHTML = '';
     items.forEach(item => {
       const opt = document.createElement('button');

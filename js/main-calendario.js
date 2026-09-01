@@ -4,7 +4,7 @@ import { startBackgroundAnimation } from './ui-background.js';
 import { state } from './state.js';
 import { computeHeroStats } from './cycle-logic.js';
 import { renderLegend } from './ui-hero.js';
-import { createCalendar, updateCalendarEvents } from './ui-calendar.js';
+import { createCalendar, updateCalendarEvents, scrollToCurrentWeek } from './ui-calendar.js';
 import { renderPlatformCards, initPlatformCardsControls } from './ui-platform-cards.js';
 
 startBackgroundAnimation();
@@ -19,6 +19,10 @@ initAuth({
     createCalendar();
     initPlatformCardsControls();
     refreshPage();
+    // Ponto 2.1: só na abertura da página, uma única vez — nunca dentro de
+    // scheduleDailyUpdate() abaixo, pra não forçar scroll indesejado se a
+    // virada do dia acontecer enquanto alguém já está navegando.
+    scrollToCurrentWeek();
     scheduleDailyUpdate();
   }
 });

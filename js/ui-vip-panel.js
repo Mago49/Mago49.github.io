@@ -82,6 +82,14 @@ export function initVipFilters() {
 
   if (searchEl) {
     searchEl.addEventListener('input', apply);
+
+    // Ponto 2.2: em telas pequenas, o teclado virtual pode cobrir o campo
+    // de busca ao focar (ver print do usuário — o card de plataforma
+    // ficava colado no topo, sem espaço pro campo). Rola a tela pra deixar
+    // o campo no início da área visível assim que ele ganha foco.
+    searchEl.addEventListener('focus', () => {
+      searchEl.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    });
   }
 
   filterBtns.forEach(btn => {

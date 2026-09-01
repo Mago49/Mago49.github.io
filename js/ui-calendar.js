@@ -41,6 +41,33 @@ export function createCalendar() {
   return state.calendar;
 }
 
+// Ponto 2.1: ao abrir a página, rola até a linha da semana atual ficar
+// visível — antes a página sempre abria mostrando a semana do dia 1 do
+// mês, mesmo quando hoje era outro dia bem mais adiante. Mantém a visão
+// mensal (dayGridMonth) intacta, só ajusta o scroll inicial.
+//
+// Chamado UMA ÚNICA VEZ pelo main-calendario.js, logo depois de
+// createCalendar() no login — nunca dentro de updateCalendarEvents(),
+// pra não forçar um scroll indesejado enquanto alguém já está navegando
+// pela página (ex: na virada do dia à meia-noite, ver scheduleDailyUpdate
+// em main-calendario.js).
+//
+// requestAnimationFrame garante que a grade do FullCalendar já foi
+// pintada no DOM antes de procurar a célula de hoje (.fc-day-today é uma
+// classe que o próprio FullCalendar aplica sozinho, sem precisarmos
+// calcular a data aqui).
+export function scrollToCurrentWeek() {
+  const calendarEl = document.getElementById('calendar');
+  if (!calendarEl) return;
+
+  requestAnimationFrame(() => {
+    const todayCell = calendarEl.querySelector('.fc-day-today');
+    if (!todayCell) return;
+    const row = todayCell.closest('tr') || todayCell;
+    row.scrollIntoView({ block: 'center', behavior: 'auto' });
+  });
+}
+
 export function updateCalendarEvents(onDone) {
   if (!state.calendar) return;
   state.calendar.removeAllEvents();
