@@ -186,3 +186,176 @@
   font-weight: 800;
   color: #1e3a8a;
 }
+
+/* === ABAS (Ponto 7.1) === */
+.vip-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  padding: 1.1rem 1.1rem 0;
+}
+
+.vip-tab-btn {
+  flex: 1;
+  min-width: 140px;
+  border: 1px solid rgba(15,23,42,0.1);
+  background: #fff;
+  color: var(--text-soft);
+  padding: 0.75rem 1rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.88rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.18s ease;
+}
+
+.vip-tab-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.1);
+}
+
+.vip-tab-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.vip-tab-panel {
+  padding-top: 0.6rem;
+}
+
+/* === BÔNUS OBRIGADO (Ponto 7.3) === */
+.obrigado-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0 1.1rem 1rem;
+}
+
+.obrigado-controls label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.obrigado-controls input[type="number"] {
+  width: 110px;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.obrigado-controls input[type="number"]:focus {
+  border-color: rgba(37,99,235,0.45);
+  box-shadow: 0 0 0 4px rgba(37,99,235,0.12);
+}
+
+#obrigadoEditBtn.active {
+  background: #ef4444;
+}
+
+.obrigado-add-form {
+  margin: 0 1.1rem 1rem;
+  padding: 0.9rem;
+  border: 1px solid rgba(37,99,235,0.18);
+  background: rgba(37,99,235,0.04);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.obrigado-add-form input[type="number"],
+.obrigado-add-form input[type="search"] {
+  padding: 0.7rem 0.85rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  outline: none;
+}
+
+.obrigado-add-platform-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 0.3rem;
+}
+
+.obrigado-checkbox-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: #fff;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+/* Grid flexível — dias com mais plataformas ganham cards maiores
+   naturalmente (flex-wrap), sem quebrar o layout em dias com 15+
+   plataformas (ver print da planilha do usuário). */
+.obrigado-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0 1.1rem 1.1rem;
+}
+
+.obrigado-day-card {
+  flex: 1 1 220px;
+  max-width: 340px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+}
+
+.obrigado-day-card-header {
+  background: #eef2ff;
+  color: #3730a3;
+  font-weight: 800;
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 0.55rem;
+}
+
+.obrigado-day-card-platforms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.7rem;
+}
+
+.obrigado-platform-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-dark);
+}
+
+.obrigado-chip-remove {
+  border: none;
+  background: transparent;
+  color: #ef4444;
+  font-weight: 800;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
