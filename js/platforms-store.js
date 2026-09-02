@@ -24,7 +24,8 @@ export const DEFAULT_PLATFORMS = Array.from({ length: 33 }, (_, i) => ({
   betEntries: [],
   financeWeeks: [],
   depositLog: [],
-  balancePhases: []
+  balancePhases: [],
+  obrigadoDays: []
 }));
 
 // depositLog: histórico PERMANENTE de depósitos, usado só pelo Financeiro
@@ -36,6 +37,11 @@ export const DEFAULT_PLATFORMS = Array.from({ length: 33 }, (_, i) => ({
 // balancePhases: lista de fronteiras de fase do Saldo (ver startNewPhase
 // em finance-logic.js) — array vazio quando nenhuma fase foi criada
 // ainda (o Saldo conta desde o início, comportamento padrão).
+//
+// obrigadoDays: dias FIXOS do mês (1-31) em que a plataforma paga Bônus
+// Obrigado — padrão que se repete todo mês, sem depender de ciclo/reset
+// (Página 3, aba "Bônus Obrigado"). Array vazio = plataforma ainda não
+// cadastrada em nenhum dia.
 export function normalizePlatformData(parsed) {
   if (!Array.isArray(parsed)) return null;
   return parsed.map((p, i) => {
@@ -60,7 +66,8 @@ export function normalizePlatformData(parsed) {
       betEntries: Array.isArray(p.betEntries) ? p.betEntries : [],
       financeWeeks: Array.isArray(p.financeWeeks) ? p.financeWeeks : [],
       depositLog,
-      balancePhases: Array.isArray(p.balancePhases) ? p.balancePhases : []
+      balancePhases: Array.isArray(p.balancePhases) ? p.balancePhases : [],
+      obrigadoDays: Array.isArray(p.obrigadoDays) ? p.obrigadoDays : []
     };
   });
 }
