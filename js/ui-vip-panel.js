@@ -385,3 +385,428 @@ function renderObrigadoAddPlatformList() {
     listWrap.appendChild(label);
   });
 }
+
+// ---------- ABA "BÔNUS MISTERIOSO" (Ponto 7.4) ----------
+// Templates (vip-misterioso-store.js) agrupam plataformas que pagam pelos
+// MESMOS 8 patamares fixos de depósito (MISTERIOSO_DEPOSIT_THRESHOLDS,
+// misterioso-logic.js) — só o intervalo de bônus (min/max) por patamar
+// muda de template pra template. Uma plataforma pertence a no máximo UM
+// template por vez (garantido ao salvar, ver saveBtn abaixo).
+//
+// Sem trava automática: se um evento (data de emissão) não tem edição em
+// platform.misteriosoBonusLog, o valor efetivo é sempre o MÍNIMO do
+// patamar alcançado naquela data — pra sempre, até alguém editar. A UI só
+// permite editar os últimos 7 dias (isWithinEditableWindow); fora disso o
+// campo simplesmente não aparece mais.
+
+let misteriosoTemplates = [];
+let misteriosoTemplateFormOpen = false;
+let misteriosoEditingTemplateId = null; // null = criando novo
+let misteriosoTemplateSearch = '';
+let misteriosoSelectedPlatformIds = new Set();
+let misteriosoForecastMonth = ''; // 'AAAA-MM', default = mês atual
+
+function toDateKey(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function findTemplateForPlatform(platformId) {
+  return misteriosoTemplates.find(t => (t.platformIds || []).includes(platformId)) || null;
+}
+
+// Carrega os templates do Firestore e faz a primeira renderização —
+// chamado uma única vez pelo main-vip.js, depois do login.
+export async function initMisteriosoPanel() {
+  misteriosoTemplates = await loadMisteriosoTemplates(state.currentUid);
+  const now = new Date();
+  misteriosoForecastMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  initMisteriosoControls();
+  renderMisteriosoPanel();
+}
+
+function initMisteriosoControls() {
+  const monthInput = document.getElementById('misteriosoMonthInput');
+  if (monthInput) {
+    monthInput.value = misteriosoForecastMonth;
+    monthInput.addEventListener('change', () => {
+      misteriosoForecastMonth = monthInput.value || misteriosoForecastMonth;
+      renderMisteriosoForecast();
+    });
+  }
+
+  const manageBtn = document.getElementById('misteriosoManageBtn');
+  if (manageBtn) {
+    manageBtn.addEventListener('click', () => {
+      misteriosoTemplateFormOpen = !misteriosoTemplateFormOpen;
+      if (!misteriosoTemplateFormOpen) {
+        misteriosoEditingTemplateId = null;
+        misteriosoTemplateSearch = '';
+        misteriosoSelectedPlatformIds = new Set();
+      }
+      manageBtn.textContent = misteriosoTemplateFormOpen ? '✓ Fechar gerenciamento' : '⚙ Gerenciar templates';
+      renderMisteriosoTemplateManager();
+    });
+  }
+
+  renderMisteriosoTemplateManager();
+}
+
+function renderMisteriosoPanel() {
+  renderMisteriosoForecast();
+  renderMisteriosoEditableEvents();
+}
+
+// ---- Previsão do mês selecionado ----
+// Só soma dentro do CICLO ATUAL de cada plataforma (as 5 datas de emissão
+// vêm de lastResetDate, não recalculam ciclos passados) — mesma limitação
+// já aceita em outras partes do app (ex: calendário), não uma regressão
+// nova.
+function computeMisteriosoForecast(yearMonth) {
+  let total = 0;
+  state.platforms.forEach(p => {
+    if (p.cycleEnded) return;
+    const template = findTemplateForPlatform(p.id);
+    if (!template) return;
+    computeEmissionDates(p).forEach(date => {
+      const key = toDateKey(date);
+      if (key.slice(0, 7) === yearMonth) {
+        total += getEffectiveMisteriosoValue(p, key, template);
+      }
+    });
+  });
+  return total;
+}
+
+function renderMisteriosoForecast() {
+  const totalEl = document.getElementById('misteriosoTotal');
+  if (!totalEl) return;
+  totalEl.textContent = formatCurrency(computeMisteriosoForecast(misteriosoForecastMonth));
+}
+
+// ---- Eventos editáveis (hoje + até 7 dias atrás) ----
+function getEditableMisteriosoEvents() {
+  const today = new Date();
+  const events = [];
+  state.platforms.forEach(p => {
+    if (p.cycleEnded) return;
+    const template = findTemplateForPlatform(p.id);
+    if (!template) return;
+    computeEmissionDates(p).forEach(date => {
+      const key = toDateKey(date);
+      if (isWithinEditableWindow(key, today)) {
+        events.push({ platform: p, dateKey: key, template });
+      }
+    });
+  });
+  events.sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+  return events;
+}
+
+function renderMisteriosoEditableEvents() {
+  const listEl = document.getElementById('misteriosoEventsList');
+  if (!listEl) return;
+  listEl.innerHTML = '';
+
+  const events = getEditableMisteriosoEvents();
+
+  if (events.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'history-empty';
+    empty.textContent = 'Nenhum evento de Bônus Misterioso nos últimos 7 dias (ou nenhuma plataforma tem um template atribuído ainda).';
+    listEl.appendChild(empty);
+    return;
+  }
+
+  events.forEach(({ platform, dateKey, template }) => {
+    const row = document.createElement('div');
+    row.className = 'misterioso-event-row';
+
+    const label = document.createElement('span');
+    label.className = 'misterioso-event-label';
+    const [, m, d] = dateKey.split('-');
+    label.textContent = `${platform.name} — ${d}/${m}`;
+    row.appendChild(label);
+
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.step = '0.01';
+    input.min = '0';
+    input.value = getEffectiveMisteriosoValue(platform, dateKey, template);
+    input.className = 'misterioso-event-input';
+    input.setAttribute('aria-label', `Bônus Misterioso de ${platform.name} em ${d}/${m}`);
+    input.addEventListener('change', () => {
+      const value = parseFloat(input.value);
+      if (isNaN(value) || value < 0) {
+        input.value = getEffectiveMisteriosoValue(platform, dateKey, template);
+        return;
+      }
+      if (!platform.misteriosoBonusLog) platform.misteriosoBonusLog = [];
+      const existing = platform.misteriosoBonusLog.find(e => e.date === dateKey);
+      if (existing) {
+        existing.value = value;
+        existing.edited = true;
+      } else {
+        platform.misteriosoBonusLog.push({ date: dateKey, value, edited: true });
+      }
+      savePlatform(state.currentUid, platform);
+      renderMisteriosoForecast();
+    });
+    row.appendChild(input);
+
+    listEl.appendChild(row);
+  });
+}
+
+// ---- Gerenciamento de templates ----
+function renderMisteriosoTemplateManager() {
+  const wrap = document.getElementById('misteriosoTemplateManager');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  wrap.classList.toggle('app-hidden', !misteriosoTemplateFormOpen);
+  if (!misteriosoTemplateFormOpen) return;
+
+  const list = document.createElement('div');
+  list.className = 'finance-history';
+
+  if (misteriosoTemplates.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'history-empty';
+    empty.textContent = 'Nenhum template criado ainda.';
+    list.appendChild(empty);
+  } else {
+    misteriosoTemplates.forEach(t => {
+      const card = document.createElement('div');
+      card.className = 'finance-week-card';
+
+      const header = document.createElement('div');
+      header.className = 'finance-week-card-header';
+
+      const titleSpan = document.createElement('span');
+      titleSpan.textContent = `${t.name} — ${(t.platformIds || []).length} plataforma(s)`;
+      header.appendChild(titleSpan);
+
+      const actions = document.createElement('div');
+      actions.className = 'finance-week-card-actions';
+
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'bet-manage-btn';
+      editBtn.textContent = 'Editar';
+      editBtn.addEventListener('click', () => {
+        misteriosoEditingTemplateId = t.id;
+        misteriosoSelectedPlatformIds = new Set(t.platformIds || []);
+        renderMisteriosoTemplateForm();
+      });
+      actions.appendChild(editBtn);
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'history-delete-btn';
+      deleteBtn.textContent = 'Excluir';
+      deleteBtn.addEventListener('click', async () => {
+        const ok = await showAppConfirm(`Excluir o template "${t.name}"? As plataformas associadas deixam de ter faixa de Bônus Misterioso até você criar/associar outro template.`);
+        if (!ok) return;
+        deleteMisteriosoTemplate(state.currentUid, t.id);
+        misteriosoTemplates = misteriosoTemplates.filter(tt => tt.id !== t.id);
+        renderMisteriosoTemplateManager();
+        renderMisteriosoPanel();
+      });
+      actions.appendChild(deleteBtn);
+
+      header.appendChild(actions);
+      card.appendChild(header);
+      list.appendChild(card);
+    });
+  }
+  wrap.appendChild(list);
+
+  const newBtn = document.createElement('button');
+  newBtn.type = 'button';
+  newBtn.className = 'bet-manage-btn';
+  newBtn.textContent = '+ Novo template';
+  newBtn.addEventListener('click', () => {
+    misteriosoEditingTemplateId = null;
+    misteriosoSelectedPlatformIds = new Set();
+    misteriosoTemplateSearch = '';
+    renderMisteriosoTemplateForm();
+  });
+  wrap.appendChild(newBtn);
+
+  const formWrap = document.createElement('div');
+  formWrap.id = 'misteriosoTemplateForm';
+  wrap.appendChild(formWrap);
+}
+
+function renderMisteriosoTemplateForm() {
+  const formWrap = document.getElementById('misteriosoTemplateForm');
+  if (!formWrap) return;
+  formWrap.innerHTML = '';
+
+  const editingTemplate = misteriosoEditingTemplateId
+    ? misteriosoTemplates.find(t => t.id === misteriosoEditingTemplateId)
+    : null;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'obrigado-add-form'; // reaproveita o visual do formulário do Bônus Obrigado
+
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.placeholder = 'Nome do template (ex: Padrão A)';
+  nameInput.value = editingTemplate ? editingTemplate.name : '';
+  wrap.appendChild(nameInput);
+
+  const tiersWrap = document.createElement('div');
+  tiersWrap.className = 'misterioso-tiers-grid';
+  const rangeInputs = [];
+  MISTERIOSO_DEPOSIT_THRESHOLDS.forEach((threshold, i) => {
+    const row = document.createElement('div');
+    row.className = 'misterioso-tier-row';
+
+    const label = document.createElement('span');
+    label.className = 'misterioso-tier-label';
+    label.textContent = formatCurrency(threshold);
+    row.appendChild(label);
+
+    const minInput = document.createElement('input');
+    minInput.type = 'number';
+    minInput.step = '0.01';
+    minInput.min = '0';
+    minInput.placeholder = 'Mín.';
+    minInput.value = editingTemplate ? editingTemplate.bonusRanges[i].min : '';
+    row.appendChild(minInput);
+
+    const maxInput = document.createElement('input');
+    maxInput.type = 'number';
+    maxInput.step = '0.01';
+    maxInput.min = '0';
+    maxInput.placeholder = 'Máx.';
+    maxInput.value = editingTemplate ? editingTemplate.bonusRanges[i].max : '';
+    row.appendChild(maxInput);
+
+    rangeInputs.push({ minInput, maxInput });
+    tiersWrap.appendChild(row);
+  });
+  wrap.appendChild(tiersWrap);
+
+  const searchInput = document.createElement('input');
+  searchInput.type = 'search';
+  searchInput.placeholder = 'Buscar plataforma';
+  searchInput.value = misteriosoTemplateSearch;
+  searchInput.addEventListener('input', (e) => {
+    misteriosoTemplateSearch = e.target.value;
+    renderMisteriosoTemplatePlatformList();
+  });
+  wrap.appendChild(searchInput);
+
+  const listWrap = document.createElement('div');
+  listWrap.id = 'misteriosoTemplatePlatformList';
+  listWrap.className = 'obrigado-add-platform-list';
+  wrap.appendChild(listWrap);
+
+  const actions = document.createElement('div');
+  actions.className = 'reset-modal-buttons';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'btn-confirm';
+  saveBtn.textContent = editingTemplate ? 'Salvar alterações' : 'Criar template';
+  saveBtn.addEventListener('click', async () => {
+    const name = nameInput.value.trim();
+    if (!name) {
+      await showAppAlert('Digite um nome pro template.');
+      return;
+    }
+    const bonusRanges = rangeInputs.map(({ minInput, maxInput }) => {
+      const min = parseFloat(minInput.value);
+      const max = parseFloat(maxInput.value);
+      return { min: isNaN(min) ? 0 : min, max: isNaN(max) ? 0 : max };
+    });
+
+    const id = misteriosoEditingTemplateId || ('mt' + Date.now());
+
+    // Garante exclusividade: uma plataforma só pertence a UM template por
+    // vez — remove das outras antes de salvar esta.
+    misteriosoTemplates.forEach(t => {
+      if (t.id === id) return;
+      const filtered = (t.platformIds || []).filter(pid => !misteriosoSelectedPlatformIds.has(pid));
+      if (filtered.length !== (t.platformIds || []).length) {
+        t.platformIds = filtered;
+        saveMisteriosoTemplate(state.currentUid, t);
+      }
+    });
+
+    const platformIds = [...misteriosoSelectedPlatformIds];
+    saveMisteriosoTemplate(state.currentUid, { id, name, bonusRanges, platformIds });
+
+    const newTemplate = { id, name, bonusRanges, platformIds };
+    if (misteriosoEditingTemplateId) {
+      misteriosoTemplates = misteriosoTemplates.map(t => t.id === id ? newTemplate : t);
+    } else {
+      misteriosoTemplates.push(newTemplate);
+    }
+
+    misteriosoEditingTemplateId = null;
+    misteriosoSelectedPlatformIds = new Set();
+    misteriosoTemplateSearch = '';
+    renderMisteriosoTemplateManager();
+    renderMisteriosoPanel();
+  });
+  actions.appendChild(saveBtn);
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'btn-cancel-modal';
+  cancelBtn.textContent = 'Cancelar';
+  cancelBtn.addEventListener('click', () => {
+    misteriosoEditingTemplateId = null;
+    misteriosoSelectedPlatformIds = new Set();
+    misteriosoTemplateSearch = '';
+    formWrap.innerHTML = '';
+  });
+  actions.appendChild(cancelBtn);
+  wrap.appendChild(actions);
+
+  formWrap.appendChild(wrap);
+  renderMisteriosoTemplatePlatformList();
+}
+
+function renderMisteriosoTemplatePlatformList() {
+  const listWrap = document.getElementById('misteriosoTemplatePlatformList');
+  if (!listWrap) return;
+
+  const q = misteriosoTemplateSearch.trim().toLowerCase();
+  const list = state.platforms.filter(p => p.name.toLowerCase().includes(q));
+
+  listWrap.innerHTML = '';
+
+  if (list.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'history-empty';
+    empty.textContent = 'Nenhuma plataforma encontrada.';
+    listWrap.appendChild(empty);
+    return;
+  }
+
+  list.forEach(p => {
+    const label = document.createElement('label');
+    label.className = 'obrigado-checkbox-item';
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = misteriosoSelectedPlatformIds.has(p.id);
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) misteriosoSelectedPlatformIds.add(p.id);
+      else misteriosoSelectedPlatformIds.delete(p.id);
+    });
+
+    const span = document.createElement('span');
+    span.textContent = p.name;
+
+    label.appendChild(checkbox);
+    label.appendChild(span);
+    listWrap.appendChild(label);
+  });
+}
