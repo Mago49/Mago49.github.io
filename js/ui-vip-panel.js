@@ -21,11 +21,12 @@
 // existe só como placeholder "em construção" por enquanto.
 
 import { state } from './state.js';
-import { formatCurrency, escapeHtml, showAppAlert } from './utils.js';
-import { getVipBonus } from './cycle-logic.js';
+import { formatCurrency, escapeHtml, showAppAlert, showAppConfirm } from './utils.js';
+import { getVipBonus, computeEmissionDates } from './cycle-logic.js';
 import { savePlatform } from './platforms-store.js';
 import { loadObrigadoValuePerAppearance, saveObrigadoValuePerAppearance } from './vip-obrigado-store.js';
-
+import { loadMisteriosoTemplates, saveMisteriosoTemplate, deleteMisteriosoTemplate } from './vip-misterioso-store.js';
+import { MISTERIOSO_DEPOSIT_THRESHOLDS, getEffectiveMisteriosoValue, isWithinEditableWindow } from './misterioso-logic.js';
 // ---------- ABAS (Ponto 7.1) ----------
 
 let activeTab = 'vip';
