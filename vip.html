@@ -116,7 +116,24 @@
         <p>Veja a previsão de valor total do Bônus Misterioso!</p>
       </div>
     </div>
-    <p class="finance-empty">Em construção — chega numa próxima atualização.</p>
+
+    <div class="misterioso-controls">
+      <label for="misteriosoMonthInput">Mês</label>
+      <input type="month" id="misteriosoMonthInput" />
+      <span class="finance-week-label">Previsão do mês: <strong id="misteriosoTotal">R$ 0,00</strong></span>
+      <button type="button" id="misteriosoManageBtn" class="bet-manage-btn">⚙️ Gerenciar templates</button>
+    </div>
+
+    <div id="misteriosoTemplateManager" class="misterioso-template-manager app-hidden"></div>
+
+    <div class="section-heading" style="padding:0.5rem 0 0.5rem;">
+      <div>
+        <h3>Eventos para revisar (últimos 7 dias)</h3>
+        <p>Valor inicial é sempre o mínimo do patamar alcançado — edite se o valor real recebido foi diferente.</p>
+      </div>
+    </div>
+
+    <div id="misteriosoEventsList" class="misterioso-events-list"></div>
   </div>
 </section>
   </main>
