@@ -1,7 +1,7 @@
 // === PONTO DE ENTRADA — Página 3 (VIP) ===
 import { initAuth } from './auth-guard.js';
 import { startBackgroundAnimation } from './ui-background.js';
-import { renderVipPanel, initVipFilters, initVipTabs, initObrigadoPanel } from './ui-vip-panel.js';
+import { renderVipPanel, initVipFilters, initVipTabs, initObrigadoPanel, initMisteriosoPanel } from './ui-vip-panel.js';
 
 startBackgroundAnimation();
 
@@ -10,18 +10,20 @@ initAuth({
     initVipTabs();
     initVipFilters();
     renderVipPanel();
-    // Ponto 7.3: carrega o valor de referência persistido (Firestore,
-    // isolado — ver vip-obrigado-store.js) antes de desenhar a aba
-    // Bônus Obrigado pela primeira vez.
+    // Bônus Obrigado e Bônus Misterioso carregam dado próprio do
+    // Firestore (isolado, fora de `platforms`) antes da primeira
+    // renderização de cada aba.
     await initObrigadoPanel();
+    await initMisteriosoPanel();
     scheduleDailyUpdate();
   }
 });
 
-// Bônus VIP depende do dia atual (dias no mês, segundas-feiras etc.) —
-// sem isso, fica desatualizado até o usuário recarregar a página manualmente.
-// Bônus Obrigado não depende do dia (é um padrão fixo mensal), então não
-// precisa recalcular na virada do dia.
+// Bônus VIP depende do dia atual (dias no mês, segundas-feiras etc.).
+// Bônus Obrigado e Bônus Misterioso não dependem da virada do dia da
+// mesma forma (Obrigado é padrão fixo mensal; Misterioso só muda quando
+// uma data de emissão entra/sai da janela de 7 dias, o que a própria
+// renderização já resolve na próxima vez que a aba for aberta).
 let dailyTimer = null;
 function scheduleDailyUpdate() {
   if (dailyTimer) clearTimeout(dailyTimer);
