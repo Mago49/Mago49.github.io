@@ -359,3 +359,98 @@
   cursor: pointer;
   padding: 0;
 }
+
+/* === BÔNUS MISTERIOSO (Ponto 7.4) === */
+.misterioso-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0 1.1rem 1rem;
+}
+
+.misterioso-controls label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.misterioso-controls input[type="month"] {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  outline: none;
+}
+
+.misterioso-template-manager {
+  margin: 0 1.1rem 1rem;
+  padding: 0.9rem;
+  border: 1px solid rgba(37,99,235,0.18);
+  background: rgba(37,99,235,0.04);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.misterioso-tiers-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.misterioso-tier-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 1fr;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.misterioso-tier-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #475569;
+}
+
+.misterioso-tier-row input {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  outline: none;
+}
+
+.misterioso-events-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0 1.1rem 1.1rem;
+}
+
+.misterioso-event-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.misterioso-event-label {
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: var(--text-dark);
+}
+
+.misterioso-event-input {
+  width: 110px;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 10px;
+  font-size: 0.88rem;
+  outline: none;
+  text-align: right;
+}
