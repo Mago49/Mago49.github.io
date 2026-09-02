@@ -624,7 +624,8 @@ function initAddRow() {
       betEntries: [],
       financeWeeks: [],
       depositLog: [],
-      balancePhases: []
+      balancePhases: [],
+      obrigadoDays: []
     };
     state.platforms.push(newPlatform);
 
