@@ -25,7 +25,8 @@ export const DEFAULT_PLATFORMS = Array.from({ length: 33 }, (_, i) => ({
   financeWeeks: [],
   depositLog: [],
   balancePhases: [],
-  obrigadoDays: []
+  obrigadoDays: [],
+  misteriosoBonusLog: []
 }));
 
 // depositLog: histórico PERMANENTE de depósitos, usado só pelo Financeiro
@@ -67,7 +68,8 @@ export function normalizePlatformData(parsed) {
       financeWeeks: Array.isArray(p.financeWeeks) ? p.financeWeeks : [],
       depositLog,
       balancePhases: Array.isArray(p.balancePhases) ? p.balancePhases : [],
-      obrigadoDays: Array.isArray(p.obrigadoDays) ? p.obrigadoDays : []
+      obrigadoDays: Array.isArray(p.obrigadoDays) ? p.obrigadoDays : [],
+      misteriosoBonusLog: Array.isArray(p.misteriosoBonusLog) ? p.misteriosoBonusLog : []
     };
   });
 }
