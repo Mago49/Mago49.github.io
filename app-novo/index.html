@@ -1,0 +1,28 @@
+<!-- === SHELL DA SPA (versão esqueleto — Etapa 1+2) ===
+     Este é o ÚNICO arquivo HTML "de verdade" desta pasta de teste. Ele
+     nunca muda quando você navega entre as telas — só o conteúdo dentro
+     de #appShell é trocado, pelo router.js, via JavaScript.
+
+     Ainda NÃO tem: CSS do projeto, login, Firebase, dados reais. O
+     objetivo desta primeira entrega é só provar que a navegação por hash
+     (#/rota) funciona no GitHub Pages sem recarregar a página. -->
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Painel do Tigrinho — SPA (teste de navegação)</title>
+</head>
+<body>
+  <!-- appShell: contêiner único onde o roteador escreve o conteúdo da
+       tela atual. Começa com um texto de "Carregando..." só pra garantir
+       que, se o JS demorar um instante pra rodar, a tela não fique em
+       branco. -->
+  <div id="appShell">Carregando...</div>
+
+  <!-- type="module" é necessário pra poder usar import/export entre os
+       arquivos JS (main.js importa de router.js) — mesmo padrão já usado
+       em todos os main-*.js do projeto atual. -->
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
