@@ -1,30 +1,49 @@
-// Ainda placeholder nas telas (Etapa 5 troca pelas views reais).
-// routerStarted evita registrar o listener duas vezes, caso onLogin
-// dispare mais de uma vez na mesma sessão.
+import * as viewInicio from './view-inicio.js';
+
 const appShellEl = document.getElementById('appShell');
 let routerStarted = false;
+let currentView = null; // view atualmente montada (com unmount próprio)
 
+// null = rota existe mas a view real ainda não foi migrada (placeholder).
 const routes = {
-  '#/inicio': () => renderPlaceholder('Início'),
-  '#/calendario': () => renderPlaceholder('Calendário'),
-  '#/vip': () => renderPlaceholder('VIP'),
-  '#/edicao': () => renderPlaceholder('Edição'),
-  '#/financeiro': () => renderPlaceholder('Financeiro')
+  '#/inicio': viewInicio,
+  '#/calendario': null,
+  '#/vip': null,
+  '#/edicao': null,
+  '#/financeiro': null
 };
 
 function renderPlaceholder(nome) {
   appShellEl.innerHTML = `
     <section class="card-shell" style="padding:2rem; text-align:center;">
       <h1>Você está na tela: ${nome}</h1>
-      <p>Rota atual: <code>${window.location.hash || '#/inicio'}</code></p>
+      <p>Esta view ainda não foi migrada — placeholder temporário.</p>
     </section>`;
 }
 
 function handleRouteChange() {
+  // Desmonta a view anterior ANTES de montar a nova — essencial pra
+  // views com timers/instâncias próprias (ex: Calendário/FullCalendar)
+  // não continuarem rodando em segundo plano depois de sair da rota.
+  if (currentView && typeof currentView.unmount === 'function') {
+    currentView.unmount();
+  }
+  currentView = null;
+
   const hash = window.location.hash || '#/inicio';
-  const routeFn = routes[hash];
-  if (routeFn) routeFn();
-  else appShellEl.innerHTML = `<p style="padding:2rem;">Rota <code>${hash}</code> não encontrada.</p>`;
+
+  if (!(hash in routes)) {
+    appShellEl.innerHTML = `<p style="padding:2rem;">Rota <code>${hash}</code> não encontrada.</p>`;
+    return;
+  }
+
+  const view = routes[hash];
+  if (view && typeof view.mount === 'function') {
+    currentView = view;
+    view.mount(appShellEl);
+  } else {
+    renderPlaceholder(hash.replace('#/', ''));
+  }
 }
 
 export function initRouter() {
