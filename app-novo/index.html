@@ -1,28 +1,73 @@
-<!-- === SHELL DA SPA (versão esqueleto — Etapa 1+2) ===
-     Este é o ÚNICO arquivo HTML "de verdade" desta pasta de teste. Ele
-     nunca muda quando você navega entre as telas — só o conteúdo dentro
-     de #appShell é trocado, pelo router.js, via JavaScript.
-
-     Ainda NÃO tem: CSS do projeto, login, Firebase, dados reais. O
-     objetivo desta primeira entrega é só provar que a navegação por hash
-     (#/rota) funciona no GitHub Pages sem recarregar a página. -->
 <!doctype html>
 <html lang="pt-br">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Painel do Tigrinho — SPA (teste de navegação)</title>
+  <title>Painel do Tigrinho</title>
+  <style>
+    html, body { margin: 0; padding: 0; }
+    .background-svg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+  </style>
+  <link rel="stylesheet" href="css/variables.css" />
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/layout.css" />
+  <link rel="stylesheet" href="css/nav.css" />
+  <link rel="stylesheet" href="css/modals.css" />
+  <link rel="stylesheet" href="css/responsive.css" />
 </head>
 <body>
-  <!-- appShell: contêiner único onde o roteador escreve o conteúdo da
-       tela atual. Começa com um texto de "Carregando..." só pra garantir
-       que, se o JS demorar um instante pra rodar, a tela não fique em
-       branco. -->
-  <div id="appShell">Carregando...</div>
+  <div class="auth-loading" id="authLoading">
+    <div class="auth-loading-spinner" aria-label="Carregando"></div>
+  </div>
 
-  <!-- type="module" é necessário pra poder usar import/export entre os
-       arquivos JS (main.js importa de router.js) — mesmo padrão já usado
-       em todos os main-*.js do projeto atual. -->
+  <div class="auth-screen app-hidden" id="authScreen">
+    <div class="auth-card">
+      <span class="hero-badge">✨ Painel do Tigrinho 🐯</span>
+      <h1>Acesse seu painel</h1>
+      <p>Entre com sua conta Google para sincronizar seus dados entre aparelhos.</p>
+      <button class="btn-primary auth-google-btn" id="googleLoginBtn" type="button">
+        <span class="auth-google-icon" aria-hidden="true">G</span>
+        Entrar com Google
+      </button>
+      <p class="auth-error" id="authError"></p>
+    </div>
+  </div>
+
+  <svg class="background-svg" viewBox="0 0 1440 800" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <circle cx="280" cy="280" r="280" fill="#1e3a8a" />
+    <circle cx="1160" cy="280" r="280" fill="#ef4444" />
+    <circle cx="280" cy="520" r="280" fill="#facc15" />
+    <circle cx="1160" cy="520" r="280" fill="#15803d" />
+  </svg>
+
+  <!-- appMain: igual ao antigo, só que agora é o ÚNICO main de todo o
+       site. O nav aqui dentro é GLOBAL (antes se repetia em cada HTML) —
+       os links usam #/rota em vez de nome-da-pagina.html. -->
+  <main class="page-shell app-hidden" id="appMain">
+    <div class="top-nav" style="justify-content:flex-end; margin: 0.5rem 0 1rem;">
+      <span class="user-label" id="userLabel"></span>
+      <a class="nav-home" href="#/inicio" title="Página inicial">🏠</a>
+      <a href="#/calendario" title="Calendário">📅</a>
+      <a href="#/vip" title="Painel VIP">VIP</a>
+      <a href="#/edicao" title="Editar plataformas">📝</a>
+      <a href="#/financeiro" title="Financeiro">💰</a>
+      <button id="logoutBtn" type="button" title="Sair">Sair</button>
+    </div>
+
+    <!-- appShell: o router troca SÓ o que está aqui dentro ao navegar. -->
+    <div id="appShell"></div>
+  </main>
+
+  <div class="modal" id="appModal">
+    <div class="modal-content">
+      <p id="appModalMessage"></p>
+      <div class="reset-modal-buttons">
+        <button class="btn-confirm" id="appModalConfirmBtn" type="button">OK</button>
+        <button class="btn-cancel-modal" id="appModalCancelBtn" type="button">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="js/main.js"></script>
 </body>
 </html>
