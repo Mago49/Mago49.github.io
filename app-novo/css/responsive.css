@@ -1,0 +1,174 @@
+/* IMPORTANTE: este arquivo precisa ser o ÚLTIMO <link> no <head>, em toda
+   página. Em CSS, quando duas regras têm a mesma especificidade, vence a
+   que aparece por último no HTML — por isso os overrides de @media só
+   funcionam de forma confiável se este arquivo vier depois dos outros. */
+
+@media (max-width: 1100px) {
+  .hero-content {
+    grid-template-columns: 1fr;
+  }
+
+  .vip-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width:900px) {
+  .page-shell {
+    width: min(100% - 1rem, 1240px);
+  }
+
+  .page-shell.has-legend {
+    padding-bottom: 8.4rem;
+  }
+
+  .hero {
+    padding: 1.2rem;
+  }
+
+  .hero-summary {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  #calendar {
+    min-height: 420px;
+    padding: 0.9rem;
+  }
+
+  .fc .fc-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .fc .fc-toolbar-title {
+    text-align: center;
+  }
+
+  .fc .fc-toolbar-chunk {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  #platformManagePanel .panel-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #platformManagePanel .panel-controls {
+    width: 100%;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .top-nav {
+    justify-content: flex-end;
+  }
+
+  /* Cards de filtro (Página 2): em telas menores o grid deixa de crescer
+     livremente e ganha scroll interno, pra manter a página compacta. */
+  .pcards-grid {
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    max-height: 380px;
+    overflow-y: auto;
+    padding-right: 0.2rem;
+  }
+}
+
+@media (max-width:640px) {
+  .page-shell {
+    width: calc(100% - 0.75rem);
+  }
+
+  .page-shell.has-legend {
+    padding-bottom: 9rem;
+  }
+
+  .hero h1 {
+    font-size: 1.8rem;
+  }
+
+  .hero p {
+    font-size: 0.95rem;
+  }
+
+  .hero-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-actions,
+  .panel-actions,
+  .platform-actions-buttons,
+  .reset-modal-buttons {
+    flex-direction: column;
+  }
+
+  .hero-actions button,
+  .hero-actions a,
+  .panel-actions button,
+  .platform-actions-buttons button,
+  .reset-modal-buttons button {
+    width: 100%;
+  }
+
+  .platform-meta,
+  .history-item,
+  .history-item-content {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .top-nav {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .top-nav a,
+  .top-nav button {
+    flex: 1;
+  }
+
+  .vip-summary {
+    grid-template-columns: 1fr;
+    max-height: 1100px;
+  }
+
+  .vip-filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .vip-filter-btn {
+    width: 100%;
+  }
+
+  .pcards-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .sort-menu {
+    width: 100%;
+  }
+
+  .sort-menu-toggle {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .sort-menu-dropdown {
+    left: 0;
+    right: 0;
+    width: 100%;
+  }
+
+  footer.legend {
+    justify-content: flex-start;
+    padding-bottom: calc(0.8rem + env(safe-area-inset-bottom));
+  }
+}
