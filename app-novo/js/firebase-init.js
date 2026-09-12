@@ -9,8 +9,10 @@ import {
   setPersistence, browserLocalPersistence
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
-  getFirestore, collection, doc, getDoc, getDocs, deleteDoc, writeBatch
+  getFirestore, collection, doc, getDoc, getDocs,
+  deleteDoc as _deleteDoc, writeBatch as _writeBatch
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { SAFE_MODE } from './dev-flags.js';
 
 // TODO: troque pelos valores do SEU projeto Firebase
 // (Console do Firebase > Configurações do projeto > Seus apps > SDK setup and configuration)
@@ -38,11 +40,27 @@ export const googleProvider = new GoogleAuthProvider();
 export const authReady = setPersistence(auth, browserLocalPersistence)
   .catch(err => console.error('Erro ao configurar persistência de login:', err));
 
+export function writeBatch(dbRef) {
+  if (!SAFE_MODE) return _writeBatch(dbRef);
+  return {
+    set: (ref) => console.log('[MODO TESTE] set bloqueado:', ref.path),
+    update: (ref) => console.log('[MODO TESTE] update bloqueado:', ref.path),
+    delete: (ref) => console.log('[MODO TESTE] delete bloqueado:', ref.path),
+    commit: () => { console.log('[MODO TESTE] commit bloqueado — nada foi salvo'); return Promise.resolve(); }
+  };
+}
+
+export function deleteDoc(ref) {
+  if (!SAFE_MODE) return _deleteDoc(ref);
+  console.log('[MODO TESTE] deleteDoc bloqueado:', ref.path);
+  return Promise.resolve();
+}
+
 // Reexporta as funções do SDK usadas no resto do app, pra tudo vir de um só lugar.
 // getDoc (singular) foi adicionado pra suportar o doc-sentinela em
 // platforms-store.js (ver loadPlatformsFromFirestore) — não muda nada do
 // que já existia, só soma uma leitura pontual nova.
 export {
   signInWithPopup, signOut, onAuthStateChanged,
-  collection, doc, getDoc, getDocs, deleteDoc, writeBatch
+  collection, doc, getDoc, getDocs,
 };
