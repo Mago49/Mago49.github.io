@@ -1,0 +1,179 @@
+/* === WIDGETS DE PLATAFORMA (compartilhado) ===
+   Antes essas classes viviam dentro de #platformPanel / .platform-item,
+   que só existiam num único painel lateral. Agora a Página 2 (cards de
+   filtro) e a Página 4 (acordeão de edição) mostram a mesma informação
+   (Dia X, total do ciclo) em containers diferentes — por isso as classes
+   de badge foram DES-ESCOPADAS do antigo ".platform-item" pai: continuam
+   com o mesmo nome e visual de sempre, só que agora reutilizáveis em
+   qualquer container. */
+
+.cycle-day {
+  font-size:0.82rem;
+  font-weight:800;
+  background: #e0e7ff;
+  color: #3730a3;
+  padding: 0.3rem 0.6rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.cycle-day.no-bonus {
+  background: #fecaca;
+  color: #991b1b;
+}
+
+.cycle-day.cycle-ended {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+/* Badge "Depósito: X dias" (Página 4) — janela de aviso de 7 a 12 dias
+   desde o último depósito registrado em depositLog (ver
+   getDaysSinceLastDeposit em cycle-logic.js). Cor teal própria pra não
+   confundir com o indigo do ciclo (.cycle-day) nem com o verde do total
+   (.platform-total-badge). */
+.deposit-day-badge {
+  background: #ccfbf1;
+  color: #115e59;
+}
+
+.reset-date {
+  font-size:0.8rem;
+  color:#64748b;
+}
+
+.platform-total-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--text-dark);
+  border: 1px solid rgba(15,23,42,0.06);
+  box-shadow: inset 0 -2px 0 rgba(255,255,255,0.2);
+}
+
+.platform-deposit-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding-top: 0.15rem;
+}
+
+.platform-deposit-form input {
+  flex: 1;
+  padding: 0.75rem 0.85rem;
+  font-size: 0.9rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 12px;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.platform-deposit-form input:focus {
+  border-color: rgba(37,99,235,0.45);
+  box-shadow: 0 0 0 4px rgba(37,99,235,0.12);
+}
+
+.platform-deposit-form input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.platform-actions-buttons {
+  display: flex;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.platform-actions-buttons button {
+  flex: 1;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.78rem;
+  min-width: 92px;
+  border: none;
+  border-radius: 999px;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+}
+
+.platform-actions-buttons button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.12);
+}
+
+.platform-end-btn {
+  background: #f59e0b;
+}
+
+.platform-end-btn.already-ended {
+  background: #fde68a;
+  color: #92400e;
+  opacity: 0.85;
+  cursor: default;
+}
+
+/* === Apostas — controles dentro do card/linha da plataforma === */
+.bet-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding-top: 0.1rem;
+}
+
+.bet-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.bet-today-btn {
+  flex: 1;
+  min-width: 120px;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  background: var(--accent);
+  color: #fff;
+}
+
+.bet-today-btn.already-bet {
+  background: #166534;
+  opacity: 0.75;
+  cursor: default;
+}
+
+.bet-manage-btn {
+  padding: 0.6rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  background: var(--blue);
+  color: #fff;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+}
+
+.bet-count-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #166534;
+  background: #dcfce7;
+  border: 1px solid #bbf7d0;
+  border-radius: 999px;
+  padding: 0.25rem 0.6rem;
+}
