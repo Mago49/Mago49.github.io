@@ -1,4 +1,5 @@
 import * as viewInicio from './view-inicio.js';
+import * as viewCalendario from './view-calendario.js';
 
 const appShellEl = document.getElementById('appShell');
 let routerStarted = false;
@@ -7,7 +8,7 @@ let currentView = null; // view atualmente montada (com unmount próprio)
 // null = rota existe mas a view real ainda não foi migrada (placeholder).
 const routes = {
   '#/inicio': viewInicio,
-  '#/calendario': null,
+  '#/calendario': viewCalendario,
   '#/vip': null,
   '#/edicao': null,
   '#/financeiro': null
