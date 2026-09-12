@@ -149,15 +149,9 @@ function getLevelColors() {
   return cachedLevelColors;
 }
 
-export function colorForLevel(valueOrLevel) {
+export function colorForLevel(value) {
   const lvlVars = getLevelColors();
-
-  const v = Number(valueOrLevel);
-  if (Number.isInteger(v) && v >= 0 && v < lvlVars.length) {
-    return lvlVars[v];
-  }
-
-  return lvlVars[levelForAmount(valueOrLevel)];
+  return lvlVars[levelForAmount(value)];
 }
 
 export function getEventsForDate(targetDate, platforms = state.platforms) {
