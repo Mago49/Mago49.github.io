@@ -5,14 +5,36 @@
 // - Página 2: TODOS os itens só REORDENAM a lista (nada é escondido) —
 //   usa sortPlatforms(), que nunca muda.
 // - Página 4: cada modo filtra E ordena ao mesmo tempo (ex: "A - Z" só
-//   mostra quem começa com letra, já em ordem alfabética; "Ativas" some
-//   com quem não bate) — usa filterAndSortForManage(), a única função
-//   nova deste arquivo. sortPlatforms() e filterPlatforms() (as duas
-//   funções antigas) continuam EXATAMENTE como sempre foram; nenhuma das
-//   duas foi alterada — só ganharam vizinhas novas.
+//   mostra quem começa com letra, já em ordem; "Ativas" some com quem não
+//   bate) — usa filterAndSortForManage(), a única função nova deste
+//   arquivo. sortPlatforms() e filterPlatforms() (as duas funções antigas)
+//   continuam EXATAMENTE como sempre foram; nenhuma das duas foi alterada
+//   além da correção de bug documentada abaixo.
 //
 // Modos válidos: 'az' | 'za' | '1-9' | '9-1' | 'dias-asc' | 'dias-desc' |
 // 'com' | 'sem' | 'ativas' | 'inativas'
+//
+// === CORREÇÃO — bugs em sortPlatforms() (Página 2 / Calendário) ===
+// Dois bugs confirmados por teste manual em produção, isolados e corrigidos
+// SÓ dentro de sortPlatforms() — filterAndSortForManage() (Página 4) não é
+// tocada, continua exatamente como estava, já correta:
+//
+// 1) '1-9'/'9-1' usavam o MESMO comparador de 'az'/'za' (compareNames),
+//    que só faz comparação alfanumérica "inteligente" sem separar quem
+//    começa com letra de quem começa com número — letras apareciam
+//    misturadas/antes dos números. Corrigido com startsWithDigitLocal(),
+//    que prioriza nomes começados por dígito SEM esconder ninguém (regra
+//    da Página 2: nunca filtra, só reordena).
+//
+// 2) 'ativas'/'inativas' só olhavam lastResetDate, ignorando cycleEnded —
+//    uma plataforma pausada via "Fim" (cycleEnded = true) mas com
+//    lastResetDate preenchido continuava contando como "ativa" na
+//    ordenação. Corrigido com isPlatformActiveNow(), que considera as
+//    duas condições juntas.
+//
+// Isso é a MESMA classe de bug já corrigida em isAtivaCadastro (usada só
+// por filterAndSortForManage) — aqui é uma correção isolada e própria de
+// sortPlatforms, sem criar dependência entre as duas funções.
 
 import { getCurrentCycleDay } from './cycle-logic.js';
 
@@ -29,6 +51,22 @@ function startsWithLetter(name) {
 
 function startsWithDigit(name) {
   return /^[0-9]/.test(name);
+}
+
+// Usada só por sortPlatforms() (Página 2) — ver nota de correção acima.
+// Nome próprio (Local) pra deixar claro que é escopo isolado desta função,
+// sem qualquer relação com startsWithDigit usada por filterAndSortForManage.
+function startsWithDigitLocal(name) {
+  return /^[0-9]/.test(name);
+}
+
+// Usada só por sortPlatforms() (Página 2) — ver nota de correção acima.
+// Mesma regra de "ativa" já validada em isAtivaCadastro (usada por
+// filterAndSortForManage), mas mantida como função própria e isolada
+// aqui, sem criar dependência cruzada entre as duas funções de topo do
+// arquivo.
+function isPlatformActiveNow(p) {
+  return !!p.lastResetDate && !p.cycleEnded;
 }
 
 // "Ativas"/"Inativas" (Página 4) — definição CORRIGIDA (Ponto 1): antes
@@ -53,9 +91,7 @@ function isAtivaNoCicloAgora(p) {
 // não muda sem necessidade.
 //
 // Usada SÓ pela Página 2 (ui-platform-cards.js) — nunca esconde nada, ver
-// regra no topo do arquivo. INTOCADA pelo Ponto 1: 'az'/'za' foram
-// adicionados aqui como dois casos novos (mesmo comparador que 1-9/9-1já
-// usam), mas os casos existentes continuam byte a byte como sempre foram.
+// regra no topo do arquivo.
 export function sortPlatforms(list, mode) {
   const copy = [...list];
 
@@ -65,9 +101,24 @@ export function sortPlatforms(list, mode) {
     case 'za':
       return copy.sort((a, b) => compareNames(b, a));
     case '1-9':
-      return copy.sort(compareNames);
+      // CORRIGIDO: dígito sempre antes de letra, sem esconder ninguém.
+      // Dentro do mesmo grupo (dígito ou letra), mantém a ordenação
+      // alfanumérica de sempre (compareNames).
+      return copy.sort((a, b) => {
+        const da = startsWithDigitLocal(a.name);
+        const db = startsWithDigitLocal(b.name);
+        if (da !== db) return da ? -1 : 1;
+        return compareNames(a, b);
+      });
     case '9-1':
-      return copy.sort((a, b) => compareNames(b, a));
+      // CORRIGIDO: mesma prioridade de grupo do '1-9', com a ordenação
+      // alfanumérica invertida dentro de cada grupo.
+      return copy.sort((a, b) => {
+        const da = startsWithDigitLocal(a.name);
+        const db = startsWithDigitLocal(b.name);
+        if (da !== db) return da ? -1 : 1;
+        return compareNames(b, a);
+      });
     case 'dias-asc':
       return copy.sort((a, b) => getCurrentCycleDay(a) - getCurrentCycleDay(b));
     case 'dias-desc':
@@ -77,17 +128,19 @@ export function sortPlatforms(list, mode) {
     case 'sem':
       return copy.sort((a, b) => (b.group === 'sem') - (a.group === 'sem'));
     case 'ativas':
-      return copy.sort((a, b) => (!!b.lastResetDate) - (!!a.lastResetDate));
+      // CORRIGIDO: agora considera cycleEnded, não só lastResetDate.
+      return copy.sort((a, b) => isPlatformActiveNow(b) - isPlatformActiveNow(a));
     case 'inativas':
-      return copy.sort((a, b) => (!b.lastResetDate) - (!a.lastResetDate));
+      // CORRIGIDO: mesma correção, ordem invertida.
+      return copy.sort((a, b) => !isPlatformActiveNow(a) - !isPlatformActiveNow(b));
     default:
       return copy;
   }
 }
 
-// Esconde quem não bate com o modo, SEM ordenar. Função antiga, intocada
-// pelo Ponto 1 — mantida por compatibilidade, mas não é mais usada por
-// ui-platform-manage.js (que agora usa filterAndSortForManage abaixo).
+// Esconde quem não bate com o modo, SEM ordenar. Função antiga, mantida
+// por compatibilidade, mas não é mais usada por ui-platform-manage.js
+// (que usa filterAndSortForManage abaixo). Intocada.
 export function filterPlatforms(list, mode) {
   switch (mode) {
     case 'com':
@@ -113,6 +166,8 @@ export function filterPlatforms(list, mode) {
 //   com/sem      -> só do grupo correspondente (sem ordenação extra)
 //   ativas       -> !!lastResetDate && !cycleEnded (bug corrigido)
 //   inativas     -> !lastResetDate || cycleEnded (bug corrigido)
+//
+// INTOCADA nesta correção — já estava certa antes e continua certa agora.
 export function filterAndSortForManage(list, mode) {
   switch (mode) {
     case 'az':
