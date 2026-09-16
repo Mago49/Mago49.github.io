@@ -1,0 +1,129 @@
+/* === GERADOR DE CÓDIGOS + DEPÓSITOS-HOJE (Hub — Etapa 3) ===
+   Arquivo autocontido: o Hub (index-new.html) não carrega finance.css,
+   sort-menu.css nem platform-cards.css (exclusivas de outras páginas),
+   então todas as classes aqui são próprias, prefixo "codigo-". Reaproveita
+   só os tokens já garantidamente globais: variables.css (cores/raios) e as
+   classes .card-shell/.section-heading (layout.css), .history-empty/
+   .btn-cancel-modal (modals.css), .summary-card (hero.css). */
+
+.codigo-section {
+  padding-bottom: 0.4rem;
+}
+
+.codigo-toolbar {
+  padding: 0 1.2rem 1rem;
+}
+
+.codigo-toolbar input[type="search"] {
+  width: 100%;
+  padding: 0.7rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid #dbe2ea;
+  background: rgba(255, 255, 255, 0.95);
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.codigo-toolbar input[type="search"]:focus {
+  border-color: rgba(37, 99, 235, 0.45);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+}
+
+/* Lista de plataformas com código configurado — scroll interno, não
+   estoura o layout do Hub mesmo com ~40 plataformas cadastradas. */
+.codigo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  max-height: 240px;
+  overflow-y: auto;
+  margin: 0 1.2rem 1rem;
+  padding: 0.4rem;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: rgba(248, 250, 252, 0.6);
+}
+
+.codigo-list-item {
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 0.6rem 0.7rem;
+  border-radius: 9px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-dark);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.codigo-list-item:hover {
+  background: rgba(15, 23, 42, 0.06);
+}
+
+.codigo-list-item.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.codigo-detail-wrap {
+  padding: 0 1.2rem 1.2rem;
+}
+
+.codigo-detail-card {
+  border: 1px solid rgba(21, 128, 61, 0.25);
+  background: rgba(21, 128, 61, 0.03);
+  border-radius: var(--radius-md);
+  padding: 0.9rem 1rem;
+}
+
+.codigo-detail-header {
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: var(--text-dark);
+  margin-bottom: 0.5rem;
+}
+
+.codigo-detail-row {
+  margin: 0.3rem 0;
+  font-size: 0.9rem;
+  color: var(--text-soft);
+}
+
+.codigo-detail-row strong {
+  color: var(--text-dark);
+  font-size: 1rem;
+}
+
+/* Códigos Depósito/Aposta liberados hoje — destaque verde, mesma família
+   de cor de "sucesso" já usada em outras badges do app. */
+.codigo-detail-row-unlocked strong {
+  color: #166534;
+}
+
+.codigo-nav-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.codigo-nav-row .btn-cancel-modal {
+  min-width: 48px;
+}
+
+.codigo-nav-counter {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-soft);
+}
+
+.codigo-deposit-today-card {
+  margin-top: 0.85rem;
+}
+
+@media (max-width: 640px) {
+  .codigo-list {
+    max-height: 200px;
+  }
+}
