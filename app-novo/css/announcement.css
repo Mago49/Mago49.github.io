@@ -1,0 +1,34 @@
+/* === BANNER DE AVISO INTERNO — Hub (Bloco G — Etapa 4) ===
+   Não fixo (diferente de #safeModeBanner) — fica no fluxo normal da
+   página, no topo do Hub, acima do Hero. Usa só tokens já globais
+   (variables.css) — arquivo autocontido, sem depender de outras folhas. */
+
+.hub-announcement-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0 0 1rem;
+  padding: 0.8rem 1.1rem;
+  border-radius: var(--radius-lg);
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.22);
+  color: var(--text-dark);
+}
+
+.hub-announcement-icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.hub-announcement-text {
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  .hub-announcement-banner {
+    padding: 0.7rem 0.9rem;
+  }
+}
