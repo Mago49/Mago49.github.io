@@ -1,17 +1,45 @@
 /* === GERADOR DE CÓDIGOS + DEPÓSITOS-HOJE (Hub — Etapa 3) ===
    Arquivo autocontido: o Hub (index-new.html) não carrega finance.css,
    sort-menu.css nem platform-cards.css (exclusivas de outras páginas),
-   então todas as classes aqui são próprias, prefixo "codigo-". Reaproveita
-   só os tokens já garantidamente globais: variables.css (cores/raios) e as
-   classes .card-shell/.section-heading (layout.css), .history-empty/
-   .btn-cancel-modal (modals.css), .summary-card (hero.css). */
+   então todas as classes aqui são próprias, prefixo "codigo-".
+
+   AJUSTE VISUAL (pós-Etapa 3): o container principal (.codigo-section)
+   usa os MESMOS tokens do .summary-card (hero.css) — --radius-lg,
+   --shadow-card, --surface-strong — em vez de --radius-xl/--shadow-soft
+   do .card-shell (layout.css, usado em Calendário/Financeiro). Isso é
+   proposital: os 4 blocos do topo do Hub (Plataformas, Total acumulado,
+   Com bônus hoje, Status) e estes 2 blocos novos (Depósitos-Hoje,
+   Códigos) devem parecer a MESMA família visual — um Hub com 6 blocos
+   consistentes, não um mix de dois estilos de card diferentes. */
 
 .codigo-section {
-  padding-bottom: 0.4rem;
+  padding: 1.1rem;
+  border-radius: var(--radius-lg);
+  background: var(--surface-strong);
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--shadow-card);
+  margin-bottom: 1rem;
+}
+
+.codigo-section-heading {
+  margin-bottom: 0.9rem;
+}
+
+.codigo-section-heading h2 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text-dark);
+}
+
+.codigo-section-heading p {
+  margin: 0.3rem 0 0;
+  color: var(--text-soft);
+  font-size: 0.85rem;
+  line-height: 1.45;
 }
 
 .codigo-toolbar {
-  padding: 0 1.2rem 1rem;
+  margin-bottom: 0.9rem;
 }
 
 .codigo-toolbar input[type="search"] {
@@ -37,9 +65,8 @@
   gap: 0.3rem;
   max-height: 240px;
   overflow-y: auto;
-  margin: 0 1.2rem 1rem;
+  margin-bottom: 0.9rem;
   padding: 0.4rem;
-  border: 1px solid var(--border-soft);
   border-radius: var(--radius-md);
   background: rgba(248, 250, 252, 0.6);
 }
@@ -67,12 +94,12 @@
 }
 
 .codigo-detail-wrap {
-  padding: 0 1.2rem 1.2rem;
+  display: block;
 }
 
 .codigo-detail-card {
   border: 1px solid rgba(21, 128, 61, 0.25);
-  background: rgba(21, 128, 61, 0.03);
+  background: rgba(21, 128, 61, 0.05);
   border-radius: var(--radius-md);
   padding: 0.9rem 1rem;
 }
@@ -118,8 +145,12 @@
   color: var(--text-soft);
 }
 
+/* O card do depósito de hoje já usa .summary-card (hero.css) — mesmo
+   componente visual dos 4 blocos do topo, sem estilo próprio de card
+   aqui. Só o espaçamento superior (afastar da barra de navegação ← →)
+   é definido nesta classe extra. */
 .codigo-deposit-today-card {
-  margin-top: 0.85rem;
+  margin-top: 0;
 }
 
 @media (max-width: 640px) {
