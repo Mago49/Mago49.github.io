@@ -26,7 +26,10 @@ export const DEFAULT_PLATFORMS = Array.from({ length: 33 }, (_, i) => ({
   depositLog: [],
   balancePhases: [],
   obrigadoDays: [],
-  misteriosoBonusLog: []
+  misteriosoBonusLog: [],
+  codigoConfig: { tipo: null, fixo: '', baseDate: null, variavelInicio: 0 },
+  codigoDeposito: { fixo: '', baseDate: null, variavelInicio: 0, valorMinimo: 0 },
+  codigoAposta: { fixo: '', baseDate: null, variavelInicio: 0, valorMinimo: 0 }
 }));
 
 // depositLog: histórico PERMANENTE de depósitos, usado só pelo Financeiro
@@ -69,7 +72,13 @@ export function normalizePlatformData(parsed) {
       depositLog,
       balancePhases: Array.isArray(p.balancePhases) ? p.balancePhases : [],
       obrigadoDays: Array.isArray(p.obrigadoDays) ? p.obrigadoDays : [],
-      misteriosoBonusLog: Array.isArray(p.misteriosoBonusLog) ? p.misteriosoBonusLog : []
+      misteriosoBonusLog: Array.isArray(p.misteriosoBonusLog) ? p.misteriosoBonusLog : [],
+      codigoConfig: (p.codigoConfig && typeof p.codigoConfig === 'object')
+        ? p.codigoConfig : { tipo: null, fixo: '', baseDate: null, variavelInicio: 0 },
+      codigoDeposito: (p.codigoDeposito && typeof p.codigoDeposito === 'object')
+        ? p.codigoDeposito : { fixo: '', baseDate: null, variavelInicio: 0, valorMinimo: 0 },
+      codigoAposta: (p.codigoAposta && typeof p.codigoAposta === 'object')
+        ? p.codigoAposta : { fixo: '', baseDate: null, variavelInicio: 0, valorMinimo: 0 }
     };
   });
 }
