@@ -15,13 +15,13 @@
 // aqui simplesmente não mostram nada pra quem ainda não tem código
 // configurado — comportamento esperado, não é bug.
 //
-// CSS PRÓPRIO (codigo.css): o Hub (index-new.html) não carrega
-// finance.css/sort-menu.css/platform-cards.css (exclusivas de outras
-// páginas) — por isso este arquivo usa só classes próprias, prefixo
-// "codigo-", e classes já garantidamente globais no Hub hoje:
-// .card-shell/.section-heading (layout.css), .history-empty/
-// .btn-cancel-modal/.reset-modal-buttons (modals.css), .summary-card e
-// afins (hero.css).
+// VISUAL (ajuste pós-Etapa 3): os dois painéis usam a classe própria
+// .codigo-section (codigo.css), NÃO .card-shell — de propósito, pra ter o
+// mesmo raio de borda/sombra/fundo dos 4 blocos do topo do Hub
+// (.summary-card, hero.css), deixando os 6 blocos visualmente da mesma
+// família. .card-shell (layout.css) tem raio/sombra maiores, próprios das
+// seções "grandes" de outras páginas (Calendário, Financeiro) — não é o
+// padrão aqui no Hub.
 //
 // Sem timers próprios: os dois painéis recalculam tudo (inclusive as
 // somas "de hoje") toda vez que são montados/renderizados — a View
@@ -141,12 +141,10 @@ export function initCodigoPanel(mountEl) {
   selectedPlatformId = null;
 
   mountEl.innerHTML = `
-    <section class="card-shell codigo-section" aria-label="Gerador de Códigos">
-      <div class="section-heading">
-        <div>
-          <h2>🔑 Códigos das Plataformas</h2>
-          <p>Busque uma plataforma para ver o código do dia. Códigos de Depósito/Aposta só aparecem quando liberados hoje.</p>
-        </div>
+    <section class="codigo-section" aria-label="Gerador de Códigos">
+      <div class="codigo-section-heading">
+        <h2>🔑 Códigos das Plataformas</h2>
+        <p>Busque uma plataforma para ver o código do dia. Códigos de Depósito/Aposta só aparecem quando liberados hoje.</p>
       </div>
       <div class="codigo-toolbar">
         <input type="search" id="codigoSearch" placeholder="Buscar plataforma" aria-label="Buscar plataforma" />
@@ -252,12 +250,10 @@ export function initDepositsTodayPanel(mountEl) {
   depositsTodayIndex = 0;
 
   mountEl.innerHTML = `
-    <section class="card-shell codigo-section" aria-label="Depósitos de hoje">
-      <div class="section-heading">
-        <div>
-          <h2>💰 Depósitos - Hoje</h2>
-          <p>Plataformas com depósito registrado hoje — navegue com as setas.</p>
-        </div>
+    <section class="codigo-section" aria-label="Depósitos de hoje">
+      <div class="codigo-section-heading">
+        <h2>💰 Depósitos - Hoje</h2>
+        <p>Plataformas com depósito registrado hoje — navegue com as setas.</p>
       </div>
       <div id="depositsTodayContent" class="codigo-detail-wrap"></div>
     </section>
