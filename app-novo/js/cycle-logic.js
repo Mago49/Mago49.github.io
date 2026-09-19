@@ -182,8 +182,8 @@ export function computeHeroStats(platforms) {
   return { totalPlatforms, totalDeposits, bonusToday, activeCycles, topPlatform, topPlatformTotal, maxLevel };
 }
 
-export function getVipBonus(platform) {
-  const hoje = new Date();
+export function getVipBonus(platform, refDate = new Date()) {
+  const hoje = new Date(refDate);
   hoje.setHours(23, 59, 59, 999);
 
   const cfg = vipBonusTable[platform.group]?.[platform.level] || {
