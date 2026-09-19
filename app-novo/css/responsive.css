@@ -78,6 +78,7 @@
     overflow-y: auto;
     padding-right: 0.2rem;
   }
+   
    /* Item 6 (Bloco B) — painel de templates do Bônus Misterioso cortava em
       tela pequena. Mesmo padrão de scroll interno já usado acima em
       .pcards-grid. */
