@@ -1,5 +1,6 @@
 import * as viewInicio from './view-inicio.js';
 import * as viewCalendario from './view-calendario.js';
+import * as viewVip from './view-vip.js';
 
 const appShellEl = document.getElementById('appShell');
 let routerStarted = false;
@@ -9,7 +10,7 @@ let currentView = null; // view atualmente montada (com unmount próprio)
 const routes = {
   '#/inicio': viewInicio,
   '#/calendario': viewCalendario,
-  '#/vip': null,
+  '#/vip': viewVip,
   '#/edicao': null,
   '#/financeiro': null
 };
