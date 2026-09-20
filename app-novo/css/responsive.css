@@ -61,13 +61,22 @@
     width: 100%;
   }
 
-  .page-header {
-    flex-direction: column;
-    align-items: stretch;
+  /* Item 8 (Etapa 5): a busca some/estoura em tela estreita porque
+     .panel-controls (manage-panel.css) é flex sem wrap — com a busca +
+     ⚙️ Reordenar + 👁 Badges + ⇅ Ordenar disputando espaço numa única
+     linha (4 elementos desde a sub-entrega dos Itens 22/25a), o campo de
+     busca fica espremido ou o painel estoura a largura. flex-wrap deixa
+     a busca ocupar linha própria quando não couber, e os 3 botões
+     quebram juntos pra uma segunda linha, alinhados à direita — mesmo
+     padrão de quebra já usado por .pcards-toolbar/.sort-menu logo abaixo
+     neste mesmo breakpoint. */
+  #platformManagePanel .panel-controls {
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
-  .top-nav {
-    justify-content: flex-end;
+  #platformManagePanel .panel-controls input[type="search"] {
+    flex: 1 1 100%;
   }
 
   /* Cards de filtro (Página 2): em telas menores o grid deixa de crescer
@@ -78,7 +87,6 @@
     overflow-y: auto;
     padding-right: 0.2rem;
   }
-   
    /* Item 6 (Bloco B) — painel de templates do Bônus Misterioso cortava em
       tela pequena. Mesmo padrão de scroll interno já usado acima em
       .pcards-grid. */
@@ -158,6 +166,20 @@
   .pcards-toolbar {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  /* Item 8 (Etapa 5): em telas muito estreitas, ⚙️ Reordenar / 👁 Badges /
+     ⇅ Ordenar também empilham cada um em largura total — mesmo
+     tratamento já dado aos botões de .hero-actions/.panel-actions neste
+     mesmo breakpoint. */
+  #platformManagePanel .panel-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #platformManagePanel .panel-controls > button,
+  #platformManagePanel .panel-controls .sort-menu {
+    width: 100%;
   }
 
   .sort-menu {

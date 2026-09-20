@@ -12,14 +12,19 @@
   white-space: nowrap;
 }
 
+/* Item 10a: grid de 2 colunas em vez de lista empilhada — com 11 opções
+   (Padrão + 10 modos), a lista vertical antiga ficava comprida demais.
+   "Padrão" (.sort-menu-item-full, aplicada em ui-sort.js) ocupa as 2
+   colunas sozinho no topo; os demais formam pares do mesmo tamanho. */
 .sort-menu-dropdown {
   position: absolute;
   top: calc(100% + 0.5rem);
   right: 0;
   z-index: 40;
   display: none;
-  flex-direction: column;
-  min-width: 190px;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.3rem;
+  min-width: 260px;
   padding: 0.4rem;
   border-radius: 14px;
   background: #fff;
@@ -28,20 +33,25 @@
 }
 
 .sort-menu-dropdown.open {
-  display: flex;
+  display: grid;
 }
 
 .sort-menu-item {
   border: none;
   background: transparent;
-  text-align: left;
-  padding: 0.6rem 0.7rem;
+  text-align: center;
+  padding: 0.6rem 0.5rem;
   border-radius: 9px;
   font-size: 0.86rem;
   font-weight: 600;
   color: var(--text-dark);
   cursor: pointer;
   transition: background 0.15s ease;
+}
+
+/* "Padrão" — único item sozinho no topo, ocupando as 2 colunas do grid. */
+.sort-menu-item-full {
+  grid-column: 1 / -1;
 }
 
 .sort-menu-item:hover {
