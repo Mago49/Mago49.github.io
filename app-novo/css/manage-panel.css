@@ -170,7 +170,18 @@
 }
 
 .platform-manage-row.open .platform-manage-row-body {
-  max-height: 900px;
+  /* Bug 2 (achado em teste, Etapa 5): 900px era suficiente só quando
+     "Dados" tinha nome/nível/grupo. Depois dos 3 grupos do Bloco C
+     (Identificador/Depósito/Aposta) somados na sub-entrega 2, o conteúdo
+     real passou a ultrapassar esse teto e o overflow:hidden cortava os
+     botões Salvar/Remover — mesma classe de bug já resolvida no
+     Financeiro (finance.css: .finance-panel .platform-manage-row.open
+     .platform-manage-row-body { max-height: 20000px; }). Aplicando o
+     mesmo padrão aqui: a transição de abrir/fechar continua funcionando
+     (max-height alto o bastante pra nunca cortar, a animação em si é a
+     mesma), só deixa de existir um limite real que corte conteúdo.
+  */
+  max-height: 20000px;
   padding: 0 0.9rem 0.9rem;
 }
 
