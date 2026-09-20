@@ -1,6 +1,7 @@
 import * as viewInicio from './view-inicio.js';
 import * as viewCalendario from './view-calendario.js';
 import * as viewVip from './view-vip.js';
+import * as viewEdicao from './view-edicao.js';
 
 const appShellEl = document.getElementById('appShell');
 let routerStarted = false;
@@ -11,7 +12,7 @@ const routes = {
   '#/inicio': viewInicio,
   '#/calendario': viewCalendario,
   '#/vip': viewVip,
-  '#/edicao': null,
+  '#/edicao': viewEdicao,
   '#/financeiro': null
 };
 
@@ -25,8 +26,9 @@ function renderPlaceholder(nome) {
 
 function handleRouteChange() {
   // Desmonta a view anterior ANTES de montar a nova — essencial pra
-  // views com timers/instâncias próprias (ex: Calendário/FullCalendar)
-  // não continuarem rodando em segundo plano depois de sair da rota.
+  // views com timers/instâncias próprias (ex: Calendário/FullCalendar,
+  // Edição/modais dinâmicos) não continuarem rodando em segundo plano
+  // depois de sair da rota.
   if (currentView && typeof currentView.unmount === 'function') {
     currentView.unmount();
   }

@@ -12,7 +12,7 @@
 //   além da correção de bug documentada abaixo.
 //
 // Modos válidos: 'az' | 'za' | '1-9' | '9-1' | 'dias-asc' | 'dias-desc' |
-// 'com' | 'sem' | 'ativas' | 'inativas'
+// 'com' | 'sem' | 'ativas' | 'inativas' | 'deposito-desc' | 'deposito-asc'
 //
 // === CORREÇÃO — RODADA 1 — bugs em sortPlatforms() (Página 2 / Calendário) ===
 // 1) '1-9'/'9-1' usavam o MESMO comparador de 'az'/'za' (compareNames),
@@ -56,7 +56,7 @@
 // por filterAndSortForManage) — aqui é uma correção isolada e própria de
 // sortPlatforms, sem criar dependência entre as duas funções.
 
-import { getCurrentCycleDay } from './cycle-logic.js';
+import { getCurrentCycleDay, getDaysSinceLastDeposit } from './cycle-logic.js';
 
 // Comparação "numérica" de nomes: trata blocos de dígitos como número, não
 // caractere por caractere. Garante que códigos como "551X"/"552X"/"61T"
@@ -202,15 +202,21 @@ export function filterPlatforms(list, mode) {
 // Filtra E ordena ao mesmo tempo — usada SÓ pela Página 4
 // (ui-platform-manage.js). Cada modo (exceto Padrão, tratado fora desta
 // função) decide quem aparece E em que ordem, conforme a tabela fechada
-// no Ponto 1:
-//   az/za        -> só nomes que começam com LETRA, em ordem alfabética
-//   1-9/9-1      -> só nomes que começam com NÚMERO, em ordem numérica
-//   dias-desc/asc-> só quem está ATIVA NO CICLO agora, ordenada por "Dia X"
-//   com/sem      -> só do grupo correspondente (sem ordenação extra)
-//   ativas       -> !!lastResetDate && !cycleEnded (bug corrigido)
-//   inativas     -> !lastResetDate || cycleEnded (bug corrigido)
-//
-// INTOCADA nesta correção — já estava certa antes e continua certa agora.
+// no Ponto 1 + Item 10c (Etapa 5):
+//   az/za            -> só nomes que começam com LETRA, em ordem alfabética
+//   1-9/9-1          -> só nomes que começam com NÚMERO, em ordem numérica
+//   dias-desc/asc    -> só quem está ATIVA NO CICLO agora, ordenada por "Dia X"
+//   com/sem          -> só do grupo correspondente (sem ordenação extra)
+//   ativas           -> !!lastResetDate && !cycleEnded (bug corrigido)
+//   inativas         -> !lastResetDate || cycleEnded (bug corrigido)
+//   deposito-desc/asc -> Item 10c: só quem tem depositLog e já passou de
+//   7 dias desde o último depósito (getDaysSinceLastDeposit >= 7),
+//   ordenada por esse valor. Base de cálculo é depositLog (permanente,
+//   nunca zerado por Fim/Reinício) — diferente de dias-asc/desc, que usam
+//   lastResetDate (ciclo manual de nível/depósito). Sem depósito
+//   registrado, ou com menos de 7 dias desde o último, a plataforma some
+//   da lista neste modo — mesmo critério já usado pra exibir o badge
+//   "Depósito: X dias" no acordeão (ver buildRow em ui-platform-manage.js).
 export function filterAndSortForManage(list, mode) {
   switch (mode) {
     case 'az':
@@ -233,17 +239,30 @@ export function filterAndSortForManage(list, mode) {
       return list.filter(isAtivaCadastro);
     case 'inativas':
       return list.filter(p => !isAtivaCadastro(p));
+    case 'deposito-desc':
+      return list
+        .filter(p => getDaysSinceLastDeposit(p) !== null && getDaysSinceLastDeposit(p) >= 7)
+        .sort((a, b) => getDaysSinceLastDeposit(b) - getDaysSinceLastDeposit(a));
+    case 'deposito-asc':
+      return list
+        .filter(p => getDaysSinceLastDeposit(p) !== null && getDaysSinceLastDeposit(p) >= 7)
+        .sort((a, b) => getDaysSinceLastDeposit(a) - getDaysSinceLastDeposit(b));
     default:
       return list;
   }
 }
 
 export const SORT_ONLY_MODES = new Set(['az', 'za', '1-9', '9-1', 'dias-asc', 'dias-desc']);
-export const FILTER_MODES = new Set(['com', 'sem', 'ativas', 'inativas']);
+export const FILTER_MODES = new Set(['com', 'sem', 'ativas', 'inativas', 'deposito-desc', 'deposito-asc']);
 
 // Lista única de opções do menu "Ordenar" — mesmo menu nas páginas 2 e 4,
 // cada uma interpretando os cliques do seu jeito (ver topo do arquivo).
-// dias-desc = "mais dias primeiro" (+), dias-asc = "menos dias primeiro" (−).
+// dias-desc = "mais dias no ciclo primeiro" (+), dias-asc = "menos dias
+// no ciclo primeiro" (−). deposito-desc/asc seguem a mesma convenção,
+// mas pra dias desde o último depósito (Item 10c).
+//
+// Item 10b: label "Ativas no ciclo" renomeado pra "Ativas" — o value
+// ('ativas') não muda, nenhum outro arquivo depende do texto do label.
 export const SORT_MENU_OPTIONS = [
   { value: 'az', label: 'A - Z' },
   { value: 'za', label: 'Z - A' },
@@ -251,8 +270,10 @@ export const SORT_MENU_OPTIONS = [
   { value: '9-1', label: '9 – 1' },
   { value: 'dias-desc', label: '+ Dias no ciclo' },
   { value: 'dias-asc', label: '− Dias no ciclo' },
+  { value: 'deposito-desc', label: '+ Dias Depósito' },
+  { value: 'deposito-asc', label: '− Dias Depósito' },
   { value: 'com', label: 'Com Apostas' },
   { value: 'sem', label: 'Sem Apostas' },
-  { value: 'ativas', label: 'Ativas no ciclo' },
+  { value: 'ativas', label: 'Ativas' },
   { value: 'inativas', label: 'Inativas' }
 ];

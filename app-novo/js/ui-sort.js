@@ -11,21 +11,27 @@
 // usando exatamente a mesma lista compartilhada de sempre, sem nenhuma
 // mudança de comportamento.
 //
-// === CLEANUP (novo — Etapa 2, SPA) ===
+// === CLEANUP (Etapa 2, SPA) ===
 // No Sistema 1 (páginas separadas, sem SPA) o listener global de clique
 // (document.addEventListener, usado pra fechar o dropdown ao clicar fora
 // dele) nunca precisava ser removido — a página inteira era descartada
 // ao navegar. Na SPA, o mesmo módulo é importado UMA ÚNICA VEZ pra vida
 // inteira da aplicação: sem remover o listener, cada visita a uma rota
-// que chama initSortMenu() (Calendário, e futuramente Edição/Financeiro)
-// empilharia mais um listener idêntico, permanentemente, no document.
+// que chama initSortMenu() (Calendário, Edição, e futuramente
+// Financeiro) empilharia mais um listener idêntico, permanentemente, no
+// document.
 //
-// initSortMenu() agora devolve uma função de cleanup — quem chama guarda
-// essa função e a executa no próprio unmount() da view (ver
-// view-calendario.js). Cada instância de sort menu (Calendário, Edição,
+// initSortMenu() devolve uma função de cleanup — quem chama guarda essa
+// função e a executa no próprio unmount() da view (ver view-calendario.js
+// e view-edicao.js). Cada instância de sort menu (Calendário, Edição,
 // Financeiro) tem seu próprio listener isolado, sem interferir umas nas
-// outras — a única mudança é que agora existe uma forma de desligar cada
-// um quando a view correspondente é desmontada.
+// outras.
+//
+// === ITEM 10a (Etapa 5) — grid de 2 colunas ===
+// O item "Padrão" (value: null) ganha a classe .sort-menu-item-full
+// (sort-menu.css: grid-column: 1 / -1) pra ocupar as 2 colunas do grid
+// sozinho, no topo — os demais 10 modos formam pares do mesmo tamanho
+// logo abaixo. Puramente visual: a lógica de seleção/onChange não muda.
 
 import { SORT_MENU_OPTIONS } from './platform-sort.js';
 
@@ -53,7 +59,11 @@ export function initSortMenu({ buttonId, dropdownId, onChange, options = SORT_ME
     items.forEach(item => {
       const opt = document.createElement('button');
       opt.type = 'button';
-      opt.className = 'sort-menu-item' + (activeMode === item.value ? ' active' : '');
+      // Item 10a: "Padrão" ocupa as 2 colunas do grid, sozinho no topo —
+      // os demais itens seguem o layout padrão em pares.
+      opt.className = 'sort-menu-item'
+        + (item.value === null ? ' sort-menu-item-full' : '')
+        + (activeMode === item.value ? ' active' : '');
       opt.textContent = item.label;
       opt.addEventListener('click', () => {
         activeMode = item.value;
