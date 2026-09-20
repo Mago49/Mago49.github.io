@@ -67,6 +67,18 @@ import { loadAnnouncement, saveAnnouncement } from './announcement-store.js';
 import { loadPreferences } from './user-preferences-store.js';
 import { showAppAlert } from './utils.js';
 
+// Bug 4 (achado em teste, Etapa 5): o editor do aviso interno (Bloco G)
+// estava sendo montado pra QUALQUER usuário logado, não só pro
+// administrador — a Regra de Segurança do Firestore já bloqueava a
+// ESCRITA de quem não é admin, mas a UI de edição continuava aparecendo
+// pra todo mundo, e "Salvar" mostrava "Aviso salvo." mesmo quando a
+// gravação falhava silenciosamente por falta de permissão. Este UID é o
+// MESMO já cadastrado na Regra de Segurança (Firestore Console >
+// announcements/{docId} > allow write), copiado aqui só pra decidir se a
+// seção HTML nasce ou não — nunca é usado pra validar nada no backend
+// (quem garante a permissão de verdade continua sendo o Firestore).
+const ADMIN_UID = 'cyC02BqwkqfXAL1Y0C7P2r4JxD32';
+
 let dailyTimer = null;
 let sortMenuCleanup = null;
 let modalsContainerEl = null;
@@ -169,6 +181,8 @@ async function initAnnouncementEditor() {
 }
 
 export async function mount(container) {
+  const isAdmin = state.currentUid === ADMIN_UID;
+
   container.innerHTML = `
     <div class="page-header">
       <div class="page-header-text">
@@ -241,6 +255,7 @@ export async function mount(container) {
       </div>
     </aside>
 
+    ${isAdmin ? `
     <section class="card-shell" aria-label="Aviso interno" style="margin-top:1.25rem; padding:1.1rem;">
       <div class="section-heading" style="padding:0 0 0.9rem;">
         <div>
@@ -261,6 +276,7 @@ export async function mount(container) {
         <button class="btn-confirm" id="announcementSaveBtn" type="button">Salvar aviso</button>
       </div>
     </section>
+    ` : ''}
   `;
 
   // Ordem obrigatória: zera estado em memória -> cria os modais -> carrega
@@ -280,8 +296,13 @@ export async function mount(container) {
 
   // Carregamento assíncrono do aviso interno vem por último — não
   // bloqueia a renderização do acordeão de plataformas, que já está
-  // pronto e interativo antes desta leitura do Firestore terminar.
-  await initAnnouncementEditor();
+  // pronto e interativo antes desta leitura do Firestore terminar. Só
+  // roda pro administrador (isAdmin) — pra qualquer outro usuário a
+  // seção nem existe no HTML (ver container.innerHTML acima), então
+  // chamar loadAnnouncement() aqui seria uma leitura ao Firestore à toa.
+  if (isAdmin) {
+    await initAnnouncementEditor();
+  }
 }
 
 export function unmount() {

@@ -246,6 +246,17 @@ function moveManualOrder(platformId, direction) {
   [ids[posA], ids[posB]] = [ids[posB], ids[posA]];
   saveManualOrder(state.currentUid, ids);
   renderManageList();
+  // Corrige o disabled das setas ▲▼: reconcileList() (chamada por
+  // renderManageList) só REPOSICIONA linhas já existentes no DOM, nunca
+  // reconstrói o conteúdo delas — sem isso, uma linha que nasceu no topo
+  // (▲ desabilitada) carregaria esse estado pra sempre, mesmo depois de
+  // deixar de ser a primeira (e o mesmo, na ponta oposta, pra ▼). Bug
+  // real confirmado em teste: A73/11TT ficavam presas nos extremos
+  // mesmo depois de outras plataformas serem reordenadas ao redor delas.
+  // refreshAllRows() reconstrói TODAS as linhas visíveis, recalculando
+  // cada seta com a posição REAL e atual (lastVisibleList já atualizado
+  // por renderManageList() logo acima).
+  refreshAllRows();
 }
 
 
@@ -1210,9 +1221,43 @@ export function initManageControls() {
   // outro modo já estiver ativo (não deveria acontecer logo no mount(),
   // já que currentMode sempre reseta pra null a cada visita à rota, mas
   // o guard fica aqui por segurança).
+  //
+  // Bug 1 (achado em teste): os 3 controles (⚙️/👁/⇅) foram implementados
+  // de forma isolada — nenhum sabia da existência dos outros dois, então
+  // era possível abrir o dropdown de Badges e o de Ordenar ao mesmo
+  // tempo, ou deixar o modo Reordenar ativo enquanto qualquer um dos
+  // dois dropdowns também estava aberto. closeSortDropdownUI() e
+  // closeBadgeDropdownUI() fecham os dropdowns de fora (initSortMenu()
+  // só olha a classe 'open' do próprio elemento a cada clique — mudar
+  // essa classe por fora é seguro e não quebra o toggle interno dele).
+  function closeSortDropdownUI() {
+    const dd = document.getElementById('manageSortDropdown');
+    const btn = document.getElementById('manageSortBtn');
+    if (dd) dd.classList.remove('open');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+  function closeBadgeDropdownUI() {
+    if (manageBadgeVisibilityDropdown) manageBadgeVisibilityDropdown.classList.remove('open');
+    if (manageBadgeVisibilityBtn) manageBadgeVisibilityBtn.setAttribute('aria-expanded', 'false');
+  }
+  function deactivateReorderModeUI() {
+    if (!reorderModeActive) return;
+    reorderModeActive = false;
+    if (manageReorderBtn) {
+      manageReorderBtn.classList.remove('active');
+      manageReorderBtn.textContent = '⚙️ Reordenar';
+    }
+    refreshAllRows();
+  }
+
   if (manageReorderBtn) {
     manageReorderBtn.disabled = currentMode !== null;
     manageReorderBtn.addEventListener('click', () => {
+      const turningOn = !reorderModeActive;
+      if (turningOn) {
+        closeSortDropdownUI();
+        closeBadgeDropdownUI();
+      }
       reorderModeActive = !reorderModeActive;
       manageReorderBtn.classList.toggle('active', reorderModeActive);
       manageReorderBtn.textContent = reorderModeActive ? '✓ Concluir reordenação' : '⚙️ Reordenar';
@@ -1234,6 +1279,11 @@ export function initManageControls() {
     if (badgeVisibilityCycleDayCheckbox) badgeVisibilityCycleDayCheckbox.checked = visibility.cycleDayBadge;
 
     function toggleDropdown() {
+      const willOpen = !manageBadgeVisibilityDropdown.classList.contains('open');
+      if (willOpen) {
+        closeSortDropdownUI();
+        deactivateReorderModeUI();
+      }
       manageBadgeVisibilityDropdown.classList.toggle('open');
       manageBadgeVisibilityBtn.setAttribute(
         'aria-expanded',
@@ -1266,6 +1316,20 @@ export function initManageControls() {
     if (badgeVisibilityCycleDayCheckbox) badgeVisibilityCycleDayCheckbox.addEventListener('change', onVisibilityChange);
 
     closeBadgeDropdown = () => document.removeEventListener('click', onDocumentClick);
+  }
+
+  // Bug 1: um clique em "⇅ Ordenar" também precisa fechar o dropdown de
+  // Badges e desligar o modo Reordenar. initSortMenu() é genérico (usado
+  // também pelo Calendário) e não conhece os outros 2 controles — por
+  // isso um listener EXTRA e independente é somado aqui, sem alterar
+  // ui-sort.js. Roda sempre que o botão é clicado (abrindo ou fechando o
+  // próprio dropdown, tanto faz) — fechar quem já está fechado é inofensivo.
+  const manageSortBtnEl = document.getElementById('manageSortBtn');
+  if (manageSortBtnEl) {
+    manageSortBtnEl.addEventListener('click', () => {
+      closeBadgeDropdownUI();
+      deactivateReorderModeUI();
+    });
   }
 
   const sortMenuCleanup = initSortMenu({
