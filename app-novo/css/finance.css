@@ -1,0 +1,289 @@
+/* === PÁGINA 5 (FINANCEIRO) ===
+   Reaproveita o acordeão de manage-panel.css (.platform-manage-row e
+   afins) pra listar as plataformas — só o container muda (.finance-panel
+   em vez de #platformManagePanel). Aqui ficam as classes específicas
+   dessa página: Painel Geral (topo, todas as plataformas), busca,
+   badge de semana fechada, grids de estatística (semana atual ao vivo,
+   total da plataforma, fases do saldo e histórico congelado), o modo de
+   edição do histórico (.finance-week-card-editing), o agrupamento de
+   botões Editar/Excluir (.finance-week-card-actions), os controles de
+   fase/backfill (.finance-checkpoint), e o textarea de "Colar da
+   planilha" dentro de Adicionar semana antiga (.finance-spreadsheet-paste). */
+
+.finance-panel {
+  padding: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.finance-panel-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.finance-panel-header h3 {
+  margin: 0;
+  font-size: 1.08rem;
+  margin-right: auto;
+}
+
+.finance-panel-header input[type="search"] {
+  flex: 1;
+  min-width: 200px;
+  padding: 0.7rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid #dbe2ea;
+  background: rgba(255,255,255,0.95);
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.finance-panel-header input[type="search"]:focus {
+  border-color: rgba(37,99,235,0.45);
+  box-shadow: 0 0 0 4px rgba(37,99,235,0.12);
+}
+
+/* === Painel Geral (topo da página — soma de todas as plataformas) === */
+.finance-overview {
+  padding: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin-bottom: 1rem;
+}
+
+.finance-overview-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.finance-overview-filter label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #334155;
+}
+
+.finance-overview-filter input[type="date"] {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 12px;
+  font-size: 0.88rem;
+  outline: none;
+  background: #fff;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.finance-overview-filter input[type="date"]:focus {
+  border-color: rgba(37,99,235,0.45);
+  box-shadow: 0 0 0 4px rgba(37,99,235,0.12);
+}
+
+/* manage-panel.css limita a altura aberta do acordeão a 900px (truque de
+   animação via max-height). O histórico financeiro cresce toda semana e
+   pode passar disso fácil — sem este override, semanas antigas ficariam
+   cortadas (escondidas) mesmo estando na lista. */
+.finance-panel .platform-manage-row.open .platform-manage-row-body {
+  max-height: 20000px;
+}
+
+.finance-closed-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #166534;
+  background: #dcfce7;
+  border: 1px solid #bbf7d0;
+  border-radius: 999px;
+  padding: 0.2rem 0.5rem;
+  white-space: nowrap;
+}
+
+.finance-week-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.finance-close-week-note {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin: 0;
+}
+
+/* Grid de estatísticas — usado na semana atual (7 itens, ao vivo), no
+   Total da plataforma, nas Fases do Saldo, em cada card do histórico e no
+   Painel Geral (9 itens). auto-fit evita precisar de layouts diferentes
+   pras várias quantidades. */
+.finance-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 0.5rem;
+}
+
+.finance-stat {
+  padding: 0.55rem 0.6rem;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  text-align: center;
+}
+
+.finance-stat-label {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #94a3b8;
+  margin-bottom: 0.2rem;
+}
+
+.finance-stat-value {
+  display: block;
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: var(--text-dark);
+}
+
+.finance-stat-value.positive { color: #166534; }
+.finance-stat-value.negative { color: #b91c1c; }
+
+.finance-week-current {
+  border: 1px solid rgba(37,99,235,0.18);
+  background: rgba(37,99,235,0.04);
+  border-radius: 14px;
+  padding: 0.75rem;
+}
+
+.finance-entry-form {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.finance-entry-form input {
+  flex: 1;
+  min-width: 90px;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.88rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 12px;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.finance-entry-form input:focus {
+  border-color: rgba(37,99,235,0.45);
+  box-shadow: 0 0 0 4px rgba(37,99,235,0.12);
+}
+
+/* Textarea de "Colar da planilha" (Histórico → Adicionar semana antiga →
+   Colar da planilha) — mesma linguagem visual dos inputs de
+   .finance-entry-form (borda, raio, foco), só que ocupando a largura
+   toda e com altura ajustável só na vertical, pra não estourar o layout
+   do acordeão. */
+.finance-spreadsheet-paste {
+  display: block;
+  width: 100%;
+  min-height: 180px;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 12px;
+  background: #fff;
+  font-family: inherit;
+  font-size: 0.88rem;
+  color: var(--text-dark);
+  outline: none;
+  resize: vertical;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.finance-spreadsheet-paste:focus {
+  border-color: rgba(37,99,235,0.45);
+  box-shadow: 0 0 0 4px rgba(37,99,235,0.12);
+}
+
+.finance-close-week {
+  border-top: 1px dashed rgba(15,23,42,0.12);
+  padding-top: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Controles de fase (Iniciar/Remover), o botão em massa do Painel Geral,
+   e o formulário "Adicionar semana antiga" — mesmo visual de separador
+   tracejado usado em .finance-close-week. */
+.finance-checkpoint {
+  border-top: 1px dashed rgba(15,23,42,0.12);
+  padding-top: 0.6rem;
+  margin-top: 0.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.finance-history {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.finance-week-card {
+  border: 1px solid rgba(15,23,42,0.08);
+  border-radius: 14px;
+  padding: 0.7rem;
+  background: #fff;
+}
+
+/* Agrupa os botões Editar/Excluir no cabeçalho do card de uma semana
+   fechada, pra ficarem juntos à direita (o cabeçalho é
+   justify-content:space-between, então precisa de um wrapper pros dois
+   botões não se espalharem pelo meio). */
+.finance-week-card-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+/* Card "Total da plataforma" e card da fase ATUAL (dentro de "Fases do
+   Saldo") — mesmo visual de .finance-week-card, com um contorno verde
+   (cor de destaque do app) pra diferenciar de um card de semana/fase
+   individual passada. */
+.finance-total-card {
+  border-color: rgba(21,128,61,0.25);
+  background: rgba(21,128,61,0.03);
+}
+
+/* Card do histórico em modo edição — mesma estrutura de .finance-week-card,
+   só com um contorno azul pra deixar claro que os campos abaixo estão
+   editáveis (ver buildWeekCardEditing em ui-finance-panel.js). */
+.finance-week-card-editing {
+  border-color: rgba(37,99,235,0.35);
+  background: rgba(37,99,235,0.03);
+}
+
+.finance-week-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: var(--text-dark);
+}
+
+.finance-empty {
+  text-align: center;
+  color: #64748b;
+  padding: 0.8rem;
+  font-size: 0.88rem;
+}
