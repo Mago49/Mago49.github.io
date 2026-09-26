@@ -1077,9 +1077,23 @@ function showHistoryModal(platform) {
         deleteBtn.className = 'history-delete-btn';
         deleteBtn.textContent = 'Excluir';
         deleteBtn.addEventListener('click', async () => {
-          const ok = await showAppConfirm(`Deseja excluir este depósito de ${formatCurrency(dep.value)}?`);
+          const ok = await showAppConfirm(`Deseja excluir este depósito de ${formatCurrency(dep.value)}? Isso também remove esse valor do Saldo/Rollover no Financeiro.`);
           if (ok) {
             platform.deposits.splice(platform.deposits.indexOf(dep), 1);
+            // Bug corrigido (Etapa 7 — "depósito fantasma"): excluir aqui
+            // só removia de `deposits` (ciclo VIP), nunca de `depositLog`
+            // (histórico PERMANENTE usado pelo Financeiro pra Saldo e
+            // Rollover). O depósito excluído continuava sendo somado pra
+            // sempre no Saldo, mesmo já não existindo mais na Edição —
+            // mesma identificação por data+valor já usada em
+            // deleteClosedWeek (finance-logic.js) pra remover eventos
+            // sintéticos de backfill.
+            if (platform.depositLog) {
+              const logIndex = platform.depositLog.findIndex(
+                d => d.date === dep.date && Number(d.value) === Number(dep.value)
+              );
+              if (logIndex !== -1) platform.depositLog.splice(logIndex, 1);
+            }
             savePlatform(state.currentUid, platform);
             openRowId = platform.id;
             // Não afeta filtro/ordenação — só o conteúdo da linha muda.

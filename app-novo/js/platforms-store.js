@@ -27,6 +27,12 @@ export const DEFAULT_PLATFORMS = Array.from({ length: 33 }, (_, i) => ({
   balancePhases: [],
   obrigadoDays: [],
   misteriosoBonusLog: [],
+  // Etapa 7 (Bloco F Item 16.1 / Bloco P) — log permanente de bônus
+  // avulso ("Inserir bônus hoje"), nunca apagado por Fim/Reinício, mesma
+  // regra de depositLog/betEntries/misteriosoBonusLog. Cada entrada:
+  // { date, rawValue, scale, rolloverValue, createdAt } — ver
+  // bonus-ledger-logic.js/finance-logic.js.
+  otherBonusLog: [],
   codigoConfig: { tipo: null, fixo: '', baseDate: null, variavelInicio: 0 },
   codigoDeposito: { fixo: '', baseDate: null, variavelInicio: 0, valorMinimo: 0 },
   codigoAposta: { fixo: '', baseDate: null, variavelInicio: 0, valorMinimo: 0 }
@@ -73,6 +79,10 @@ export function normalizePlatformData(parsed) {
       balancePhases: Array.isArray(p.balancePhases) ? p.balancePhases : [],
       obrigadoDays: Array.isArray(p.obrigadoDays) ? p.obrigadoDays : [],
       misteriosoBonusLog: Array.isArray(p.misteriosoBonusLog) ? p.misteriosoBonusLog : [],
+      // Etapa 7 — mesma regra defensiva dos demais logs permanentes:
+      // contas que carregaram a conta antes desta funcionalidade existir
+      // simplesmente começam com o array vazio, nunca `undefined`.
+      otherBonusLog: Array.isArray(p.otherBonusLog) ? p.otherBonusLog : [],
       codigoConfig: (p.codigoConfig && typeof p.codigoConfig === 'object')
         ? p.codigoConfig : { tipo: null, fixo: '', baseDate: null, variavelInicio: 0 },
       codigoDeposito: (p.codigoDeposito && typeof p.codigoDeposito === 'object')

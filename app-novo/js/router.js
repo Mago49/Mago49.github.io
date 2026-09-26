@@ -2,6 +2,7 @@ import * as viewInicio from './view-inicio.js';
 import * as viewCalendario from './view-calendario.js';
 import * as viewVip from './view-vip.js';
 import * as viewEdicao from './view-edicao.js';
+import * as viewFinanceiro from './view-financeiro.js';
 
 const appShellEl = document.getElementById('appShell');
 let routerStarted = false;
@@ -13,7 +14,7 @@ const routes = {
   '#/calendario': viewCalendario,
   '#/vip': viewVip,
   '#/edicao': viewEdicao,
-  '#/financeiro': null
+  '#/financeiro': viewFinanceiro
 };
 
 function renderPlaceholder(nome) {

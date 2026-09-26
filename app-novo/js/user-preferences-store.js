@@ -27,7 +27,13 @@ import { db, doc, getDoc, writeBatch } from './firebase-init.js';
 
 const DEFAULT_PREFERENCES = {
   manualOrder: [],
-  badgeVisibility: { totalBadge: true, cycleDayBadge: true }
+  // Etapa 7, sub-entrega 5: financeBalanceBadge/financeRolloverBadge são
+  // os interruptores do Financeiro (Item 25b) — vivem no MESMO objeto
+  // badgeVisibility que totalBadge/cycleDayBadge (Edição, Item 25a),
+  // porque o requisito confirma que os dois pares moram no mesmo
+  // documento (users/{uid}/meta/preferences). Ver correção em
+  // saveBadgeVisibility abaixo: sem ela, salvar um par apagaria o outro.
+  badgeVisibility: { totalBadge: true, cycleDayBadge: true, financeBalanceBadge: true, financeRolloverBadge: true }
 };
 
 let cachedPreferences = null;
@@ -41,7 +47,10 @@ function normalizePreferences(data) {
     manualOrder: Array.isArray(data?.manualOrder) ? data.manualOrder : [],
     badgeVisibility: {
       totalBadge: data?.badgeVisibility?.totalBadge !== false,
-      cycleDayBadge: data?.badgeVisibility?.cycleDayBadge !== false
+      cycleDayBadge: data?.badgeVisibility?.cycleDayBadge !== false,
+      // Etapa 7, sub-entrega 5 — ver nota em DEFAULT_PREFERENCES.
+      financeBalanceBadge: data?.badgeVisibility?.financeBalanceBadge !== false,
+      financeRolloverBadge: data?.badgeVisibility?.financeRolloverBadge !== false
     }
   };
 }
@@ -88,16 +97,30 @@ export function saveManualOrder(uid, orderedIds) {
   batch.commit().catch(err => console.error('Erro ao salvar ordem manual:', err));
 }
 
-// Grava só `badgeVisibility` (Item 25a) — nunca toca em `manualOrder`
-// graças ao merge:true.
-export function saveBadgeVisibility(uid, visibility) {
+// Grava badges de visibilidade — aceita um objeto PARCIAL (só as chaves
+// que mudaram) e faz merge com o que já está no cache antes de gravar.
+//
+// BUG CORRIGIDO (Etapa 7, sub-entrega 5): a versão anterior reconstruía
+// o objeto `badgeVisibility` inteiro só com totalBadge/cycleDayBadge
+// (os 2 badges da Edição) — como o Firestore, com `{merge:true}` no
+// `batch.set`, substitui o CAMPO `badgeVisibility` por inteiro (não faz
+// merge dentro do objeto, só no nível do documento), qualquer chave que
+// não fosse totalBadge/cycleDayBadge (como os novos financeBalanceBadge/
+// financeRolloverBadge do Financeiro) seria APAGADA sempre que a Edição
+// salvasse suas preferências, e vice-versa. Agora o objeto salvo sempre
+// parte do que já está em getCachedPreferences() — cada página só
+// sobrescreve as chaves que ela própria conhece, preservando as da
+// outra (mesmo espírito do `{merge:true}` já usado no documento inteiro,
+// só que replicado um nível abaixo, dentro de `badgeVisibility`).
+export function saveBadgeVisibility(uid, partialVisibility) {
   if (!uid) return;
-  const normalized = {
-    totalBadge: visibility?.totalBadge !== false,
-    cycleDayBadge: visibility?.cycleDayBadge !== false
-  };
-  cachedPreferences = { ...getCachedPreferences(), badgeVisibility: normalized };
+  const current = getCachedPreferences().badgeVisibility || {};
+  const merged = { ...current };
+  Object.keys(partialVisibility || {}).forEach(key => {
+    merged[key] = partialVisibility[key] !== false;
+  });
+  cachedPreferences = { ...getCachedPreferences(), badgeVisibility: merged };
   const batch = writeBatch(db);
-  batch.set(getPreferencesRef(uid), { badgeVisibility: normalized }, { merge: true });
+  batch.set(getPreferencesRef(uid), { badgeVisibility: merged }, { merge: true });
   batch.commit().catch(err => console.error('Erro ao salvar visibilidade de badges:', err));
 }
