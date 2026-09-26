@@ -1,58 +1,85 @@
-// === VIEW FINANCEIRO — acordeão por plataforma + Painel Geral (Etapa 7) ===
-// Primeira migração deste arquivo pra SPA — baseado 1:1 no
-// comportamento de ui-finance-panel.js (Sistema 1), com as mudanças da
-// Etapa 7 abaixo. Cada linha mostra: a semana atual ao vivo (registrar
-// saque, registrar aposta, "Últimas apostas" — Bloco P — e, só aos
-// domingos, Bônus pra fechar a semana); o "Total da plataforma"; "Fases
-// do Saldo"; e o Histórico de semanas.
+// === PÁGINA 5 (FINANCEIRO) — acordeão por plataforma + Painel Geral ===
+// Cada linha mostra: a semana atual ao vivo (registrar saque, registrar
+// aposta com R.B. já incluso, e — só aos domingos — Bônus pra fechar a
+// semana); o "Total da plataforma" (soma de todas as semanas já
+// fechadas + Saldo da fase atual); "Fases do Saldo"; e o Histórico de
+// semanas (editar, excluir, adicionar semana antiga, busca por data).
+// Reaproveita o visual do acordeão que já existe em manage-panel.css
+// (mesmas classes .platform-manage-row*) — só o conteúdo de dentro de
+// cada linha é diferente da Página 4.
 //
-// === O QUE MUDOU NESTA SUB-ENTREGA (2) ===
+// FASES: quando o histórico antigo é incompleto ou tem números
+// conhecidamente errados, "Iniciar nova fase" fecha a fase atual (o
+// resultado dela fica visível pra sempre em "Fases do Saldo") e pede um
+// SALDO INICIAL (obrigatório) — pensado pra migração da planilha
+// externa: no dia da virada de ciclo, você digita o Saldo real de cada
+// plataforma e o sistema passa a somar os movimentos dali pra frente em
+// cima desse valor, sem carregar nenhum cálculo da fase anterior. O
+// badge do nome, "Semana atual" e "Total da plataforma" sempre mostram o
+// Saldo da fase ATUAL (a mais recente, já com o Saldo Inicial dela
+// somado).
 //
-// 1) BLOCO P — "Últimas apostas": botão azul ao lado de "Registrar
-//    aposta", abre um modal (mesmo padrão visual do Histórico de
-//    Depósitos da Edição) listando só as apostas da SEMANA EM ABERTO —
-//    editar (3 campos: Apostado, N° de apostas, R.B.) ou excluir. Apostas
-//    de semanas já fechadas não aparecem aqui — correção nelas continua
-//    pelo modal de edição já existente em cada card de semana fechada
-//    (buildWeekCardEditing).
+// BACKFILL: "+ Adicionar semana antiga" (dentro do Histórico) insere uma
+// semana já fechada direto no sistema. Duas formas de preencher, com um
+// botão "← Voltar" pra trocar de uma pra outra sem perder o contexto (ver
+// renderHistoricalWeekModeChoice):
+//   - Manual (buildManualHistoricalWeekControls): uma plataforma por vez,
+//     mesmo formulário de sempre.
+//   - Colar da planilha (buildSpreadsheetHistoricalWeekControls): cola um
+//     bloco copiado da planilha com várias plataformas em colunas de uma
+//     vez, interpretado por finance-spreadsheet-import.js (parser puro,
+//     sem tocar em finance-logic.js), com prévia antes de confirmar. Cada
+//     plataforma válida passa por addHistoricalWeek() — a MESMA porta de
+//     entrada única do modo manual, nenhuma regra financeira nova.
 //
-// 2) "INICIAR NOVA FASE" — mudança de contrato de startNewPhase()
-//    (finance-logic.js, sub-entrega 1): agora SÓ aceita datas que caem
-//    numa segunda-feira (recusa com { ok:false, reason:'not-monday' } —
-//    ver nota extensa em finance-logic.js sobre o porquê: elimina por
-//    construção o bug de fronteira de fase que já causou duplicação de
-//    R.B./Bônus em produção) e PASSA A EXIGIR também um Rollover Inicial
-//    (obrigatório, mesmo tratamento do Saldo Inicial — sem isso o
-//    Rollover da fase nova nasceria incorreto). Por depender diretamente
-//    da assinatura já alterada, esses dois campos entram JUNTO com esta
-//    sub-entrega, mesmo o roteiro original tendo agrupado "Rollover
-//    Inicial" com a sub-entrega 3 — não dava pra migrar este formulário
-//    de outro jeito sem deixá-lo quebrado ou chamando a função com um
-//    valor fictício.
+// SAVE: cada ação aqui mexe em UMA plataforma, então usa savePlatform
+// (grava só o doc dela). Só o botão de massa do Painel Geral
+// (initFinanceOverview) mexe em todas de propósito e usa savePlatforms —
+// ver nota em platforms-store.js sobre por que essa distinção importa.
 //
-// NADA MAIS desta etapa entra aqui ainda: sem "Inserir bônus hoje", sem
-// "Bônus Acumulado" de domingo, sem Rollover visível nos quadrantes de
-// estatística (statsGridHtml) — isso é a sub-entrega 3/4, que vai EDITAR
-// este mesmo arquivo por cima (nunca reescrever do zero).
+// Este arquivo NÃO mexe em ciclo/nível VIP (lastResetDate, cycleEnded,
+// deposits) — essas ações continuam exclusivas de ui-platform-manage.js.
 //
-// === RECONCILIAÇÃO DE DOM (mesmo padrão já usado em Edição/Calendário/VIP) ===
-// Um Map (rowElements) guarda o elemento de cada linha já presente na
-// tela, indexado por platform.id — refreshRow() troca só uma linha,
-// reconcileList() sincroniza o conjunto/ordem sem nunca esvaziar o
-// container (evita o salto de scroll já documentado nas outras views).
+// === RECONCILIAÇÃO DE DOM (mesma correção aplicada em ui-platform-manage.js) ===
+// Antes, QUALQUER ação (registrar saque, registrar aposta, abrir/fechar
+// acordeão, etc.) chamava renderFinanceList(), que apagava a lista
+// inteira (innerHTML = '') e reconstruía do zero TODAS as ~40 linhas —
+// mesma causa raiz do salto de scroll já corrigido em Edição, e do mesmo
+// risco de bug de digitação no campo de busca (#financeSearch), mesmo
+// nunca observado aqui ainda.
 //
-// === CUIDADO SPA (Adendo K12, aplicado aqui pela primeira vez neste
-//      arquivo) ===
-// `financeListEl`/`financeSearchEl` NÃO são resolvidos no topo do
-// módulo (isso quebraria, já que o router injeta o HTML da view DEPOIS
-// do módulo ser importado) — viram variáveis `let`, resolvidas dentro de
-// initFinanceControls(), chamada pelo mount() da view.
+// A solução é a mesma: um Map (rowElements) guarda o elemento de cada
+// linha já presente na tela, indexado por platform.id.
+//   - refreshRow(id): reconstrói e troca SÓ a linha daquela plataforma,
+//     sem tocar nas outras. Como hoje esta página não tem nenhum modo de
+//     Ordenar/filtro além da busca por nome, e nenhuma ação financeira
+//     aqui muda o NOME da plataforma, toda ação de UMA plataforma pode
+//     usar refreshRow com segurança — não há risco de esconder/mostrar/
+//     reordenar linhas por engano.
+//   - reconcileList(list): usada por renderFinanceList() só quando o
+//     CONJUNTO pode mudar — hoje isso só acontece na busca por nome.
+//   - refreshAllRows(): atualiza o CONTEÚDO de todas as linhas na tela
+//     sem mexer em quem está visível — usada quando TODAS as plataformas
+//     mudam de uma vez ("Iniciar nova fase em todas") ou na virada do dia
+//     (ver main-financeiro.js: a "Semana atual" e o botão "Fechar semana"
+//     dependem da data de hoje).
 //
-// === CUIDADO SPA (Adendo K1) ===
-// initFinanceControls() retorna o cleanup de initSortMenu() — quem
-// chama (view-financeiro.js) guarda e executa essa função no próprio
-// unmount(), senão o listener global de document.click do dropdown
-// "Ordenar" se acumularia a cada visita à rota.
+// ATENÇÃO PARA QUEM FOR MEXER NISSO DEPOIS (Ponto 5.1 — Ordenar no
+// Financeiro): quando o menu Ordenar for adicionado aqui (Maior/Menor
+// Saldo, A-Z, Com/Sem, Ativas/Inativas), getVisibleList() passará a
+// depender de group/lastResetDate/cycleEnded/Saldo — nesse momento,
+// AÇÕES QUE MUDAM O SALDO (registrar saque/aposta/fechar semana/fase)
+// PRECISARÃO chamar renderFinanceList() (reconcileList) além de
+// refreshRow(), exatamente como já é feito em ui-platform-manage.js para
+// Fim/Reinício/Salvar Dados. Hoje isso não é necessário porque nenhum
+// modo de ordenação depende de dado financeiro ainda.
+//
+// O cache (rowElements) é zerado a cada login via resetFinanceListCache()
+// — chamada por main-financeiro.js ANTES do primeiro renderFinanceList()
+// de cada sessão, pelo mesmo motivo já documentado em
+// ui-platform-manage.js (evita reaproveitar linha de sessão anterior com
+// conteúdo desatualizado). Isso é só sobre o que a TELA mostra — nunca
+// afeta o que é lido/gravado no Firestore.
 
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
@@ -61,14 +88,9 @@ import {
   getWeekStart, getWeekEnd, toLocalDateString, toLocalDateTimeString,
   computeCurrentWeekLive, closeWeek, isCurrentWeekClosed, canCloseCurrentWeek,
   updateClosedWeek, deleteClosedWeek, addHistoricalWeek,
-  computePlatformTotals, computeOverallTotals, computeLiveBalance, computeRolloverLive,
+  computePlatformTotals, computeOverallTotals, computeLiveBalance,
   computePhaseHistory, startNewPhase, removeLastPhase
 } from './finance-logic.js';
-import {
-  getExpectedBonusToday, computeBonusDiffToday,
-  getAccumulatedBonusThisWeek, computeAutoAccruedBonusForWeek
-} from './bonus-ledger-logic.js';
-import { getCachedPreferences, saveManualOrder, saveBadgeVisibility } from './user-preferences-store.js';
 import { savePlatforms, savePlatform } from './platforms-store.js';
 import {
   parseFinanceSpreadsheet, formatImportedFieldName, formatImportedNumber
@@ -76,20 +98,8 @@ import {
 import { filterAndSortForManage } from './platform-sort.js';
 import { initSortMenu } from './ui-sort.js';
 
-// --- Referências de DOM do painel principal (busca + lista) ---
-// Resolvidas por initFinanceControls(), chamada pelo mount() da view
-// DEPOIS que o HTML do painel já foi escrito no container (K12).
-let financeListEl = null;
-let financeSearchEl = null;
-
-// --- Referências de DOM do modal "Últimas apostas" (Bloco P) ---
-// Resolvidas por initBetHistoryModalListeners(), chamada pelo mount() da
-// view DEPOIS que o modal já foi criado e anexado ao document.body
-// (mesmo padrão "Opção A" já usado pelos modais de Edição).
-let betHistoryModal = null;
-let betHistoryTitle = null;
-let betHistoryList = null;
-let betHistoryCloseBtn = null;
+const financeListEl = document.getElementById('financeList');
+const financeSearchEl = document.getElementById('financeSearch');
 
 let currentSearch = '';
 // Ponto 5.1: um dos FINANCE_SORT_MENU_OPTIONS.value, ou null (Padrão).
@@ -104,48 +114,29 @@ let historyDateFilter = null;
 // Id da plataforma mostrando o formulário "Iniciar nova fase" — só uma
 // por vez. Reseta junto com o resto ao abrir/fechar uma linha.
 let startingPhaseId = null;
-// Id da plataforma mostrando a seção "Adicionar semana antiga" — só uma
-// por vez. Reseta junto com o resto ao abrir/fechar uma linha.
+// Id da plataforma mostrando a seção "Adicionar semana antiga" (escolha
+// de modo, manual ou planilha) — só uma por vez. Reseta junto com o
+// resto ao abrir/fechar uma linha.
 let addingHistoricalWeekId = null;
-// Quais das 3 seções colapsáveis ('total' | 'phases' | 'history') estão
-// expandidas na linha aberta agora — todas começam recolhidas, reseta
-// junto com o resto ao abrir/fechar uma linha.
+// Ponto 6: quais das 3 seções colapsáveis ('total' | 'phases' | 'history')
+// estão expandidas na linha aberta agora — todas começam recolhidas,
+// reseta junto com o resto ao abrir/fechar uma linha (nunca lembra a
+// última escolha, nem entre plataformas nem entre sessões).
 let expandedSections = new Set();
 
-// Bloco P — plataforma atualmente associada ao modal "Últimas apostas"
-// aberto, e qual aposta (por referência de objeto) está em edição.
-let currentBetHistoryPlatform = null;
-let editingBetEntry = null;
-
-// Etapa 7, sub-entrega 3: resolve o ctx (Obrigado/Misterioso) de CADA
-// plataforma — setado uma vez pela view (view-financeiro.js), depois de
-// carregar os dois do Firestore. Sem chamar setBonusContextResolver
-// (ex: antes da view terminar de montar), devolve {} — VIP diário/
-// semanal/mensal continuam funcionando normalmente mesmo assim (não
-// dependem de ctx), só Obrigado/Misterioso ficam de fora até o
-// resolvedor real ser definido.
-let resolveCtxForPlatform = () => ({});
-
-export function setBonusContextResolver(fn) {
-  resolveCtxForPlatform = typeof fn === 'function' ? fn : () => ({});
-}
-
-// Item 22 — true enquanto o botão ⚙️ "Reordenar" está ativo — só tem
-// efeito quando currentMode === null (Padrão), mesmo comportamento já
-// validado em ui-platform-manage.js (Edição). manualOrder é o MESMO
-// documento (users/{uid}/meta/preferences) — reordenar aqui também
-// reordena a Edição, e vice-versa (Bloco B: "mesma ordem em Edição e
-// Financeiro").
-let reorderModeActive = false;
-
-// Lista visível da última renderização — usada pelas setas ▲▼ pra saber
-// qual é o vizinho VISÍVEL de uma plataforma (mesmo padrão da Edição).
-let lastVisibleList = [];
-
 // id da plataforma -> elemento <div class="platform-manage-row..."> já
-// presente no DOM.
+// presente no DOM. Fonte de verdade de "o que está renderizado agora".
 const rowElements = new Map();
 
+// Ponto 5.1: rótulos próprios do menu Ordenar do Financeiro — reaproveita
+// os MESMOS valores ('az','za','1-9','9-1','com','sem','ativas','inativas')
+// que filterAndSortForManage (platform-sort.js) já sabe interpretar, só
+// com texto adaptado a esta página ("Com Aposta" no singular, sem "no
+// ciclo" em Ativas/Inativas). Maior/Menor Saldo são exclusivos desta
+// página — ordenam por computeLiveBalance(), resolvido localmente em
+// getVisibleList() (não vive em platform-sort.js de propósito: essa
+// função é pura sobre cycle-logic, nunca deveria depender de
+// finance-logic — ver regra de isolamento no guia de arquitetura).
 const FINANCE_SORT_MENU_OPTIONS = [
   { value: 'saldo-desc', label: 'Maior Saldo' },
   { value: 'saldo-asc', label: 'Menor Saldo' },
@@ -172,72 +163,27 @@ function formatDateTimePt(isoStr) {
   });
 }
 
-// Item 22 — aplica a ordem manual salva (compartilhada com a Edição) só
-// quando "Padrão" está selecionado. Plataformas ausentes de manualOrder
-// vão pro fim, preservando a ordem relativa entre elas.
-function applyManualOrder(list) {
-  const order = getCachedPreferences().manualOrder || [];
-  if (order.length === 0) return list;
-  const indexMap = new Map(order.map((id, i) => [id, i]));
-  return [...list].sort((a, b) => {
-    const ia = indexMap.has(a.id) ? indexMap.get(a.id) : Infinity;
-    const ib = indexMap.has(b.id) ? indexMap.get(b.id) : Infinity;
-    return ia - ib;
-  });
-}
-
-// Todas as plataformas, na ordem manual efetiva (salva + as que ainda
-// não entraram nela, no fim) — base usada por moveManualOrder pra
-// sempre gravar a lista COMPLETA, nunca só o subconjunto filtrado pela
-// busca (senão salvar com uma busca ativa perderia a posição de quem
-// estava escondido).
-function getEffectiveOrderIds() {
-  const order = getCachedPreferences().manualOrder || [];
-  const allIds = new Set(state.platforms.map(p => p.id));
-  const known = order.filter(id => allIds.has(id));
-  const missing = state.platforms.map(p => p.id).filter(id => !known.includes(id));
-  return [...known, ...missing];
-}
-
-// Troca a posição de `platformId` com seu vizinho VISÍVEL (direction -1
-// = sobe, +1 = desce) — mesma lógica já validada em
-// ui-platform-manage.js.
-function moveManualOrder(platformId, direction) {
-  const visibleIds = lastVisibleList.map(p => p.id);
-  const idx = visibleIds.indexOf(platformId);
-  const neighborIdx = idx + direction;
-  if (idx === -1 || neighborIdx < 0 || neighborIdx >= visibleIds.length) return;
-  const neighborId = visibleIds[neighborIdx];
-
-  const ids = getEffectiveOrderIds();
-  const posA = ids.indexOf(platformId);
-  const posB = ids.indexOf(neighborId);
-  if (posA === -1 || posB === -1) return;
-
-  [ids[posA], ids[posB]] = [ids[posB], ids[posA]];
-  saveManualOrder(state.currentUid, ids);
-  renderFinanceList();
-  // Corrige o disabled das setas ▲▼ de TODAS as linhas visíveis — mesmo
-  // motivo já documentado na Edição (sem isso, uma linha que nasceu no
-  // topo/fim ficaria com a seta desabilitada errada pra sempre).
-  refreshAllRows();
-}
-
 function getVisibleList() {
   const q = currentSearch.trim().toLowerCase();
   let list = state.platforms.filter(p => p.name.toLowerCase().includes(q));
 
+  // Maior/Menor Saldo são exclusivos desta página (dependem de
+  // computeLiveBalance, de finance-logic.js) — resolvidos aqui, não em
+  // filterAndSortForManage (platform-sort.js), que é pura sobre
+  // cycle-logic e nunca deveria depender de dado financeiro.
   if (currentMode === 'saldo-desc') {
-    return [...list].sort((a, b) => computeLiveBalance(b, new Date(), resolveCtxForPlatform(b)) - computeLiveBalance(a, new Date(), resolveCtxForPlatform(a)));
+    return [...list].sort((a, b) => computeLiveBalance(b) - computeLiveBalance(a));
   }
   if (currentMode === 'saldo-asc') {
-    return [...list].sort((a, b) => computeLiveBalance(a, new Date(), resolveCtxForPlatform(a)) - computeLiveBalance(b, new Date(), resolveCtxForPlatform(b)));
+    return [...list].sort((a, b) => computeLiveBalance(a) - computeLiveBalance(b));
   }
 
+  // Demais modos (az/za/1-9/9-1/com/sem/ativas/inativas) usam a MESMA
+  // função já validada e testada na Página 4 (Ponto 1) — mesmo
+  // comportamento de filtrar+ordenar juntos, mesma correção do bug de
+  // Ativas/Inativas.
   if (currentMode) {
     list = filterAndSortForManage(list, currentMode);
-  } else {
-    list = applyManualOrder(list);
   }
   return list;
 }
@@ -250,26 +196,28 @@ function statBox(label, value, cls = '') {
     </div>`;
 }
 
+// Usado no card do histórico (semana fechada), no "Total da plataforma",
+// no "Painel Geral" e nos cards de "Fases do Saldo" — todos têm o mesmo
+// formato de 9 campos (o 9° é Saldo). A "Semana atual" (ao vivo) tem seu
+// próprio grid, à parte.
+//
+// opts.balanceLabel troca o rótulo do último campo pra deixar claro do
+// que se trata em cada contexto (semana fechada = travado; fase = da
+// fase; padrão = Saldo ao vivo da fase atual). Saldo é travado em
+// R$ 0,00 aqui na exibição também (defensivo).
+//
+// opts.showInitialBalance adiciona um box extra no INÍCIO do grid com o
+// Saldo Inicial daquela fase — só usado nos cards de "Fases do Saldo",
+// onde faz sentido separar "o que veio de fora" (Saldo Inicial) do que
+// foi calculado a partir dos movimentos dentro da fase.
 function statsGridHtml(totals, opts = {}) {
   const safeBalance = Math.max(0, Number(totals.balance) || 0);
   const balanceLabel = opts.balanceLabel || 'Saldo (Balance)';
   const initialBalanceBox = opts.showInitialBalance
     ? statBox('Saldo Inicial', formatCurrency(Math.max(0, Number(totals.initialBalance) || 0)))
     : '';
-  // Etapa 7, sub-entrega 4 (Bloco P) — Rollover é opcional de propósito:
-  // nem todo "totals" que passa por aqui tem um Rollover fazendo sentido
-  // (ex: uma semana fechada individual tem só o RETRATO do fechamento,
-  // rolloverAtClose — nunca o "totals.rollover" ao vivo). Quem chama
-  // decide via opts.rolloverValue; undefined/null = não mostra a caixa.
-  const initialRolloverBox = opts.showInitialRollover
-    ? statBox('Rollover Inicial', formatCurrency(Math.max(0, Number(totals.initialRollover) || 0)))
-    : '';
-  const rolloverBox = (opts.rolloverValue !== undefined && opts.rolloverValue !== null)
-    ? statBox(opts.rolloverLabel || 'Rollover', formatCurrency(Math.max(0, Number(opts.rolloverValue) || 0)), 'positive')
-    : '';
   return `
     ${initialBalanceBox}
-    ${initialRolloverBox}
     ${statBox('Depósito', formatCurrency(totals.deposit))}
     ${statBox('Saque', formatCurrency(totals.withdrawal))}
     ${statBox('Diferença', formatCurrency(totals.difference), totals.difference >= 0 ? 'positive' : 'negative')}
@@ -279,7 +227,6 @@ function statsGridHtml(totals, opts = {}) {
     ${statBox('R.B.', formatCurrency(totals.resultBetting), totals.resultBetting >= 0 ? 'positive' : 'negative')}
     ${statBox('R.B. + Bônus', formatCurrency(totals.rbPlusBonus), totals.rbPlusBonus >= 0 ? 'positive' : 'negative')}
     ${statBox(balanceLabel, formatCurrency(safeBalance), 'positive')}
-    ${rolloverBox}
   `;
 }
 
@@ -290,63 +237,41 @@ export function initFinanceOverview() {
   const toEl = document.getElementById('financeOverviewTo');
   const clearBtn = document.getElementById('financeOverviewClearBtn');
   const newPhaseAllBtn = document.getElementById('financeOverviewNewPhaseAllBtn');
-  const platformFilterEl = document.getElementById('financeOverviewPlatformFilter');
 
   if (fromEl) fromEl.addEventListener('change', renderFinanceOverview);
   if (toEl) toEl.addEventListener('change', renderFinanceOverview);
-  if (platformFilterEl) {
-    // Item 20 (metade "Plataforma") — restringe o Painel Geral a quem
-    // bate com o nome digitado. Mesmo adiamento pro próximo frame já
-    // usado na busca principal, pra não brigar com o teclado virtual.
-    let filterFrame = null;
-    platformFilterEl.addEventListener('input', () => {
-      if (filterFrame) cancelAnimationFrame(filterFrame);
-      filterFrame = requestAnimationFrame(() => {
-        filterFrame = null;
-        renderFinanceOverview();
-      });
-    });
-  }
   if (clearBtn) {
     clearBtn.addEventListener('click', () => {
       if (fromEl) fromEl.value = '';
       if (toEl) toEl.value = '';
-      if (platformFilterEl) platformFilterEl.value = '';
       renderFinanceOverview();
     });
   }
   if (newPhaseAllBtn) {
     newPhaseAllBtn.addEventListener('click', async () => {
       const count = state.platforms.length;
-      // Etapa 7: fase só pode começar numa segunda-feira. Pra "todas de
-      // uma vez" (que não tem como pedir Saldo/Rollover Inicial
-      // individual de cada plataforma), usamos sempre a segunda-feira
-      // da semana atual — nunca "agora" cru, que quase nunca cai numa
-      // segunda.
-      const mondayThisWeek = getWeekStart(new Date());
-      const mondayLabel = mondayThisWeek.toLocaleDateString('pt-BR');
       const ok = await showAppConfirm(
-        `Iniciar uma nova fase pra todas as ${count} plataformas, a partir de segunda-feira ` +
-        `(${mondayLabel} — toda fase nova precisa começar numa segunda-feira, pra nunca dividir ` +
-        `uma semana entre duas fases), com Saldo Inicial e Rollover Inicial R$ 0,00 pra todas? ` +
+        `Iniciar uma nova fase pra todas as ${count} plataformas, a partir de agora, com Saldo Inicial R$ 0,00 pra todas? ` +
         `O resultado da fase atual de cada uma continua guardado (visível em "Fases do Saldo" ` +
-        `dentro de cada plataforma). Se cada plataforma tiver um Saldo/Rollover real diferente pra ` +
-        `migrar, prefira abrir a fase individualmente em cada uma.`
+        `dentro de cada plataforma), e o Saldo de todas volta a contar a partir de agora. ` +
+        `Se cada plataforma tiver um Saldo real diferente pra migrar, prefira abrir a fase ` +
+        `individualmente em cada uma (lá dá pra informar o Saldo Inicial de cada uma).`
       );
       if (!ok) return;
-
-      let failedCount = 0;
-      state.platforms.forEach(p => {
-        const result = startNewPhase(p, mondayThisWeek, 0, 0);
-        if (!result.ok) failedCount += 1; // não deveria acontecer (mondayThisWeek é sempre segunda)
-      });
-      if (failedCount > 0) {
-        await showAppAlert(`${failedCount} plataforma(s) não puderam abrir a fase (erro inesperado de data). Tente abrir individualmente nelas.`);
-      }
-      // Ação em massa DE VERDADE — savePlatforms (plural) é o correto
-      // só aqui, igual já era no Sistema 1.
+      const now = new Date();
+      state.platforms.forEach(p => startNewPhase(p, now, 0));
+      // Ação em massa DE VERDADE (todas as plataformas mudaram) — aqui, e
+      // só aqui nesta página, savePlatforms (plural) é o correto.
       savePlatforms(state.currentUid, state.platforms);
+      // TODAS as ~40 linhas mudaram de conteúdo (Saldo recalculado) — usa
+      // refreshAllRows() em vez de renderFinanceList(), já que
+      // reconcileList por si só só cuida de quem entra/sai da lista, não
+      // reconstrói conteúdo de linhas que continuam visíveis.
       refreshAllRows();
+      // renderFinanceList() já chama renderFinanceOverview() internamente
+      // e reconcilia a ordem/visibilidade — importa se o modo ativo for
+      // Maior/Menor Saldo (Ponto 5.1), já que TODAS as plataformas
+      // mudaram de Saldo de uma vez.
       renderFinanceList();
     });
   }
@@ -358,24 +283,18 @@ export function renderFinanceOverview() {
 
   const fromEl = document.getElementById('financeOverviewFrom');
   const toEl = document.getElementById('financeOverviewTo');
-  const platformFilterEl = document.getElementById('financeOverviewPlatformFilter');
   const from = fromEl && fromEl.value ? fromEl.value : null;
   const to = toEl && toEl.value ? toEl.value : null;
 
-  // Item 20 (metade "Plataforma") — some junto com Data (interseção),
-  // já que os dois filtros são aplicados em cima do MESMO conjunto antes
-  // de computeOverallTotals somar.
-  const platformQuery = (platformFilterEl?.value || '').trim().toLowerCase();
-  const platformsForOverview = platformQuery
-    ? state.platforms.filter(p => p.name.toLowerCase().includes(platformQuery))
-    : state.platforms;
-
-  const totals = computeOverallTotals(platformsForOverview, from, to, resolveCtxForPlatform);
-  statsEl.innerHTML = statsGridHtml(totals, { rolloverValue: totals.rollover, rolloverLabel: 'Rollover (todas as plataformas)' });
+  const totals = computeOverallTotals(state.platforms, from, to);
+  statsEl.innerHTML = statsGridHtml(totals);
 }
 
 // ---------- RECONCILIAÇÃO DE DOM ----------
 
+// Reconstrói e substitui SÓ a linha de uma plataforma, no lugar dela no
+// DOM. Não mexe em nenhuma outra linha. Se a plataforma não estiver
+// renderizada agora (ex: escondida pela busca atual), não faz nada.
 function refreshRow(platformId) {
   const platform = state.platforms.find(pp => pp.id === platformId);
   if (!platform) return;
@@ -386,6 +305,12 @@ function refreshRow(platformId) {
   rowElements.set(platformId, newEl);
 }
 
+// Sincroniza o DOM com a lista visível desejada: remove quem saiu, cria
+// quem é novo, e garante a ordem correta de quem já existe. appendChild
+// num nó JÁ presente no DOM apenas o move pro fim (não destrói/recria) —
+// linhas que não mudaram de posição não perdem identidade nem estado
+// interno, e o container nunca fica vazio em nenhum instante (causa raiz
+// do salto de scroll).
 function reconcileList(list) {
   const existingEmpty = financeListEl.querySelector('.finance-empty');
   if (existingEmpty) existingEmpty.remove();
@@ -419,6 +344,11 @@ function reconcileList(list) {
   });
 }
 
+// Atualiza o CONTEÚDO de todas as linhas atualmente na tela, sem mudar
+// quais estão visíveis — usado quando TODAS as plataformas mudam de uma
+// vez ("Iniciar nova fase em todas") e na virada do dia (ver
+// main-financeiro.js: "Semana atual" e o botão "Fechar semana" dependem
+// da data de hoje).
 export function refreshAllRows() {
   rowElements.forEach((oldEl, platformId) => {
     const platform = state.platforms.find(p => p.id === platformId);
@@ -429,23 +359,22 @@ export function refreshAllRows() {
   });
 }
 
-// Zera o estado em memória — DEVE ser chamado no início de cada mount()
-// da view (ver view-financeiro.js), antes de initFinanceControls()/
-// renderFinanceList(). Mesmo motivo já documentado em
-// ui-platform-manage.js: o router já substitui o container inteiro a
-// cada troca de rota, então só o cache em memória precisa ser zerado.
+// Zera o cache de linhas e todo o estado transitório por-linha — DEVE ser
+// chamado a cada novo login (ver main-financeiro.js), antes do primeiro
+// renderFinanceList() da sessão. Mesmo motivo documentado em
+// ui-platform-manage.js: evita reaproveitar linha de sessão anterior com
+// conteúdo desatualizado. Só afeta o que a TELA mostra — nunca o que é
+// lido/gravado no Firestore.
 export function resetFinanceListCache() {
   rowElements.clear();
+  if (financeListEl) {
+    financeListEl.innerHTML = '';
+  }
   openRowId = null;
   editingWeek = null;
   historyDateFilter = null;
   startingPhaseId = null;
   addingHistoricalWeekId = null;
-  expandedSections = new Set();
-  currentBetHistoryPlatform = null;
-  editingBetEntry = null;
-  reorderModeActive = false;
-  lastVisibleList = [];
 }
 
 // ---------- LISTA DE PLATAFORMAS ----------
@@ -453,9 +382,7 @@ export function resetFinanceListCache() {
 export function renderFinanceList() {
   renderFinanceOverview();
   if (!financeListEl) return;
-  const list = getVisibleList();
-  lastVisibleList = list;
-  reconcileList(list);
+  reconcileList(getVisibleList());
 }
 
 function dividerEl() {
@@ -464,8 +391,17 @@ function dividerEl() {
   return hr;
 }
 
-// ---------- SEÇÕES COLAPSÁVEIS ----------
-
+// ---------- SEÇÕES COLAPSÁVEIS (Ponto 6) ----------
+// Envolve uma seção (Total da plataforma / Fases do Saldo / Histórico)
+// num cabeçalho clicável, recolhida por padrão — mesmo visual e mesma
+// classe (.manage-section-label-collapsible, manage-panel.css) já usados
+// pela seção "Dados" da Página 4 (Ponto 8). "Semana atual" NÃO passa por
+// aqui — continua sempre visível, montada direto em buildRow().
+//
+// sectionKey identifica qual seção é, pra: (a) lembrar se está expandida
+// (expandedSections), e (b) saber qual estado transitório descartar se a
+// seção for recolhida com uma edição em andamento dentro dela (regra já
+// validada: nunca fica escondido com dado não salvo por trás).
 function buildCollapsibleSection(p, sectionKey, label, buildContentFn) {
   const wrapper = document.createElement('div');
   wrapper.className = 'manage-data-section';
@@ -484,6 +420,8 @@ function buildCollapsibleSection(p, sectionKey, label, buildContentFn) {
   header.addEventListener('click', () => {
     if (isExpanded) {
       expandedSections.delete(sectionKey);
+      // Descarta formulário em andamento dentro da seção que está
+      // recolhendo — nunca fica escondido com dado não salvo por trás.
       if (sectionKey === 'phases') startingPhaseId = null;
       if (sectionKey === 'history') {
         editingWeek = null;
@@ -510,10 +448,10 @@ function buildRow(p) {
 
   const live = computeCurrentWeekLive(p);
   const closed = isCurrentWeekClosed(p);
-  const ctx = resolveCtxForPlatform(p);
-  const liveBalance = computeLiveBalance(p, new Date(), ctx);
-  const rolloverLive = computeRolloverLive(p, new Date(), ctx);
+  const liveBalance = computeLiveBalance(p);
 
+  // --- header (fechado): nome + badge de Saldo (ao vivo, da fase atual)
+  //     + status da semana ---
   const header = document.createElement('div');
   header.className = 'platform-manage-row-header';
 
@@ -524,29 +462,15 @@ function buildRow(p) {
   const badges = document.createElement('div');
   badges.className = 'platform-manage-row-badges';
 
-  // Item 25b: visibilidade de cada badge agora é uma preferência salva
-  // (users/{uid}/meta/preferences) — default (true/true) reproduz o
-  // comportamento de sempre pra quem nunca mexeu no botão 👁.
-  const badgeVisibility = getCachedPreferences().badgeVisibility;
-
-  if (badgeVisibility.financeBalanceBadge) {
-    const balanceBadge = document.createElement('span');
-    balanceBadge.className = 'platform-total-badge';
-    balanceBadge.style.background = colorForLevel(liveBalance);
-    balanceBadge.textContent = `Saldo ${formatCurrency(liveBalance)}`;
-    balanceBadge.title = 'Saldo Inicial da fase atual (se houver) + depósitos - saques + resultado das apostas (R.B.) + bônus (fórmula + avulso), desde o início da fase atual (mínimo R$ 0,00)';
-    badges.appendChild(balanceBadge);
-  }
-
-  if (badgeVisibility.financeRolloverBadge) {
-    const rolloverBadge = document.createElement('span');
-    rolloverBadge.className = 'platform-total-badge';
-    rolloverBadge.style.background = '#dbeafe';
-    rolloverBadge.style.color = '#1d4ed8';
-    rolloverBadge.textContent = `Rollover ${formatCurrency(rolloverLive)}`;
-    rolloverBadge.title = 'Quanto ainda falta apostar pra quitar o que entrou como depósito/bônus, desde o início da fase atual (mínimo R$ 0,00)';
-    badges.appendChild(rolloverBadge);
-  }
+  const balanceBadge = document.createElement('span');
+  balanceBadge.className = 'platform-total-badge';
+  // Ponto 5.2: cor acompanha as mesmas faixas de valor que o calendário
+  // usa (colorForLevel, cycle-logic.js) — dá controle visual imediato de
+  // "quanto falta pro próximo patamar" só olhando o badge.
+  balanceBadge.style.background = colorForLevel(liveBalance);
+  balanceBadge.textContent = `Saldo ${formatCurrency(liveBalance)}`;
+  balanceBadge.title = 'Saldo Inicial da fase atual (se houver) + depósitos - saques + resultado das apostas (R.B.) + bônus recebidos, desde o início da fase atual (mínimo R$ 0,00)';
+  badges.appendChild(balanceBadge);
 
   if (closed) {
     const doneBadge = document.createElement('span');
@@ -555,51 +479,12 @@ function buildRow(p) {
     badges.appendChild(doneBadge);
   }
 
-  // Item 22 — setas ▲▼: só existem quando o modo "Reordenar" está ativo
-  // E "Padrão" está selecionado (currentMode null) — mesma regra já
-  // validada na Edição.
-  let reorderControls = null;
-  if (reorderModeActive && currentMode === null) {
-    reorderControls = document.createElement('div');
-    reorderControls.className = 'platform-manage-row-badges';
-    reorderControls.style.gap = '0.25rem';
-
-    const visibleIds = lastVisibleList.map(pp => pp.id);
-    const idx = visibleIds.indexOf(p.id);
-
-    const upBtn = document.createElement('button');
-    upBtn.type = 'button';
-    upBtn.className = 'bet-manage-btn';
-    upBtn.textContent = '▲';
-    upBtn.disabled = idx <= 0;
-    upBtn.setAttribute('aria-label', `Mover ${p.name} pra cima`);
-    upBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      moveManualOrder(p.id, -1);
-    });
-
-    const downBtn = document.createElement('button');
-    downBtn.type = 'button';
-    downBtn.className = 'bet-manage-btn';
-    downBtn.textContent = '▼';
-    downBtn.disabled = idx === -1 || idx >= visibleIds.length - 1;
-    downBtn.setAttribute('aria-label', `Mover ${p.name} pra baixo`);
-    downBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      moveManualOrder(p.id, 1);
-    });
-
-    reorderControls.appendChild(upBtn);
-    reorderControls.appendChild(downBtn);
-  }
-
   const chevron = document.createElement('span');
   chevron.className = 'platform-manage-chevron';
   chevron.textContent = '▾';
 
   header.appendChild(title);
   header.appendChild(badges);
-  if (reorderControls) header.appendChild(reorderControls);
   header.appendChild(chevron);
   header.addEventListener('click', () => {
     const previousOpenRowId = openRowId;
@@ -609,16 +494,21 @@ function buildRow(p) {
     historyDateFilter = null;
     startingPhaseId = null;
     addingHistoricalWeekId = null;
+    // Ponto 6: as 3 seções colapsáveis sempre recolhem de novo ao abrir/
+    // fechar a linha — estado inicial igual pra todas as plataformas.
     expandedSections = new Set();
     if (!wasOpen && previousOpenRowId) {
-      refreshRow(previousOpenRowId);
+      refreshRow(previousOpenRowId); // fecha a linha que estava aberta antes
     }
-    refreshRow(p.id);
+    refreshRow(p.id); // aplica o novo estado (aberta ou fechada) nesta linha
   });
 
+  // --- body (aberto): Semana atual (sempre visível) + Total da
+  //     plataforma + Fases do Saldo + Histórico (as 3 últimas nascem
+  //     recolhidas — Ponto 6) ---
   const body = document.createElement('div');
   body.className = 'platform-manage-row-body';
-  body.appendChild(buildCurrentWeekSection(p, live, closed, liveBalance, ctx));
+  body.appendChild(buildCurrentWeekSection(p, live, closed, liveBalance));
   body.appendChild(dividerEl());
   body.appendChild(buildCollapsibleSection(p, 'total', 'Total da plataforma', () => buildPlatformTotalContent(p)));
   body.appendChild(dividerEl());
@@ -631,9 +521,9 @@ function buildRow(p) {
   return row;
 }
 
-// ---------- SEÇÃO "SEMANA ATUAL" ----------
+// ---------- SEÇÃO "SEMANA ATUAL" (ao vivo + registrar + fechar) ----------
 
-function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
+function buildCurrentWeekSection(p, live, closed, liveBalance) {
   const section = document.createElement('div');
   section.className = 'manage-actions-section';
 
@@ -647,7 +537,6 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
   weekLabel.textContent = `${live.weekStart.toLocaleDateString('pt-BR')} – ${live.weekEnd.toLocaleDateString('pt-BR')}`;
   section.appendChild(weekLabel);
 
-  const rolloverLive = computeRolloverLive(p, new Date(), ctx);
   const statsWrap = document.createElement('div');
   statsWrap.className = 'finance-week-current';
   statsWrap.innerHTML = `
@@ -659,7 +548,6 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
       ${statBox('N° Apostas', String(live.betCount))}
       ${statBox('R.B.', formatCurrency(live.resultBetting), live.resultBetting >= 0 ? 'positive' : 'negative')}
       ${statBox('Saldo (Balance)', formatCurrency(liveBalance), 'positive')}
-      ${statBox('Rollover', formatCurrency(rolloverLive), 'positive')}
     </div>`;
   section.appendChild(statsWrap);
 
@@ -693,6 +581,8 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
     p.withdrawals.push({ date: new Date().toISOString(), value });
     savePlatform(state.currentUid, p);
     openRowId = p.id;
+    // Muda o Saldo — se o modo ativo for Maior/Menor Saldo (Ponto 5.1), a
+    // posição desta linha na lista pode mudar também.
     refreshRow(p.id);
     renderFinanceList();
   });
@@ -700,7 +590,7 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
   withdrawForm.appendChild(withdrawBtn);
   section.appendChild(withdrawForm);
 
-  // --- registrar aposta + Últimas apostas (Bloco P) ---
+  // --- registrar aposta (valor apostado + n° de apostas + R.B. da aposta) ---
   const betForm = document.createElement('div');
   betForm.className = 'finance-entry-form';
   const wageredInput = document.createElement('input');
@@ -733,30 +623,19 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
     p.betEntries.push({ date: new Date().toISOString(), wagered, betCount, resultBetting });
     savePlatform(state.currentUid, p);
     openRowId = p.id;
+    // Muda o Saldo — mesma razão do saque acima.
     refreshRow(p.id);
     renderFinanceList();
   });
-
-  // Bloco P — botão azul, mesmo padrão visual de betBtn, ao lado dele.
-  const betHistoryBtn = document.createElement('button');
-  betHistoryBtn.className = 'bet-manage-btn';
-  betHistoryBtn.type = 'button';
-  betHistoryBtn.textContent = '🎲 Últimas apostas';
-  betHistoryBtn.addEventListener('click', () => showBetHistoryModal(p));
-
   betForm.appendChild(wageredInput);
   betForm.appendChild(betCountInput);
   betForm.appendChild(rbInput);
   betForm.appendChild(betBtn);
-  betForm.appendChild(betHistoryBtn);
   section.appendChild(betForm);
 
-  // --- Etapa 7, sub-entrega 3: "Inserir bônus hoje" (Bloco F/Item 16 +
-  //     Bloco P) --- Abaixo da linha de "Registrar aposta" (P3.1) —
-  //     nunca na mesma linha, pra não sobrepor em telas pequenas.
-  //     Reaproveita .finance-entry-form (já tem flex-wrap — P3.3).
-  section.appendChild(buildDailyBonusSection(p, ctx));
-
+  // --- fechar semana: só aos domingos. Pede só o Bônus — R.B. já vem
+  //     somado ao vivo, e o Saldo é calculado sozinho (Saldo atual +
+  //     Bônus desta semana) ao confirmar. ---
   if (canCloseCurrentWeek()) {
     const closeSection = document.createElement('div');
     closeSection.className = 'finance-close-week';
@@ -768,27 +647,15 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
 
     const closeNote = document.createElement('p');
     closeNote.className = 'finance-close-week-note';
-    closeNote.textContent = `R.B. da semana já somado automaticamente: ${formatCurrency(live.resultBetting)}. Saldo atual (antes do Bônus final desta semana): ${formatCurrency(liveBalance)}. Informe o valor REAL total de bônus recebido na semana — o Saldo final é recalculado sozinho ao fechar.`;
+    closeNote.textContent = `R.B. da semana já somado automaticamente: ${formatCurrency(live.resultBetting)}. Saldo atual (antes do Bônus desta semana): ${formatCurrency(liveBalance)}. Falta só informar o Bônus — o Saldo final é calculado sozinho ao fechar.`;
     closeSection.appendChild(closeNote);
-
-    // Bloco F Item 16.7 — só-leitura: soma do que a fórmula (Bônus 1) já
-    // vinha creditando sozinha essa semana + o que foi lançado via
-    // "Inserir bônus hoje" (Bônus 2, sem escala aqui — é o valor real
-    // recebido). Ajuda o usuário a conferir ANTES de digitar o total
-    // final abaixo — nunca substitui o campo manual.
-    const accumulatedAuto = computeAutoAccruedBonusForWeek(p, new Date(), ctx);
-    const accumulatedManual = getAccumulatedBonusThisWeek(p, new Date());
-    const accumulatedStat = document.createElement('div');
-    accumulatedStat.className = 'finance-stats-grid';
-    accumulatedStat.innerHTML = statBox('Bônus Acumulado (fórmula + avulso)', formatCurrency(accumulatedAuto + accumulatedManual), 'positive');
-    closeSection.appendChild(accumulatedStat);
 
     const closeForm = document.createElement('div');
     closeForm.className = 'finance-entry-form';
     const bonusInput = document.createElement('input');
     bonusInput.type = 'number';
     bonusInput.step = '0.01';
-    bonusInput.placeholder = 'Bônus recebido na semana (valor real)';
+    bonusInput.placeholder = 'Bônus recebido na semana';
     closeForm.appendChild(bonusInput);
     closeSection.appendChild(closeForm);
 
@@ -806,9 +673,10 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
       }
       const ok = await showAppConfirm(`Fechar a semana de ${p.name}? Depois de fechada, os valores não mudam mais sozinhos.`);
       if (!ok) return;
-      closeWeek(p, bonus, new Date(), ctx);
+      closeWeek(p, bonus);
       savePlatform(state.currentUid, p);
       openRowId = p.id;
+      // Muda o Saldo — mesma razão das duas ações acima.
       refreshRow(p.id);
       renderFinanceList();
     });
@@ -820,113 +688,13 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
   return section;
 }
 
-// ---------- Etapa 7, sub-entrega 3: "INSERIR BÔNUS HOJE" (Item 16.4/16.5) ----------
-// Campo de bônus avulso + botão R (escala do Rollover pra ESTE
-// lançamento específico, padrão 1:1). O sistema já desconta sozinho o
-// que a fórmula (VIP diário/semanal/mensal + Obrigado/Misterioso) já
-// contava pra hoje, e o que já foi lançado hoje em cliques anteriores —
-// só a diferença vira uma entrada nova em otherBonusLog (Item 16.4/16.6:
-// recalculado do zero a cada clique, nunca acumula erro de ordem entre
-// "Apostei hoje" e "Inserir bônus hoje").
-function buildDailyBonusSection(p, ctx) {
-  const wrap = document.createElement('div');
-  wrap.className = 'finance-entry-form';
+// ---------- SEÇÃO "TOTAL DA PLATAFORMA" (soma das semanas fechadas + Saldo da fase atual) ----------
 
-  const bonusInput = document.createElement('input');
-  bonusInput.type = 'number';
-  bonusInput.step = '0.01';
-  bonusInput.min = '0';
-  bonusInput.placeholder = 'Inserir bônus hoje';
-  bonusInput.setAttribute('aria-label', 'Valor total de bônus recebido hoje');
-  wrap.appendChild(bonusInput);
-
-  let currentScale = 1;
-
-  // Escala (botão R) — some/aparece um campo numérico compacto ao lado,
-  // padrão 1 (1:1). Só afeta o Rollover, nunca o Saldo (que é sempre
-  // 1:1 — ver finance-logic.js/computeLiveBalance).
-  const scaleInput = document.createElement('input');
-  scaleInput.type = 'number';
-  scaleInput.step = '1';
-  scaleInput.min = '1';
-  scaleInput.value = '1';
-  scaleInput.className = 'history-value-input app-hidden';
-  scaleInput.setAttribute('aria-label', 'Escala do Rollover pra este lançamento');
-
-  const scaleBtn = document.createElement('button');
-  scaleBtn.type = 'button';
-  scaleBtn.className = 'bet-manage-btn';
-  scaleBtn.textContent = 'R: 1x';
-  scaleBtn.title = 'Escala do Rollover pra este lançamento — padrão 1:1, clique pra mudar';
-  scaleBtn.addEventListener('click', () => {
-    scaleInput.classList.toggle('app-hidden');
-  });
-  scaleInput.addEventListener('change', () => {
-    const v = parseInt(scaleInput.value, 10);
-    currentScale = (!isNaN(v) && v >= 1) ? v : 1;
-    scaleInput.value = String(currentScale);
-    scaleBtn.textContent = `R: ${currentScale}x`;
-  });
-
-  wrap.appendChild(scaleBtn);
-  wrap.appendChild(scaleInput);
-
-  const confirmBtn = document.createElement('button');
-  confirmBtn.type = 'button';
-  confirmBtn.className = 'bet-manage-btn';
-  confirmBtn.textContent = 'Confirmar bônus';
-  confirmBtn.addEventListener('click', async () => {
-    const valorDigitado = parseFloat(bonusInput.value);
-    if (isNaN(valorDigitado) || valorDigitado < 0) {
-      await showAppAlert('Digite um valor válido pro bônus recebido hoje.');
-      return;
-    }
-
-    const expected = getExpectedBonusToday(p, new Date(), ctx);
-    const diff = computeBonusDiffToday(p, valorDigitado, new Date(), ctx);
-    const rolloverValue = diff * currentScale;
-
-    const ok = await showAppConfirm(
-      `Registrar ${formatCurrency(valorDigitado)} de bônus hoje? ` +
-      `O sistema já esperava ${formatCurrency(expected)} pela fórmula (VIP/Obrigado/Misterioso) hoje — ` +
-      `será lançada só a diferença: ${formatCurrency(diff)} no Saldo` +
-      (currentScale !== 1 ? ` e ${formatCurrency(rolloverValue)} no Rollover (escala ${currentScale}x)` : ' e no Rollover (escala 1:1)') +
-      `.`
-    );
-    if (!ok) return;
-
-    if (!p.otherBonusLog) p.otherBonusLog = [];
-    p.otherBonusLog.push({
-      date: new Date().toISOString(),
-      rawValue: diff,
-      scale: currentScale,
-      rolloverValue,
-      createdAt: new Date().toISOString()
-    });
-    savePlatform(state.currentUid, p);
-
-    bonusInput.value = '';
-    scaleInput.value = '1';
-    currentScale = 1;
-    scaleBtn.textContent = 'R: 1x';
-    scaleInput.classList.add('app-hidden');
-
-    openRowId = p.id;
-    // Muda o Saldo (e o Rollover, quando visível — sub-entrega 4) — se
-    // o modo ativo for Maior/Menor Saldo, a posição da linha pode mudar.
-    refreshRow(p.id);
-    renderFinanceList();
-  });
-  wrap.appendChild(confirmBtn);
-
-  return wrap;
-}
-
-// ---------- SEÇÃO "TOTAL DA PLATAFORMA" ----------
-
+// Ponto 6: conteúdo puro (sem label/wrapper próprio — quem monta isso é
+// buildCollapsibleSection, que já cuida do cabeçalho clicável).
 function buildPlatformTotalContent(p) {
   const weeks = p.financeWeeks || [];
-  const totals = computePlatformTotals(p, resolveCtxForPlatform(p));
+  const totals = computePlatformTotals(p);
 
   const card = document.createElement('div');
   card.className = 'finance-week-card finance-total-card';
@@ -938,12 +706,12 @@ function buildPlatformTotalContent(p) {
 
   const note = document.createElement('p');
   note.className = 'finance-close-week-note';
-  note.textContent = 'Saldo (Balance) é sempre o valor ATUAL da fase atual, ao vivo (já com o Saldo Inicial dela, se houver, e o bônus do dia já somado) — não é uma soma das semanas fechadas nem das fases anteriores.';
+  note.textContent = 'Saldo (Balance) é sempre o valor ATUAL da fase atual, ao vivo (já com o Saldo Inicial dela, se houver) — não é uma soma das semanas fechadas nem das fases anteriores.';
   card.appendChild(note);
 
   const stats = document.createElement('div');
   stats.className = 'finance-stats-grid';
-  stats.innerHTML = statsGridHtml(totals, { rolloverValue: totals.rollover, rolloverLabel: 'Rollover da fase atual' });
+  stats.innerHTML = statsGridHtml(totals);
   card.appendChild(stats);
 
   return card;
@@ -951,17 +719,20 @@ function buildPlatformTotalContent(p) {
 
 // ---------- SEÇÃO "FASES DO SALDO" ----------
 
+// Ponto 6: conteúdo puro (sem label/wrapper próprio). Retorna um
+// DocumentFragment porque tem 3 nós irmãos (nota + controles + lista) —
+// appendChild de um fragment insere todos os filhos de uma vez.
 function buildPhaseContent(p) {
   const fragment = document.createDocumentFragment();
 
   const note = document.createElement('p');
   note.className = 'finance-close-week-note';
-  note.textContent = 'Cada fase começa com um Saldo Inicial e um Rollover Inicial (informados na hora de abrir a fase) e soma os movimentos a partir dali. "Iniciar nova fase" só pode começar numa SEGUNDA-FEIRA — trava necessária pra nenhuma semana fechada nunca ficar dividida entre duas fases (isso já causou duplicação de valores no passado). Útil quando o histórico antigo é incompleto, tem números errados, ou quando você está migrando de uma planilha externa e quer começar do valor real de hoje.';
+  note.textContent = 'Cada fase começa com um Saldo Inicial (informado na hora de abrir a fase) e soma os movimentos a partir dali — nada de fases anteriores é carregado além desse valor. "Iniciar nova fase" fecha a fase atual (o resultado dela fica guardado aqui pra sempre) e pede o Saldo Inicial da fase nova. Útil quando o histórico antigo é incompleto, tem números errados, ou quando você está migrando de uma planilha externa e quer começar do valor real de hoje.';
   fragment.appendChild(note);
 
   fragment.appendChild(buildPhaseControls(p));
 
-  const phases = computePhaseHistory(p, new Date(), resolveCtxForPlatform(p));
+  const phases = computePhaseHistory(p);
   const list = document.createElement('div');
   list.className = 'finance-history';
   [...phases].reverse().forEach(phase => {
@@ -977,16 +748,15 @@ function buildPhaseControls(p) {
   wrap.className = 'finance-checkpoint';
 
   if (startingPhaseId === p.id) {
-    // Etapa 7: sem escolha de hora — toda fase nova começa às 00:00 da
-    // segunda-feira escolhida (nunca outro horário, pra nunca abrir
-    // margem de uma fase "quase alinhada" com a semana). type="date"
-    // (não mais "datetime-local") + validação de dia da semana antes de
-    // confirmar.
     const dateInput = document.createElement('input');
-    dateInput.type = 'date';
-    const defaultMonday = getWeekStart(new Date());
-    dateInput.value = toLocalDateString(defaultMonday);
-    dateInput.setAttribute('aria-label', 'Data de início da nova fase (precisa ser uma segunda-feira)');
+    dateInput.type = 'datetime-local';
+    // Pré-seleciona hoje às 00:01 — cobre o dia inteiro por padrão, mas
+    // 100% editável (data E hora). toLocalDateTimeString, nunca
+    // toISOString, pelo mesmo motivo de sempre (fuso do Brasil).
+    const defaultPhaseStart = new Date();
+    defaultPhaseStart.setHours(0, 1, 0, 0);
+    dateInput.value = toLocalDateTimeString(defaultPhaseStart);
+    dateInput.setAttribute('aria-label', 'Data e hora de início da nova fase');
 
     const initialBalanceInput = document.createElement('input');
     initialBalanceInput.type = 'number';
@@ -995,23 +765,11 @@ function buildPhaseControls(p) {
     initialBalanceInput.placeholder = 'Saldo Inicial da nova fase';
     initialBalanceInput.setAttribute('aria-label', 'Saldo Inicial da nova fase');
 
-    const initialRolloverInput = document.createElement('input');
-    initialRolloverInput.type = 'number';
-    initialRolloverInput.min = '0';
-    initialRolloverInput.step = '0.01';
-    initialRolloverInput.placeholder = 'Rollover Inicial da nova fase';
-    initialRolloverInput.setAttribute('aria-label', 'Rollover Inicial da nova fase');
-
-    const row1 = document.createElement('div');
-    row1.className = 'finance-entry-form';
-    row1.appendChild(dateInput);
-    wrap.appendChild(row1);
-
-    const row2 = document.createElement('div');
-    row2.className = 'finance-entry-form';
-    row2.appendChild(initialBalanceInput);
-    row2.appendChild(initialRolloverInput);
-    wrap.appendChild(row2);
+    const row = document.createElement('div');
+    row.className = 'finance-entry-form';
+    row.appendChild(dateInput);
+    row.appendChild(initialBalanceInput);
+    wrap.appendChild(row);
 
     const actions = document.createElement('div');
     actions.className = 'reset-modal-buttons';
@@ -1032,35 +790,25 @@ function buildPhaseControls(p) {
         return;
       }
 
-      const initialRollover = parseFloat(initialRolloverInput.value);
-      if (initialRolloverInput.value.trim() === '' || isNaN(initialRollover) || initialRollover < 0) {
-        await showAppAlert('Informe o Rollover Inicial da nova fase (obrigatório, maior ou igual a zero) — o Saldo real só fica acertivo a partir de agora se esse valor estiver correto.');
-        return;
-      }
-
-      const chosenDate = new Date(`${dateInput.value}T00:00:00`);
-      if (chosenDate.getDay() !== 1) {
-        await showAppAlert('A nova fase só pode começar numa SEGUNDA-FEIRA — escolha outra data. Essa trava existe pra nenhuma semana ficar dividida entre duas fases.');
-        return;
-      }
-
-      const dateLabel = chosenDate.toLocaleDateString('pt-BR');
+      // dateInput.value vem como "AAAA-MM-DDTHH:mm" — new Date() interpreta
+      // como horário LOCAL (sem "Z"), então o instante gravado é
+      // exatamente o que foi escolhido, minuto a minuto.
+      const chosenInstant = new Date(dateInput.value);
+      const dateLabel = chosenInstant.toLocaleString('pt-BR', {
+        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+      });
       const ok = await showAppConfirm(
-        `Fechar a fase atual de ${p.name} e começar uma nova a partir de segunda-feira, ${dateLabel}, ` +
-        `com Saldo Inicial de ${formatCurrency(initialBalance)} e Rollover Inicial de ${formatCurrency(initialRollover)}? ` +
-        `Tudo registrado ANTES desse instante continua contando na fase que está fechando (guardada pra ` +
-        `sempre em "Fases do Saldo"); a partir dele, conta na fase nova.`
+        `Fechar a fase atual de ${p.name} e começar uma nova a partir de ${dateLabel}, com Saldo Inicial de ${formatCurrency(initialBalance)}? ` +
+        `Tudo registrado ANTES desse instante continua contando na fase que está fechando (guardada pra sempre em "Fases do Saldo"); a partir dele, conta na fase nova.`
       );
       if (!ok) return;
 
-      const result = startNewPhase(p, chosenDate, initialBalance, initialRollover);
-      if (!result.ok) {
-        await showAppAlert('Não foi possível abrir a fase: a data escolhida não é uma segunda-feira.');
-        return;
-      }
+      startNewPhase(p, dateInput.value, initialBalance);
       savePlatform(state.currentUid, p);
       startingPhaseId = null;
       openRowId = p.id;
+      // Muda o Saldo desta plataforma — se o modo ativo for Maior/Menor
+      // Saldo (Ponto 5.1), a posição dela na lista pode mudar também.
       refreshRow(p.id);
       renderFinanceList();
     });
@@ -1100,11 +848,12 @@ function buildPhaseControls(p) {
     removeBtn.className = 'btn-cancel-modal';
     removeBtn.textContent = 'Remover última fase';
     removeBtn.addEventListener('click', async () => {
-      const ok = await showAppConfirm('Remover a última fase (e o Saldo/Rollover Inicial dela)? O Saldo e o Rollover passam a contar de novo a partir de antes dela.');
+      const ok = await showAppConfirm('Remover a última fase (e o Saldo Inicial dela)? O Saldo passa a contar de novo a partir de antes dela.');
       if (!ok) return;
       removeLastPhase(p);
       savePlatform(state.currentUid, p);
       openRowId = p.id;
+      // Muda o Saldo desta plataforma — mesma razão do confirmBtn acima.
       refreshRow(p.id);
       renderFinanceList();
     });
@@ -1130,23 +879,24 @@ function buildPhaseCard(phase) {
   stats.className = 'finance-stats-grid';
   stats.innerHTML = statsGridHtml(phase, {
     balanceLabel: phase.isCurrent ? 'Saldo da fase atual' : 'Saldo da fase',
-    showInitialBalance: true,
-    showInitialRollover: true,
-    rolloverValue: phase.rollover,
-    rolloverLabel: phase.isCurrent ? 'Rollover da fase atual' : 'Rollover da fase'
+    showInitialBalance: true
   });
   card.appendChild(stats);
 
   return card;
 }
 
-// ---------- SEÇÃO "HISTÓRICO" ----------
+// ---------- SEÇÃO "HISTÓRICO" (semanas fechadas — editável, excluível,
+//            com busca por data e opção de adicionar semana antiga) ----------
 
+// Ponto 6: conteúdo puro (sem label/wrapper próprio).
 function buildHistoryContent(p) {
   const fragment = document.createDocumentFragment();
 
   fragment.appendChild(buildAddHistoricalWeekControls(p));
 
+  // Busca por data: escolher qualquer dia dentro de uma semana já fechada
+  // pula direto pra ela, sem precisar rolar a lista inteira.
   const searchRow = document.createElement('div');
   searchRow.className = 'finance-entry-form';
 
@@ -1209,6 +959,10 @@ function buildHistoryContent(p) {
   return fragment;
 }
 
+// Traduz o motivo de addHistoricalWeek() ter recusado uma semana em texto
+// que o cliente entende — usado no modo manual e na importação da
+// planilha, pra nunca mostrar o código interno ("current-week",
+// "duplicate") cru pra quem está usando o sistema.
 function describeAddHistoricalWeekFailure(reason) {
   if (reason === 'current-week') {
     return 'Essa é a semana atual — ela já é registrada automaticamente pelos campos de "Semana atual" acima, não precisa (e não dá) inserir por aqui.';
@@ -1219,12 +973,21 @@ function describeAddHistoricalWeekFailure(reason) {
   return 'Não foi possível adicionar essa semana.';
 }
 
+// Versão curta da mesma tradução, pra uso dentro de uma lista com várias
+// plataformas de uma vez (resumo da importação em massa da planilha) —
+// nunca mostra o "reason" cru (ex: "current-week") pro usuário final.
 function shortAddHistoricalWeekFailureReason(reason) {
   if (reason === 'current-week') return 'é a semana atual, não pode ser inserida por aqui';
   if (reason === 'duplicate') return 'semana já cadastrada';
   return 'não foi possível adicionar';
 }
 
+// "+ Adicionar semana antiga" — insere uma semana já fechada direto no
+// histórico. Duas formas de preencher (ver renderHistoricalWeekModeChoice),
+// com "← Voltar" pra trocar de uma pra outra sem fechar a seção inteira:
+//   - Manual (buildManualHistoricalWeekControls): uma plataforma por vez.
+//   - Colar da planilha (buildSpreadsheetHistoricalWeekControls): várias
+//     plataformas de uma vez, via finance-spreadsheet-import.js.
 function buildAddHistoricalWeekControls(p) {
   const wrap = document.createElement('div');
   wrap.className = 'finance-checkpoint';
@@ -1247,6 +1010,10 @@ function buildAddHistoricalWeekControls(p) {
   return wrap;
 }
 
+// Tela de escolha entre os dois modos — extraída à parte pra poder ser
+// chamada de novo pelo botão "← Voltar" de dentro de cada modo, sem
+// precisar fechar a seção inteira (o que perderia a linha aberta no
+// acordeão e o filtro de busca do histórico).
 function renderHistoricalWeekModeChoice(p, wrap) {
   wrap.innerHTML = '';
 
@@ -1275,7 +1042,7 @@ function renderHistoricalWeekModeChoice(p, wrap) {
 
   const note = document.createElement('p');
   note.className = 'finance-close-week-note';
-  note.textContent = 'Escolha como deseja inserir a semana. "Colar da planilha" permite copiar várias plataformas de uma vez; o sistema calcula sozinho Diferença, Saldo e R.B. + Bônus. Backfill não pede Rollover Inicial — ele não abre fase, só insere uma semana fechada dentro da fase já aberta.';
+  note.textContent = 'Escolha como deseja inserir a semana. "Colar da planilha" permite copiar várias plataformas de uma vez; o sistema calcula sozinho Diferença, Saldo e R.B. + Bônus.';
   wrap.appendChild(note);
 }
 
@@ -1297,27 +1064,24 @@ function buildManualHistoricalWeekControls(p, wrap) {
 
   const row1 = document.createElement('div');
   row1.className = 'finance-entry-form';
-  // Item 26t: nascem vazios (placeholder só como dica), não com "0"
-  // pré-preenchido — evita que o usuário esqueça de digitar um campo e
-  // ele entre como zero sem querer.
-  const depositInput = numberInput('Depósito', ''); depositInput.min = '0';
-  const withdrawalInput = numberInput('Saque', ''); withdrawalInput.min = '0';
+  const depositInput = numberInput('Depósito', 0); depositInput.min = '0';
+  const withdrawalInput = numberInput('Saque', 0); withdrawalInput.min = '0';
   row1.appendChild(depositInput);
   row1.appendChild(withdrawalInput);
   wrap.appendChild(row1);
 
   const row2 = document.createElement('div');
   row2.className = 'finance-entry-form';
-  const wageredInput = numberInput('Apostado', ''); wageredInput.min = '0';
-  const betCountInput = numberInput('N° de apostas', '', '1'); betCountInput.min = '0';
+  const wageredInput = numberInput('Apostado', 0); wageredInput.min = '0';
+  const betCountInput = numberInput('N° de apostas', 0, '1'); betCountInput.min = '0';
   row2.appendChild(wageredInput);
   row2.appendChild(betCountInput);
   wrap.appendChild(row2);
 
   const row3 = document.createElement('div');
   row3.className = 'finance-entry-form';
-  const bonusInput = numberInput('Bônus', '');
-  const resultInput = numberInput('Result Betting (R.B.)', '');
+  const bonusInput = numberInput('Bônus', 0);
+  const resultInput = numberInput('Result Betting (R.B.)', 0);
   row3.appendChild(bonusInput);
   row3.appendChild(resultInput);
   wrap.appendChild(row3);
@@ -1364,6 +1128,8 @@ function buildManualHistoricalWeekControls(p, wrap) {
     savePlatform(state.currentUid, p);
     addingHistoricalWeekId = null;
     openRowId = p.id;
+    // Muda o Saldo (via depositLog/withdrawals sintéticos) — mesma razão
+    // já aplicada em registrar saque/aposta/fechar semana.
     refreshRow(p.id);
     renderFinanceList();
   });
@@ -1407,6 +1173,8 @@ function buildSpreadsheetHistoricalWeekControls(p, wrap) {
   dateRow.appendChild(dateInput);
   wrap.appendChild(dateRow);
 
+  // Estilo do textarea vem de .finance-spreadsheet-paste (finance.css) —
+  // mesma linguagem visual dos outros inputs de .finance-entry-form.
   const pasteInput = document.createElement('textarea');
   pasteInput.className = 'finance-spreadsheet-paste';
   pasteInput.rows = 10;
@@ -1532,6 +1300,9 @@ function buildSpreadsheetHistoricalWeekControls(p, wrap) {
   });
 
   pasteInput.addEventListener('paste', () => {
+    // O evento paste ocorre antes do conteúdo ser disponibilizado no
+    // textarea. Um pequeno atraso deixa o Ctrl+V completo antes da
+    // análise automática.
     setTimeout(analyze, 0);
   });
 
@@ -1610,6 +1381,12 @@ function buildSpreadsheetHistoricalWeekControls(p, wrap) {
     }
 
     addingHistoricalWeekId = null;
+    // Várias plataformas podem ter mudado (uma por linha da planilha
+    // importada) — atualiza a linha de cada uma que realmente mudou, mais
+    // a linha de "p" (onde o painel de importação estava aberto), caso
+    // ela mesma não tenha entrado em "ready". Isso muda o Saldo de cada
+    // uma, então reconcilia a lista também (reordena se Maior/Menor Saldo
+    // estiver ativo).
     ready.forEach(({ platform }) => refreshRow(platform.id));
     refreshRow(p.id);
     renderFinanceList();
@@ -1656,6 +1433,7 @@ function buildWeekCardReadOnly(p, w) {
     deleteClosedWeek(p, w.weekStart);
     savePlatform(state.currentUid, p);
     openRowId = p.id;
+    // Muda o Saldo (a semana excluída pode ter Bônus/R.B. computados).
     refreshRow(p.id);
     renderFinanceList();
   });
@@ -1669,16 +1447,19 @@ function buildWeekCardReadOnly(p, w) {
 
   const stats = document.createElement('div');
   stats.className = 'finance-stats-grid';
-  stats.innerHTML = statsGridHtml(w, {
-    balanceLabel: 'Saldo (travado nesta semana)',
-    rolloverValue: w.rolloverAtClose,
-    rolloverLabel: 'Rollover (no momento do fechamento)'
-  });
+  stats.innerHTML = statsGridHtml(w, { balanceLabel: 'Saldo (travado nesta semana)' });
   card.appendChild(stats);
 
   return card;
 }
 
+// Diferença e R.B.+Bônus NÃO viram input: ficam de fora do formulário de
+// propósito, porque são sempre recalculados a partir dos outros campos
+// (ver updateClosedWeek em finance-logic.js) — editá-los direto poderia
+// deixar o registro inconsistente. Saldo TAMBÉM não é editável aqui: é um
+// retrato fixo do momento do fechamento que não alimenta nenhum outro
+// cálculo do app — correções em Bônus/R.B. aqui já entram sozinhas no
+// próximo cálculo ao vivo da fase atual.
 function buildWeekCardEditing(p, w) {
   const card = document.createElement('div');
   card.className = 'finance-week-card finance-week-card-editing';
@@ -1690,15 +1471,8 @@ function buildWeekCardEditing(p, w) {
 
   const note = document.createElement('p');
   note.className = 'finance-close-week-note';
-  note.textContent = 'Diferença e R.B. + Bônus são recalculados automaticamente ao salvar. O Saldo travado desta semana e o Rollover distribuído (bonusRollover/rolloverAtClose) são fixos e não podem ser editados aqui — se precisar corrigir de verdade, o caminho mais seguro é excluir esta semana e fechar de novo.';
+  note.textContent = 'Diferença e R.B. + Bônus são recalculados automaticamente ao salvar. O Saldo travado desta semana é fixo e não pode ser editado — o Saldo que realmente importa (o da fase atual, ao vivo) aparece em "Total da plataforma" e no nome da plataforma. Editar Depósito/Saque aqui corrige só o card desta semana; se precisar que a correção afete o Saldo/Fases, o mais seguro é excluir esta semana e adicionar de novo.';
   card.appendChild(note);
-
-  if (w.rolloverAtClose !== undefined && w.rolloverAtClose !== null) {
-    const rolloverStat = document.createElement('div');
-    rolloverStat.className = 'finance-stats-grid';
-    rolloverStat.innerHTML = statBox('Rollover (no momento do fechamento)', formatCurrency(Math.max(0, Number(w.rolloverAtClose) || 0)), 'positive');
-    card.appendChild(rolloverStat);
-  }
 
   const row1 = document.createElement('div');
   row1.className = 'finance-entry-form';
@@ -1748,6 +1522,8 @@ function buildWeekCardEditing(p, w) {
     savePlatform(state.currentUid, p);
     editingWeek = null;
     openRowId = p.id;
+    // Bônus/R.B. editados aqui afetam o próximo cálculo de Saldo — mesma
+    // razão já aplicada nas outras ações financeiras desta página.
     refreshRow(p.id);
     renderFinanceList();
   });
@@ -1778,200 +1554,14 @@ function numberInput(placeholder, value, step = '0.01') {
   return input;
 }
 
-// ============================================================
-// BLOCO P — MODAL "ÚLTIMAS APOSTAS" (só semana em aberto)
-// ============================================================
-// Mesmo padrão visual do modal de Histórico de Depósitos (Edição):
-// item + valor + Editar/Excluir, botão Voltar/Fechar no rodapé. Reusa
-// classes já globais (modals.css/manage-panel.css/panel.css) — nenhuma
-// CSS nova precisa ser criada.
-
-function formatBetEntryDateTime(isoStr) {
-  return new Date(isoStr).toLocaleString('pt-BR', {
-    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
-  });
-}
-
-// Só as apostas da semana ATUAL EM ABERTO — semanas fechadas continuam
-// sendo corrigidas pelo modal de edição já existente em cada card
-// (buildWeekCardEditing).
-function getCurrentWeekBetEntries(platform, refDate = new Date()) {
-  const weekStart = getWeekStart(refDate);
-  const weekEnd = getWeekEnd(weekStart);
-  return (platform.betEntries || []).filter(e => {
-    const d = new Date(e.date);
-    return d >= weekStart && d <= weekEnd;
-  });
-}
-
-function showBetHistoryModal(platform) {
-  currentBetHistoryPlatform = platform;
-  editingBetEntry = null;
-  renderBetHistoryList();
-  if (betHistoryModal) betHistoryModal.style.display = 'flex';
-}
-
-function closeBetHistoryModal() {
-  if (betHistoryModal) betHistoryModal.style.display = 'none';
-  currentBetHistoryPlatform = null;
-  editingBetEntry = null;
-}
-
-function renderBetHistoryList() {
-  if (!betHistoryList || !currentBetHistoryPlatform) return;
-  const platform = currentBetHistoryPlatform;
-
-  const live = computeCurrentWeekLive(platform);
-  if (betHistoryTitle) {
-    betHistoryTitle.textContent = `Últimas apostas — ${platform.name} (${live.weekStart.toLocaleDateString('pt-BR')} – ${live.weekEnd.toLocaleDateString('pt-BR')})`;
-  }
-
-  betHistoryList.innerHTML = '';
-
-  const entries = [...getCurrentWeekBetEntries(platform)].sort((a, b) => new Date(b.date) - new Date(a.date));
-
-  if (entries.length === 0) {
-    betHistoryList.innerHTML = '<div class="history-empty">Nenhuma aposta registrada nesta semana ainda.</div>';
-    return;
-  }
-
-  entries.forEach(entry => {
-    const item = document.createElement('div');
-    item.className = 'history-item';
-
-    const isEditingThis = editingBetEntry === entry;
-
-    if (isEditingThis) {
-      const editWrap = document.createElement('div');
-      editWrap.className = 'platform-form-fields';
-      editWrap.style.flex = '1';
-
-      const dateSpan = document.createElement('span');
-      dateSpan.className = 'history-date';
-      dateSpan.textContent = formatBetEntryDateTime(entry.date);
-      editWrap.appendChild(dateSpan);
-
-      const wageredInput = numberInput('Valor apostado', entry.wagered);
-      const betCountInput = numberInput('N° de apostas', entry.betCount, '1');
-      const rbInput = numberInput('R.B. da aposta', entry.resultBetting);
-      editWrap.appendChild(wageredInput);
-      editWrap.appendChild(betCountInput);
-      editWrap.appendChild(rbInput);
-      item.appendChild(editWrap);
-
-      const saveBtn = document.createElement('button');
-      saveBtn.className = 'history-edit-btn';
-      saveBtn.textContent = 'Salvar';
-      saveBtn.addEventListener('click', async () => {
-        const wagered = parseFloat(wageredInput.value);
-        const betCount = parseInt(betCountInput.value, 10);
-        const resultBetting = parseFloat(rbInput.value);
-        if (isNaN(wagered) || wagered <= 0 || isNaN(betCount) || betCount <= 0 || isNaN(resultBetting)) {
-          await showAppAlert('Digite valor apostado, n° de apostas e R.B. válidos.');
-          return;
-        }
-        entry.wagered = wagered;
-        entry.betCount = betCount;
-        entry.resultBetting = resultBetting;
-        savePlatform(state.currentUid, platform);
-        editingBetEntry = null;
-        renderBetHistoryList();
-        // Muda o Saldo (via R.B.) — se o modo ativo for Maior/Menor
-        // Saldo, a posição da linha pode mudar também.
-        refreshRow(platform.id);
-        renderFinanceList();
-      });
-      item.appendChild(saveBtn);
-
-      const cancelBtn = document.createElement('button');
-      cancelBtn.className = 'history-cancel-btn';
-      cancelBtn.textContent = 'Cancelar';
-      cancelBtn.addEventListener('click', () => {
-        editingBetEntry = null;
-        renderBetHistoryList();
-      });
-      item.appendChild(cancelBtn);
-    } else {
-      const itemContent = document.createElement('div');
-      itemContent.className = 'history-item-content';
-
-      const dateSpan = document.createElement('span');
-      dateSpan.className = 'history-date';
-      dateSpan.textContent = formatBetEntryDateTime(entry.date);
-      itemContent.appendChild(dateSpan);
-
-      const valueSpan = document.createElement('span');
-      valueSpan.className = 'history-value';
-      valueSpan.textContent = `Apostado ${formatCurrency(entry.wagered)} · ${entry.betCount} aposta(s) · R.B. ${formatCurrency(entry.resultBetting)}`;
-      itemContent.appendChild(valueSpan);
-
-      item.appendChild(itemContent);
-
-      const editBtn = document.createElement('button');
-      editBtn.className = 'history-edit-btn';
-      editBtn.textContent = 'Editar';
-      editBtn.addEventListener('click', () => {
-        editingBetEntry = entry;
-        renderBetHistoryList();
-      });
-      item.appendChild(editBtn);
-
-      const deleteBtn = document.createElement('button');
-      deleteBtn.className = 'history-delete-btn';
-      deleteBtn.textContent = 'Excluir';
-      deleteBtn.addEventListener('click', async () => {
-        const ok = await showAppConfirm(`Excluir esta aposta (${formatCurrency(entry.wagered)}, R.B. ${formatCurrency(entry.resultBetting)})?`);
-        if (!ok) return;
-        const idx = platform.betEntries.indexOf(entry);
-        if (idx !== -1) platform.betEntries.splice(idx, 1);
-        savePlatform(state.currentUid, platform);
-        renderBetHistoryList();
-        refreshRow(platform.id);
-        renderFinanceList();
-      });
-      item.appendChild(deleteBtn);
-    }
-
-    betHistoryList.appendChild(item);
-  });
-}
-
-// Resolve o modal "Últimas apostas" e liga seus listeners fixos —
-// chamada UMA VEZ por mount() da view, DEPOIS que a view já criou e
-// anexou o modal ao document.body (mesmo padrão "Opção A" já usado
-// pelos modais de Edição).
-export function initBetHistoryModalListeners() {
-  betHistoryModal = document.getElementById('betHistoryModal');
-  betHistoryTitle = document.getElementById('betHistoryTitle');
-  betHistoryList = document.getElementById('betHistoryList');
-  betHistoryCloseBtn = document.getElementById('betHistoryCloseBtn');
-
-  if (betHistoryCloseBtn) {
-    betHistoryCloseBtn.addEventListener('click', closeBetHistoryModal);
-  }
-  if (betHistoryModal) {
-    betHistoryModal.addEventListener('click', (e) => {
-      if (e.target === betHistoryModal) closeBetHistoryModal();
-    });
-  }
-}
-
 // ---------- CONTROLE DO TOPO (busca + ordenar) ----------
 
-// Resolve as referências de DOM (K12) + liga busca e o menu "Ordenar".
-// Chamada UMA VEZ pelo mount() da view, depois que o HTML do painel já
-// foi escrito no container. Retorna o cleanup de initSortMenu() (K1) —
-// quem chama DEVE guardar e executar essa função no próprio unmount().
 export function initFinanceControls() {
-  financeListEl = document.getElementById('financeList');
-  financeSearchEl = document.getElementById('financeSearch');
-  const financeReorderBtn = document.getElementById('financeReorderBtn');
-  const financeBadgeVisibilityBtn = document.getElementById('financeBadgeVisibilityBtn');
-  const financeBadgeVisibilityDropdown = document.getElementById('financeBadgeVisibilityDropdown');
-  const badgeVisibilityBalanceCheckbox = document.getElementById('financeBadgeVisibilityBalance');
-  const badgeVisibilityRolloverCheckbox = document.getElementById('financeBadgeVisibilityRollover');
-
   if (financeSearchEl) {
+    // Mesma proteção aplicada em ui-platform-manage.js: adia a atualização
+    // da lista pro próximo frame em vez de rodar de forma síncrona dentro
+    // do evento 'input', evitando disputa com o ciclo de composição do
+    // teclado virtual (IME) em telas pequenas.
     let searchFrame = null;
     financeSearchEl.addEventListener('input', (e) => {
       currentSearch = e.target.value;
@@ -1983,117 +1573,16 @@ export function initFinanceControls() {
     });
   }
 
-  // Item 22/25b — mesmo "Bug 1" já corrigido na Edição: os 3 controles
-  // (⚙️/👁/⇅) não podem ficar abertos ao mesmo tempo, nem o modo
-  // Reordenar ativo enquanto um dropdown também está aberto.
-  function closeSortDropdownUI() {
-    const dd = document.getElementById('financeSortDropdown');
-    const btn = document.getElementById('financeSortBtn');
-    if (dd) dd.classList.remove('open');
-    if (btn) btn.setAttribute('aria-expanded', 'false');
-  }
-  function closeBadgeDropdownUI() {
-    if (financeBadgeVisibilityDropdown) financeBadgeVisibilityDropdown.classList.remove('open');
-    if (financeBadgeVisibilityBtn) financeBadgeVisibilityBtn.setAttribute('aria-expanded', 'false');
-  }
-  function deactivateReorderModeUI() {
-    if (!reorderModeActive) return;
-    reorderModeActive = false;
-    if (financeReorderBtn) {
-      financeReorderBtn.classList.remove('active');
-      financeReorderBtn.textContent = '⚙️ Reordenar';
-    }
-    refreshAllRows();
-  }
-
-  if (financeReorderBtn) {
-    financeReorderBtn.disabled = currentMode !== null;
-    financeReorderBtn.addEventListener('click', () => {
-      const turningOn = !reorderModeActive;
-      if (turningOn) {
-        closeSortDropdownUI();
-        closeBadgeDropdownUI();
-      }
-      reorderModeActive = !reorderModeActive;
-      financeReorderBtn.classList.toggle('active', reorderModeActive);
-      financeReorderBtn.textContent = reorderModeActive ? '✓ Concluir reordenação' : '⚙️ Reordenar';
-      refreshAllRows();
-    });
-  }
-
-  let closeBadgeDropdown = () => {};
-  if (financeBadgeVisibilityBtn && financeBadgeVisibilityDropdown) {
-    const visibility = getCachedPreferences().badgeVisibility;
-    if (badgeVisibilityBalanceCheckbox) badgeVisibilityBalanceCheckbox.checked = visibility.financeBalanceBadge;
-    if (badgeVisibilityRolloverCheckbox) badgeVisibilityRolloverCheckbox.checked = visibility.financeRolloverBadge;
-
-    function toggleDropdown() {
-      const willOpen = !financeBadgeVisibilityDropdown.classList.contains('open');
-      if (willOpen) {
-        closeSortDropdownUI();
-        deactivateReorderModeUI();
-      }
-      financeBadgeVisibilityDropdown.classList.toggle('open');
-      financeBadgeVisibilityBtn.setAttribute(
-        'aria-expanded',
-        financeBadgeVisibilityDropdown.classList.contains('open') ? 'true' : 'false'
-      );
-    }
-    function onDocumentClick(e) {
-      if (!financeBadgeVisibilityDropdown.contains(e.target) && e.target !== financeBadgeVisibilityBtn) {
-        financeBadgeVisibilityDropdown.classList.remove('open');
-        financeBadgeVisibilityBtn.setAttribute('aria-expanded', 'false');
-      }
-    }
-    function onVisibilityChange() {
-      saveBadgeVisibility(state.currentUid, {
-        financeBalanceBadge: badgeVisibilityBalanceCheckbox ? badgeVisibilityBalanceCheckbox.checked : true,
-        financeRolloverBadge: badgeVisibilityRolloverCheckbox ? badgeVisibilityRolloverCheckbox.checked : true
-      });
-      refreshAllRows();
-    }
-
-    financeBadgeVisibilityBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      toggleDropdown();
-    });
-    document.addEventListener('click', onDocumentClick);
-    if (badgeVisibilityBalanceCheckbox) badgeVisibilityBalanceCheckbox.addEventListener('change', onVisibilityChange);
-    if (badgeVisibilityRolloverCheckbox) badgeVisibilityRolloverCheckbox.addEventListener('change', onVisibilityChange);
-
-    closeBadgeDropdown = () => document.removeEventListener('click', onDocumentClick);
-  }
-
-  const financeSortBtnEl = document.getElementById('financeSortBtn');
-  if (financeSortBtnEl) {
-    financeSortBtnEl.addEventListener('click', () => {
-      closeBadgeDropdownUI();
-      deactivateReorderModeUI();
-    });
-  }
-
-  const sortMenuCleanup = initSortMenu({
+  // Ponto 5.1: lista de rótulos própria (FINANCE_SORT_MENU_OPTIONS) —
+  // Calendário e Edição não passam "options" e continuam com o padrão
+  // compartilhado (ver ui-sort.js).
+  initSortMenu({
     buttonId: 'financeSortBtn',
     dropdownId: 'financeSortDropdown',
     options: FINANCE_SORT_MENU_OPTIONS,
     onChange: (mode) => {
       currentMode = mode;
-      if (mode !== null) {
-        reorderModeActive = false;
-        if (financeReorderBtn) {
-          financeReorderBtn.disabled = true;
-          financeReorderBtn.classList.remove('active');
-          financeReorderBtn.textContent = '⚙️ Reordenar';
-        }
-      } else if (financeReorderBtn) {
-        financeReorderBtn.disabled = false;
-      }
       renderFinanceList();
     }
   });
-
-  return function combinedCleanup() {
-    sortMenuCleanup();
-    closeBadgeDropdown();
-  };
 }
