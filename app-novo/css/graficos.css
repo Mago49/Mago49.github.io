@@ -1,0 +1,31 @@
+/* === PÁGINA 6 (GRÁFICOS) — Etapa 8 ===
+   Reaproveita .summary-card (hero.css, já global) pros KPIs — só o grid
+   em volta é próprio daqui, com mais colunas que o Hero (mais itens). */
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.85rem;
+}
+
+.graficos-section {
+  padding: 1.1rem;
+}
+
+.chart-wrap {
+  position: relative;
+  height: 320px;
+  padding: 0 1.1rem 1.1rem;
+}
+
+.graficos-note {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin: 0.4rem 1.1rem 0;
+}
+
+@media (max-width: 640px) {
+  .chart-wrap {
+    height: 260px;
+  }
+}
