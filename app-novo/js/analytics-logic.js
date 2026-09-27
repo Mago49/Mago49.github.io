@@ -12,7 +12,7 @@
 // mais o Avulso (otherBonusLog), que é o único dos quatro que é dado
 // real. Isso é comunicado na nota da UI, nunca escondido.
 
-import { computeOverallTotals } from './finance-logic.js';
+import { computeOverallTotals, computePlatformTotals } from './finance-logic.js';
 import {
   computeVipMonthlyTotals, computeObrigadoMonthlyTotals, computeMisteriosoMonthlyTotal
 } from './vip-history-store.js';
@@ -101,4 +101,69 @@ export function computeBonusByTypeCurrentMonth(platforms, obrigadoValuePerAppear
   });
 
   return { vip, obrigado, misterioso, avulso };
+}
+
+// --- Ranking de Plataformas (Top 10, por 3 critérios) ---
+// "Lucro" aqui = rbPlusBonus (Resultado Betting + Bônus) acumulado das
+// semanas já fechadas — mesmo campo que "Total da plataforma" já exibe
+// no Financeiro, nunca uma fórmula nova. Saldo/Rollover entram como o
+// valor AO VIVO da fase atual (mesma semântica de computePlatformTotals).
+export function computePlatformRankings(platforms, resolveCtx = () => ({}), refDate = new Date(), limit = 10) {
+  const rows = (platforms || []).map(p => {
+    const totals = computePlatformTotals(p, resolveCtx(p), refDate);
+    return {
+      id: p.id,
+      name: p.name,
+      balance: totals.balance,
+      lucro: totals.rbPlusBonus,
+      resultBetting: totals.resultBetting
+    };
+  });
+
+  return {
+    byBalance: [...rows].sort((a, b) => b.balance - a.balance).slice(0, limit),
+    byLucro: [...rows].sort((a, b) => b.lucro - a.lucro).slice(0, limit),
+    byResultBetting: [...rows].sort((a, b) => b.resultBetting - a.resultBetting).slice(0, limit)
+  };
+}
+
+// --- Resultado Betting por semana (Area) — soma de todas as plataformas,
+//     só semanas já fechadas (mesma fonte de computeWeeklyDepositWithdrawal). ---
+export function computeWeeklyResultBetting(platforms) {
+  const map = new Map();
+  (platforms || []).forEach(p => (p.financeWeeks || []).forEach(w => {
+    map.set(w.weekStart, (map.get(w.weekStart) || 0) + w.resultBetting);
+  }));
+  return [...map.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([weekStart, resultBetting]) => ({ weekStart, resultBetting }));
+}
+
+// --- Valor Apostado por semana (Line) — mesmo padrão. ---
+export function computeWeeklyWagered(platforms) {
+  const map = new Map();
+  (platforms || []).forEach(p => (p.financeWeeks || []).forEach(w => {
+    map.set(w.weekStart, (map.get(w.weekStart) || 0) + w.wagered);
+  }));
+  return [...map.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([weekStart, wagered]) => ({ weekStart, wagered }));
+}
+
+// --- ROI dos Bônus por Plataforma (Top 10, Horizontal Bar) ---
+// ROI = Resultado Betting ÷ Bônus, das semanas já fechadas + fase atual
+// (mesmos totais de computePlatformTotals). Só entram plataformas com
+// bônus > 0 — sem isso o ROI seria infinito/indefinido e enganaria o
+// ranking. Lista vazia é um resultado válido (nenhuma plataforma com
+// bônus lançado ainda), não um erro.
+export function computeBonusRoiByPlatform(platforms, resolveCtx = () => ({}), refDate = new Date(), limit = 10) {
+  const rows = (platforms || [])
+    .map(p => {
+      const totals = computePlatformTotals(p, resolveCtx(p), refDate);
+      return { id: p.id, name: p.name, bonus: totals.bonus, resultBetting: totals.resultBetting };
+    })
+    .filter(r => r.bonus > 0)
+    .map(r => ({ ...r, roi: r.resultBetting / r.bonus }));
+
+  return rows.sort((a, b) => b.roi - a.roi).slice(0, limit);
 }
