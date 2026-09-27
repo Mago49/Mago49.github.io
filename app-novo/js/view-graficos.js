@@ -14,7 +14,9 @@ import { state } from './state.js';
 import { formatCurrency } from './utils.js';
 import {
   computeGlobalKpis, computeWeeklyBalanceSeries,
-  computeWeeklyDepositWithdrawal, computeBonusByTypeCurrentMonth
+  computeWeeklyDepositWithdrawal, computeBonusByTypeCurrentMonth,
+  computePlatformRankings, computeWeeklyResultBetting,
+  computeWeeklyWagered, computeBonusRoiByPlatform
 } from './analytics-logic.js';
 import { loadObrigadoValuePerAppearance } from './vip-obrigado-store.js';
 import { loadMisteriosoTemplates } from './vip-misterioso-store.js';
@@ -24,6 +26,11 @@ let chartJsLoadPromise = null;
 let balanceChart = null;
 let depositWithdrawalChart = null;
 let bonusTypeChart = null;
+let rankingChart = null;
+let resultBettingChart = null;
+let wageredChart = null;
+let bonusRoiChart = null;
+let currentRankingMetric = 'balance';
 
 let obrigadoValuePerAppearance = 0.30;
 let misteriosoTemplates = [];
@@ -154,11 +161,132 @@ function renderBonusTypeChart() {
   });
 }
 
+function initRankingControls() {
+  const select = document.getElementById('rankingMetricSelect');
+  if (!select) return;
+  select.value = currentRankingMetric;
+  select.addEventListener('change', () => {
+    currentRankingMetric = select.value;
+    renderRankingChart();
+  });
+}
+
+function renderRankingChart() {
+  const canvas = document.getElementById('graficoRanking');
+  if (!canvas || !window.Chart) return;
+
+  const rankings = computePlatformRankings(state.platforms, resolveCtxForPlatform, new Date(), 10);
+  const fieldMap = { balance: 'byBalance', lucro: 'byLucro', resultBetting: 'byResultBetting' };
+  const rows = rankings[fieldMap[currentRankingMetric]];
+  const metricLabels = { balance: 'Saldo', lucro: 'Lucro (R.B. + Bônus)', resultBetting: 'Resultado Betting' };
+  const metricColors = { balance: '#15803d', lucro: '#2563eb', resultBetting: '#7c3aed' };
+
+  if (rankingChart) rankingChart.destroy();
+  rankingChart = new window.Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: rows.map(r => r.name),
+      datasets: [{
+        label: metricLabels[currentRankingMetric],
+        data: rows.map(r => r[currentRankingMetric]),
+        backgroundColor: metricColors[currentRankingMetric]
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } }
+    }
+  });
+}
+
+function renderResultBettingChart() {
+  const canvas = document.getElementById('graficoResultBetting');
+  if (!canvas || !window.Chart) return;
+  const series = computeWeeklyResultBetting(state.platforms);
+  if (resultBettingChart) resultBettingChart.destroy();
+  resultBettingChart = new window.Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: series.map(pt => formatWeekLabelDDMM(pt.weekStart)),
+      datasets: [{
+        label: 'Resultado Betting (R.B.)',
+        data: series.map(pt => pt.resultBetting),
+        borderColor: '#7c3aed',
+        backgroundColor: 'rgba(124,58,237,0.15)',
+        fill: true,
+        tension: 0.25
+      }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+  });
+}
+
+function renderWageredChart() {
+  const canvas = document.getElementById('graficoValorApostado');
+  if (!canvas || !window.Chart) return;
+  const series = computeWeeklyWagered(state.platforms);
+  if (wageredChart) wageredChart.destroy();
+  wageredChart = new window.Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: series.map(pt => formatWeekLabelDDMM(pt.weekStart)),
+      datasets: [{
+        label: 'Valor Apostado',
+        data: series.map(pt => pt.wagered),
+        borderColor: '#f59e0b',
+        backgroundColor: 'rgba(245,158,11,0.15)',
+        fill: false,
+        tension: 0.25
+      }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+  });
+}
+
+function renderBonusRoiChart() {
+  const canvas = document.getElementById('graficoRoiBonus');
+  const noteEl = document.getElementById('roiBonusEmptyNote');
+  if (!canvas || !window.Chart) return;
+
+  const rows = computeBonusRoiByPlatform(state.platforms, resolveCtxForPlatform, new Date(), 10);
+  if (bonusRoiChart) { bonusRoiChart.destroy(); bonusRoiChart = null; }
+
+  if (rows.length === 0) {
+    if (noteEl) noteEl.classList.remove('app-hidden');
+    return;
+  }
+  if (noteEl) noteEl.classList.add('app-hidden');
+
+  bonusRoiChart = new window.Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: rows.map(r => r.name),
+      datasets: [{
+        label: 'ROI (R.B. ÷ Bônus)',
+        data: rows.map(r => r.roi),
+        backgroundColor: rows.map(r => r.roi >= 1 ? '#15803d' : '#ef4444')
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } }
+    }
+  });
+}
+
 function refreshPage() {
   renderKpis();
   renderBalanceChart();
   renderDepositWithdrawalChart();
   renderBonusTypeChart();
+  renderRankingChart();
+  renderResultBettingChart();
+  renderWageredChart();
+  renderBonusRoiChart();
 }
 
 function scheduleDailyUpdate() {
@@ -211,6 +339,47 @@ export async function mount(container) {
       </div>
       <p class="graficos-note">VIP/Obrigado/Misterioso são a PROJEÇÃO do mês atual (mesma fórmula da aba VIP); Avulso é o valor real já lançado via "Inserir bônus hoje" neste mês.</p>
       <div class="chart-wrap" style="height:280px;"><canvas id="graficoBonusTipo"></canvas></div>
+
+      <section class="card-shell graficos-section" aria-label="Ranking de Plataformas" style="margin-top:1.1rem;">
+      <div class="section-heading" style="padding:0 0 0.9rem;">
+        <div>
+          <h2>Ranking de Plataformas (Top 10)</h2>
+          <p>Baseado nas semanas já fechadas + Saldo/Rollover ao vivo da fase atual, conforme o critério escolhido.</p>
+        </div>
+      </div>
+      <div class="finance-entry-form" style="padding:0 1.1rem 0.9rem;">
+        <select id="rankingMetricSelect" aria-label="Critério do ranking" style="padding:0.6rem 0.75rem; border:1px solid #e6e9ee; border-radius:12px; outline:none;">
+          <option value="balance">Por Saldo</option>
+          <option value="lucro">Por Lucro (R.B. + Bônus)</option>
+          <option value="resultBetting">Por Resultado Betting</option>
+        </select>
+      </div>
+      <div class="chart-wrap"><canvas id="graficoRanking"></canvas></div>
+    </section>
+
+    <section class="card-shell graficos-section" aria-label="Resultado Betting" style="margin-top:1.1rem;">
+      <div class="section-heading" style="padding:0 0 0.9rem;">
+        <div><h2>Resultado Betting (por semana)</h2></div>
+      </div>
+      <div class="chart-wrap"><canvas id="graficoResultBetting"></canvas></div>
+    </section>
+
+    <section class="card-shell graficos-section" aria-label="Valor Apostado" style="margin-top:1.1rem;">
+      <div class="section-heading" style="padding:0 0 0.9rem;">
+        <div><h2>Valor Apostado (por semana)</h2></div>
+      </div>
+      <div class="chart-wrap"><canvas id="graficoValorApostado"></canvas></div>
+    </section>
+
+    <section class="card-shell graficos-section" aria-label="ROI dos Bônus por Plataforma" style="margin-top:1.1rem;">
+      <div class="section-heading" style="padding:0 0 0.9rem;">
+        <div>
+          <h2>ROI dos Bônus por Plataforma (Top 10)</h2>
+          <p>ROI = Resultado Betting ÷ Bônus, das semanas já fechadas + fase atual. Só entram plataformas com bônus &gt; 0.</p>
+        </div>
+      </div>
+      <p id="roiBonusEmptyNote" class="graficos-note app-hidden">Nenhuma plataforma com bônus registrado ainda.</p>
+      <div class="chart-wrap"><canvas id="graficoRoiBonus"></canvas></div>
     </section>
   `;
 
@@ -218,6 +387,8 @@ export async function mount(container) {
   misteriosoTemplates = await loadMisteriosoTemplates(state.currentUid);
 
   await loadChartJsScript();
+
+  initRankingControls();
 
   refreshPage();
   scheduleDailyUpdate();
@@ -228,4 +399,8 @@ export function unmount() {
   if (balanceChart) { balanceChart.destroy(); balanceChart = null; }
   if (depositWithdrawalChart) { depositWithdrawalChart.destroy(); depositWithdrawalChart = null; }
   if (bonusTypeChart) { bonusTypeChart.destroy(); bonusTypeChart = null; }
+  if (rankingChart) { rankingChart.destroy(); rankingChart = null; }
+  if (resultBettingChart) { resultBettingChart.destroy(); resultBettingChart = null; }
+  if (wageredChart) { wageredChart.destroy(); wageredChart = null; }
+  if (bonusRoiChart) { bonusRoiChart.destroy(); bonusRoiChart = null; }
 }
