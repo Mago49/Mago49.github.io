@@ -167,3 +167,61 @@ export function computeBonusRoiByPlatform(platforms, resolveCtx = () => ({}), re
 
   return rows.sort((a, b) => b.roi - a.roi).slice(0, limit);
 }
+
+function toLocalDayKey(dateInput) {
+  const d = new Date(dateInput);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
+// --- Heatmap Geral (42 plataformas x dias) ---
+// Sem Saldo diário salvo no sistema (só semanal, via financeWeeks) — por
+// isso a métrica é sempre algo que EXISTE por dia: depósito (depositLog),
+// apostado/resultBetting (betEntries) ou bônus avulso (otherBonusLog).
+// `days` controla a janela (mobile-friendly, default 14) — mais dias
+// aumenta a largura do canvas, não o custo de rede (é só desenho local).
+export function computeHeatmapMatrix(platforms, metric = 'deposito', days = 14, refDate = new Date()) {
+  const start = new Date(refDate);
+  start.setHours(0, 0, 0, 0);
+  const dayKeys = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(start);
+    d.setDate(d.getDate() - i);
+    dayKeys.push(toLocalDayKey(d));
+  }
+
+  const sortedPlatforms = [...(platforms || [])].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { numeric: true }));
+
+  const rows = sortedPlatforms.map(p => {
+    const dayTotals = {};
+    dayKeys.forEach(k => { dayTotals[k] = 0; });
+
+    if (metric === 'deposito') {
+      (p.depositLog || []).forEach(e => {
+        const k = toLocalDayKey(e.date);
+        if (k in dayTotals) dayTotals[k] += Number(e.value) || 0;
+      });
+    } else if (metric === 'apostado') {
+      (p.betEntries || []).forEach(e => {
+        const k = toLocalDayKey(e.date);
+        if (k in dayTotals) dayTotals[k] += Number(e.wagered) || 0;
+      });
+    } else if (metric === 'resultBetting') {
+      (p.betEntries || []).forEach(e => {
+        const k = toLocalDayKey(e.date);
+        if (k in dayTotals) dayTotals[k] += Number(e.resultBetting) || 0;
+      });
+    } else if (metric === 'bonus') {
+      (p.otherBonusLog || []).forEach(e => {
+        const k = toLocalDayKey(e.date);
+        if (k in dayTotals) dayTotals[k] += Number(e.rawValue) || 0;
+      });
+    }
+
+    return { name: p.name, values: dayKeys.map(k => dayTotals[k]) };
+  });
+
+  return { dayKeys, rows };
+}
