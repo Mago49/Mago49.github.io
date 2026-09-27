@@ -307,14 +307,35 @@ export function initFinanceOverview() {
       });
     });
   }
+  
+  const phaseToggleBtn = document.getElementById('financeOverviewPhaseToggleBtn');
+  const phaseWrap = document.getElementById('financeOverviewPhaseWrap');
+  const phaseSelect = document.getElementById('financeOverviewPhaseSelect');
+
+  if (phaseToggleBtn && phaseWrap && phaseSelect) {
+    const maxPhase = state.platforms.reduce((max, p) => Math.max(max, (p.balancePhases || []).length + 1), 1);
+    phaseSelect.innerHTML = '<option value="">Todas as fases</option>' +
+      Array.from({ length: maxPhase }, (_, i) => i + 1)
+        .map(n => `<option value="${n}">Fase ${n}</option>`)
+        .join('');
+
+    phaseToggleBtn.addEventListener('click', () => {
+      phaseWrap.classList.toggle('app-hidden');
+    });
+    phaseSelect.addEventListener('change', renderFinanceOverview);
+  }
+  
   if (clearBtn) {
     clearBtn.addEventListener('click', () => {
       if (fromEl) fromEl.value = '';
       if (toEl) toEl.value = '';
       if (platformFilterEl) platformFilterEl.value = '';
+      const phaseSelectEl = document.getElementById('financeOverviewPhaseSelect');
+      if (phaseSelectEl) phaseSelectEl.value = '';
       renderFinanceOverview();
     });
   }
+  
   if (newPhaseAllBtn) {
     newPhaseAllBtn.addEventListener('click', async () => {
       const count = state.platforms.length;
@@ -370,8 +391,14 @@ export function renderFinanceOverview() {
     ? state.platforms.filter(p => p.name.toLowerCase().includes(platformQuery))
     : state.platforms;
 
-  const totals = computeOverallTotals(platformsForOverview, from, to, resolveCtxForPlatform);
-  statsEl.innerHTML = statsGridHtml(totals, { rolloverValue: totals.rollover, rolloverLabel: 'Rollover (todas as plataformas)' });
+const phaseSelectEl = document.getElementById('financeOverviewPhaseSelect');
+  const phaseFilter = phaseSelectEl && phaseSelectEl.value ? Number(phaseSelectEl.value) : null;
+
+  const totals = computeOverallTotals(platformsForOverview, from, to, resolveCtxForPlatform, new Date(), phaseFilter);
+  const rolloverLabel = phaseFilter
+    ? `Rollover (Fase ${phaseFilter}, todas as plataformas)`
+    : 'Rollover (todas as plataformas)';
+  statsEl.innerHTML = statsGridHtml(totals, { rolloverValue: totals.rollover, rolloverLabel });
 }
 
 // ---------- RECONCILIAÇÃO DE DOM ----------
@@ -671,6 +698,42 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
     return section;
   }
 
+  // --- Item 15a: depósito rápido (grava sempre em depositLog; só entra
+  // no ciclo/calendário via `deposits` se o ciclo não estiver encerrado —
+  // mesmo gate já usado no botão de depósito da Edição) ---
+  const depositForm = document.createElement('div');
+  depositForm.className = 'finance-entry-form';
+  const depositInput = document.createElement('input');
+  depositInput.type = 'number';
+  depositInput.min = '0';
+  depositInput.step = '0.01';
+  depositInput.placeholder = 'Valor do depósito';
+  const depositBtn = document.createElement('button');
+  depositBtn.className = 'bet-manage-btn';
+  depositBtn.type = 'button';
+  depositBtn.textContent = 'Registrar depósito';
+  depositBtn.addEventListener('click', async () => {
+    const value = parseFloat(depositInput.value);
+    if (isNaN(value) || value <= 0) {
+      await showAppAlert('Digite um valor válido');
+      return;
+    }
+    const entry = { date: new Date().toISOString(), value };
+    if (!p.depositLog) p.depositLog = [];
+    p.depositLog.push({ ...entry });
+    if (!p.cycleEnded) {
+      if (!p.deposits) p.deposits = [];
+      p.deposits.push({ ...entry });
+    }
+    savePlatform(state.currentUid, p);
+    openRowId = p.id;
+    refreshRow(p.id);
+    renderFinanceList();
+  });
+  depositForm.appendChild(depositInput);
+  depositForm.appendChild(depositBtn);
+  section.appendChild(depositForm);
+  
   // --- registrar saque ---
   const withdrawForm = document.createElement('div');
   withdrawForm.className = 'finance-entry-form';
