@@ -24,6 +24,62 @@ export const vipBonusTable = {
   }
 };
 
+// === ITEM 15b — MÍNIMO DE APOSTA POR NÍVEL (só grupo 'com') ===
+// Fixo, igual espírito de vipBonusTable/LEVEL_INFO — não é por plataforma,
+// é por nível VIP (0-5). Abaixo do mínimo do dia, "Apostei hoje" não conta.
+export const BET_MINIMUM_BY_LEVEL = { 0: 0, 1: 0, 2: 10, 3: 12, 4: 16, 5: 20 };
+
+function toLocalDayKey(dateInput) {
+  const d = new Date(dateInput);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
+// Todos os dias, dentro de [start, end], em que "Apostei hoje" está
+// EFETIVAMENTE liberado pra essa plataforma: manual (platform.betDays) OU
+// automático (soma de betEntries.wagered daquele dia >= mínimo do nível).
+// Recalculado ao vivo a partir de betEntries — nunca grava nada em
+// betDays sozinho, então uma correção pra baixo no valor apostado remove
+// o efeito imediatamente, sem estado "preso". Fonte ÚNICA usada por
+// getVipBonus (total do Bônus VIP) e pelo badge "🎲 X dia(s)" da Edição —
+// os dois precisam bater sempre, nunca divergir.
+export function getEffectiveBetDayKeys(platform, start, end) {
+  const manualKeys = (platform.betDays || [])
+    .filter(dateStr => {
+      const d = new Date(`${dateStr.slice(0, 10)}T00:00:00`);
+      return d >= start && d <= end;
+    })
+    .map(dateStr => dateStr.slice(0, 10));
+
+  if (platform.group !== 'com') return new Set(manualKeys);
+
+  const minimo = BET_MINIMUM_BY_LEVEL[platform.level] || 0;
+  const autoKeys = [];
+  if (minimo > 0) {
+    const wageredByDay = {};
+    (platform.betEntries || []).forEach(e => {
+      const d = new Date(e.date);
+      if (d < start || d > end) return;
+      const key = toLocalDayKey(e.date);
+      wageredByDay[key] = (wageredByDay[key] || 0) + (Number(e.wagered) || 0);
+    });
+    Object.keys(wageredByDay).forEach(key => {
+      if (wageredByDay[key] >= minimo) autoKeys.push(key);
+    });
+  }
+
+  return new Set([...manualKeys, ...autoKeys]);
+}
+
+// Açúcar sintático — "esse dia específico está liberado?" (usado por
+// bonus-ledger-logic.js). dateKey: 'AAAA-MM-DD' local.
+export function isBetDayEffective(platform, dateKey) {
+  const d = new Date(`${dateKey}T00:00:00`);
+  return getEffectiveBetDayKeys(platform, d, d).has(dateKey);
+}
+
 export function getCycleStart(platform, refDate = new Date()) {
   if (platform.lastResetDate) {
     const resetDate = new Date(platform.lastResetDate);
@@ -218,19 +274,7 @@ export function getVipBonus(platform, refDate = new Date()) {
   // e não pode ser afetado por um Reinício no meio do mês.
   if (platform.group === 'com') {
     const start = getMonthStart(hoje);
-    const uniqueBetDays = new Set(
-      (platform.betDays || [])
-        .filter(dateStr => {
-          // Força interpretação LOCAL da data. Uma string só-de-data
-          // ("2026-08-16") seria lida pelo JS como meia-noite UTC — 3h
-          // ANTES da meia-noite local no Brasil — empurrando o dia pra
-          // trás na comparação. Anexar "T00:00:00" corrige isso.
-          const d = new Date(`${dateStr.slice(0, 10)}T00:00:00`);
-          return d >= start && d <= hoje;
-        })
-        .map(dateStr => dateStr.slice(0, 10))
-    );
-
+    const uniqueBetDays = getEffectiveBetDayKeys(platform, start, hoje);
     dailyTotal = daily * uniqueBetDays.size;
   }
 
