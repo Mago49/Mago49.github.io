@@ -673,10 +673,49 @@ export function computePlatformTotals(platform, ctx = {}, refDate = new Date()) 
 // ui-vip-panel.js). Sem essa função, ctx vira {} pra todas (Obrigado/
 // Misterioso não contribuem, VIP diário/semanal/mensal continuam
 // funcionando normalmente).
-export function computeOverallTotals(platforms, from = null, to = null, resolveCtx = () => ({}), refDate = new Date()) {
+// Item 20b — phaseFilter opcional (número da fase, ou null = "Todas as
+// fases", comportamento de sempre). Quando ativo: pra CADA plataforma,
+// soma só as semanas fechadas DENTRO da fase escolhida (interseção com
+// from/to é aplicada em cima disso — função única combinada, não dois
+// filtros mutuamente exclusivos), e Saldo/Rollover viram o RETRATO
+// daquela fase (mesmo valor do card "Fases do Saldo"), não o ao-vivo da
+// fase atual. Plataforma que nunca teve essa fase é excluída
+// silenciosamente da soma (comportamento esperado, não erro).
+export function computeOverallTotals(platforms, from = null, to = null, resolveCtx = () => ({}), refDate = new Date(), phaseFilter = null) {
   const totals = { deposit: 0, withdrawal: 0, difference: 0, wagered: 0, betCount: 0, bonus: 0, resultBetting: 0, rbPlusBonus: 0, balance: 0, rollover: 0 };
 
   (platforms || []).forEach(platform => {
+    const ctx = resolveCtx(platform);
+
+    if (phaseFilter !== null) {
+      const phases = computePhaseHistory(platform, refDate, ctx);
+      const phase = phases.find(ph => ph.phaseNumber === phaseFilter);
+      if (!phase) return; // exclusão silenciosa — plataforma sem essa fase
+
+      const phaseStart = phase.startDate ? new Date(phase.startDate) : null;
+      const phaseEnd = phase.endDate ? new Date(phase.endDate) : null;
+
+      (platform.financeWeeks || []).forEach(w => {
+        const weekEndDate = new Date(w.weekEnd);
+        if (phaseStart && !(weekEndDate > phaseStart)) return;
+        if (phaseEnd && !(weekEndDate <= phaseEnd)) return;
+        if (from && w.weekStart < from) return;
+        if (to && w.weekStart > to) return;
+        totals.deposit += w.deposit;
+        totals.withdrawal += w.withdrawal;
+        totals.difference += w.difference;
+        totals.wagered += w.wagered;
+        totals.betCount += w.betCount;
+        totals.bonus += w.bonus;
+        totals.resultBetting += w.resultBetting;
+        totals.rbPlusBonus += w.rbPlusBonus;
+      });
+
+      totals.balance += phase.balance;
+      totals.rollover += phase.rollover;
+      return;
+    }
+
     (platform.financeWeeks || []).forEach(w => {
       if (from && w.weekStart < from) return;
       if (to && w.weekStart > to) return;
@@ -690,7 +729,6 @@ export function computeOverallTotals(platforms, from = null, to = null, resolveC
       totals.rbPlusBonus += w.rbPlusBonus;
     });
 
-    const ctx = resolveCtx(platform);
     totals.balance += computeLiveBalance(platform, refDate, ctx);
     totals.rollover += computeRolloverLive(platform, refDate, ctx);
   });
