@@ -29,3 +29,27 @@
     height: 260px;
   }
 }
+
+/* === HEATMAP GERAL (canvas nativo, sem biblioteca — Sub-entrega 3) === */
+.heatmap-scroll {
+  overflow: auto;
+  max-height: 480px;
+  margin: 0 1.1rem 1.1rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  position: relative;
+}
+
+.heatmap-tooltip {
+  position: fixed;
+  pointer-events: none;
+  background: #0f172a;
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.35rem 0.6rem;
+  border-radius: 8px;
+  z-index: 60;
+  display: none;
+  white-space: nowrap;
+}
