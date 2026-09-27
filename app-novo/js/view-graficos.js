@@ -16,7 +16,7 @@ import {
   computeGlobalKpis, computeWeeklyBalanceSeries,
   computeWeeklyDepositWithdrawal, computeBonusByTypeCurrentMonth,
   computePlatformRankings, computeWeeklyResultBetting,
-  computeWeeklyWagered, computeBonusRoiByPlatform
+  computeWeeklyWagered, computeBonusRoiByPlatform, computeHeatmapMatrix
 } from './analytics-logic.js';
 import { loadObrigadoValuePerAppearance } from './vip-obrigado-store.js';
 import { loadMisteriosoTemplates } from './vip-misterioso-store.js';
@@ -31,6 +31,8 @@ let resultBettingChart = null;
 let wageredChart = null;
 let bonusRoiChart = null;
 let currentRankingMetric = 'balance';
+let currentHeatmapMetric = 'deposito';
+let heatmapLayout = null; // { dayKeys, rows, cellW, cellH, labelWidth, headerHeight } — usado pelo tooltip no mousemove
 
 let obrigadoValuePerAppearance = 0.30;
 let misteriosoTemplates = [];
@@ -278,8 +280,119 @@ function renderBonusRoiChart() {
   });
 }
 
+// Escala de cor simples (5 degraus) — 0 sempre cinza-claro, nunca
+// confundido com "valor baixo real" (diferença visual clara).
+function colorForIntensity(t) {
+  if (t <= 0) return '#f1f5f9';
+  const stops = ['#dcfce7', '#86efac', '#22c55e', '#15803d', '#14532d'];
+  const idx = Math.min(stops.length - 1, Math.floor(t * stops.length));
+  return stops[idx];
+}
+
+function formatHeatmapValue(value) {
+  return formatCurrency(value);
+}
+
+// Desenho em Canvas 2D nativo — sem biblioteca, sem espera de rede.
+// Roda independente do Chart.js estar carregado ou não.
+function renderHeatmapCanvas() {
+  const canvas = document.getElementById('graficoHeatmap');
+  const metricSelect = document.getElementById('heatmapMetricSelect');
+  if (!canvas) return;
+
+  currentHeatmapMetric = metricSelect ? metricSelect.value : currentHeatmapMetric;
+  const { dayKeys, rows } = computeHeatmapMatrix(state.platforms, currentHeatmapMetric, 14, new Date());
+
+  const cellW = 26;
+  const cellH = 16;
+  const labelWidth = 72;
+  const headerHeight = 34;
+
+  const width = labelWidth + dayKeys.length * cellW;
+  const height = headerHeight + rows.length * cellH;
+
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = width * dpr;
+  canvas.height = height * dpr;
+  canvas.style.width = `${width}px`;
+  canvas.style.height = `${height}px`;
+
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+  ctx.font = '10px Poppins, system-ui, sans-serif';
+  ctx.textBaseline = 'middle';
+
+  let maxVal = 0;
+  rows.forEach(r => r.values.forEach(v => { if (v > maxVal) maxVal = v; }));
+
+  // Cabeçalho de datas (rotacionado, senão não cabe em 26px de largura)
+  ctx.fillStyle = '#64748b';
+  dayKeys.forEach((k, i) => {
+    const [, m, d] = k.split('-');
+    ctx.save();
+    ctx.translate(labelWidth + i * cellW + cellW / 2, headerHeight - 6);
+    ctx.rotate(-Math.PI / 3);
+    ctx.textAlign = 'right';
+    ctx.fillText(`${d}/${m}`, 0, 0);
+    ctx.restore();
+  });
+
+  rows.forEach((row, rIdx) => {
+    const y = headerHeight + rIdx * cellH;
+    ctx.fillStyle = '#334155';
+    ctx.textAlign = 'left';
+    ctx.fillText(row.name, 2, y + cellH / 2);
+
+    row.values.forEach((val, cIdx) => {
+      const x = labelWidth + cIdx * cellW;
+      const intensity = maxVal > 0 ? val / maxVal : 0;
+      ctx.fillStyle = colorForIntensity(intensity);
+      ctx.fillRect(x, y, cellW - 2, cellH - 2);
+    });
+  });
+
+  heatmapLayout = { dayKeys, rows, cellW, cellH, labelWidth, headerHeight };
+}
+
+function initHeatmapControls() {
+  const select = document.getElementById('heatmapMetricSelect');
+  const canvas = document.getElementById('graficoHeatmap');
+  const tooltip = document.getElementById('heatmapTooltip');
+  if (select) {
+    select.value = currentHeatmapMetric;
+    select.addEventListener('change', renderHeatmapCanvas);
+  }
+  if (canvas && tooltip) {
+    canvas.addEventListener('mousemove', (e) => {
+      if (!heatmapLayout) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const { dayKeys, rows, cellW, cellH, labelWidth, headerHeight } = heatmapLayout;
+
+      const col = Math.floor((x - labelWidth) / cellW);
+      const row = Math.floor((y - headerHeight) / cellH);
+
+      if (col < 0 || col >= dayKeys.length || row < 0 || row >= rows.length) {
+        tooltip.style.display = 'none';
+        return;
+      }
+
+      const [, m, d] = dayKeys[col].split('-');
+      const value = rows[row].values[col];
+      tooltip.textContent = `${rows[row].name} — ${d}/${m}: ${formatHeatmapValue(value)}`;
+      tooltip.style.left = `${e.clientX + 12}px`;
+      tooltip.style.top = `${e.clientY + 12}px`;
+      tooltip.style.display = 'block';
+    });
+    canvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+  }
+}
+
 function refreshPage() {
   renderKpis();
+  renderHeatmapCanvas();
   renderBalanceChart();
   renderDepositWithdrawalChart();
   renderBonusTypeChart();
@@ -380,16 +493,41 @@ export async function mount(container) {
       </div>
       <p id="roiBonusEmptyNote" class="graficos-note app-hidden">Nenhuma plataforma com bônus registrado ainda.</p>
       <div class="chart-wrap"><canvas id="graficoRoiBonus"></canvas></div>
+
+     <section class="card-shell graficos-section" aria-label="Heatmap Geral" style="margin-top:1.1rem;">
+      <div class="section-heading" style="padding:0 0 0.9rem;">
+        <div>
+          <h2>Heatmap Geral</h2>
+          <p>Últimos 14 dias, por plataforma. Sem Saldo diário salvo no sistema — a métrica escolhida é sempre um dado que existe por dia (nunca uma aproximação de Saldo).</p>
+        </div>
+      </div>
+      <div class="finance-entry-form" style="padding:0 1.1rem 0.9rem;">
+        <select id="heatmapMetricSelect" aria-label="Métrica do heatmap" style="padding:0.6rem 0.75rem; border:1px solid #e6e9ee; border-radius:12px; outline:none;">
+          <option value="deposito">Depósito</option>
+          <option value="apostado">Valor Apostado</option>
+          <option value="resultBetting">Resultado Betting</option>
+          <option value="bonus">Bônus Avulso</option>
+        </select>
+      </div>
+      <div class="heatmap-scroll">
+        <canvas id="graficoHeatmap"></canvas>
+      </div>
+      <div id="heatmapTooltip" class="heatmap-tooltip"></div>
     </section>
   `;
 
   obrigadoValuePerAppearance = await loadObrigadoValuePerAppearance(state.currentUid);
   misteriosoTemplates = await loadMisteriosoTemplates(state.currentUid);
 
+  // Heatmap não depende do Chart.js — renderiza na hora, antes da
+  // biblioteca terminar de baixar, pra não ficar esperando à toa.
+  initHeatmapControls();
+  renderKpis();
+  renderHeatmapCanvas();
+
   await loadChartJsScript();
 
   initRankingControls();
-
   refreshPage();
   scheduleDailyUpdate();
 }
