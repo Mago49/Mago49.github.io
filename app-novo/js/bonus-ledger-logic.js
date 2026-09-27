@@ -35,7 +35,7 @@
 // contribuem em nada — VIP diário/semanal/mensal continuam funcionando
 // normalmente, porque não dependem de ctx (só de platform.group/level).
 
-import { vipBonusTable, computeEmissionDates } from './cycle-logic.js';
+import { vipBonusTable, computeEmissionDates, isBetDayEffective } from './cycle-logic.js';
 import { getEffectiveMisteriosoValue } from './misterioso-logic.js';
 
 function startOfDay(date) {
@@ -86,9 +86,13 @@ function getVipUnitConfig(platform) {
 // "Apostei hoje" já registrado pra uma data específica — usado só pro
 // diário do grupo 'com', que depende do clique (grupo 'sem' recebe o
 // diário todo dia, sem depender de nada, mesma regra de getVipBonus).
+// Item 15b: delega pra isBetDayEffective (cycle-logic.js) — fonte única,
+// mesma usada por getVipBonus e pelo badge da Edição. Garante que o
+// Saldo/Rollover ao vivo (via getExpectedBonusForDate) nunca divirja do
+// que a aba VIP mostra.
 function hasBetOnDate(platform, date) {
   const key = toLocalDateKey(date);
-  return (platform.betDays || []).some(d => d.slice(0, 10) === key);
+  return isBetDayEffective(platform, key);
 }
 
 // === "Esperado" de UM dia específico — soma tudo que a fórmula já sabe
