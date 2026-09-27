@@ -3,18 +3,19 @@ import * as viewCalendario from './view-calendario.js';
 import * as viewVip from './view-vip.js';
 import * as viewEdicao from './view-edicao.js';
 import * as viewFinanceiro from './view-financeiro.js';
+import * as viewGraficos from './view-graficos.js';
 
 const appShellEl = document.getElementById('appShell');
 let routerStarted = false;
-let currentView = null; // view atualmente montada (com unmount próprio)
+let currentView = null; 
 
-// null = rota existe mas a view real ainda não foi migrada (placeholder).
 const routes = {
   '#/inicio': viewInicio,
   '#/calendario': viewCalendario,
   '#/vip': viewVip,
   '#/edicao': viewEdicao,
-  '#/financeiro': viewFinanceiro
+  '#/financeiro': viewFinanceiro,
+  '#/graficos': viewGraficos
 };
 
 function renderPlaceholder(nome) {
