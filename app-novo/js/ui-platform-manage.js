@@ -99,7 +99,7 @@
 
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
-import { getMonthStart, getCurrentCycleDay, getTotalDepositsSinceCycle, getDaysSinceLastDeposit, colorForLevel } from './cycle-logic.js';
+import { getMonthStart, getCurrentCycleDay, getTotalDepositsSinceCycle, getDaysSinceLastDeposit, colorForLevel, getEffectiveBetDayKeys } from './cycle-logic.js';
 import { savePlatform, deletePlatformDoc } from './platforms-store.js';
 import { filterAndSortForManage } from './platform-sort.js';
 import { initSortMenu } from './ui-sort.js';
@@ -612,14 +612,13 @@ function buildBetSection(p) {
   const now = new Date();
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   // "Apostei hoje" conta sempre a partir do dia 1 do mês — independente de
-  // Reinício/lastResetDate (ver getMonthStart em cycle-logic.js).
+  // Reinício/lastResetDate (ver getMonthStart em cycle-logic.js). Item
+  // 15b: getEffectiveBetDayKeys já une manual (betDays) + automático
+  // (valor apostado hoje >= mínimo do nível) — mesma fonte usada em
+  // getVipBonus, nunca diverge do total real do Bônus VIP.
   const monthStart = getMonthStart(now);
-  const betDaysInMonth = (p.betDays || []).filter(d => {
-    // Força interpretação LOCAL: string só-de-data ("2026-08-16") seria
-    // lida como meia-noite UTC — 3h antes da meia-noite local no Brasil.
-    return new Date(`${d.slice(0, 10)}T00:00:00`) >= monthStart;
-  });
-  const alreadyBetToday = betDaysInMonth.some(d => d.slice(0, 10) === todayStr);
+  const betDayKeysInMonth = getEffectiveBetDayKeys(p, monthStart, now);
+  const alreadyBetToday = betDayKeysInMonth.has(todayStr);
 
   const betTodayBtn = document.createElement('button');
   betTodayBtn.className = 'bet-today-btn' + (alreadyBetToday ? ' already-bet' : '');
@@ -636,7 +635,7 @@ function buildBetSection(p) {
 
   const betCount = document.createElement('span');
   betCount.className = 'bet-count-badge';
-  betCount.textContent = `🎲 ${betDaysInMonth.length} dia(s)`;
+  betCount.textContent = `🎲 ${betDayKeysInMonth.size} dia(s)`;
 
   const betManageBtn = document.createElement('button');
   betManageBtn.className = 'bet-manage-btn';
