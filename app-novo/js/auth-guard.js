@@ -42,7 +42,6 @@ export function initAuth({ onLogin, onLogout }) {
   const appFooterEl = document.getElementById('appFooter'); // só existe em calendario.html
   const googleLoginBtn = document.getElementById('googleLoginBtn');
   const authErrorEl = document.getElementById('authError');
-  const logoutBtn = document.getElementById('logoutBtn');
   const userLabelEl = document.getElementById('userLabel');
 
   function showLoading() {
@@ -80,12 +79,7 @@ export function initAuth({ onLogin, onLogout }) {
       }
     });
   }
-
-  if (logoutBtn) {
-    logoutBtn.addEventListener('click', async () => {
-      await signOut(auth);
-    });
-  }
+  
 
   showLoading();
 
