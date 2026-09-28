@@ -61,7 +61,7 @@ import {
   getWeekStart, getWeekEnd, toLocalDateString, toLocalDateTimeString,
   computeCurrentWeekLive, closeWeek, isCurrentWeekClosed, canCloseCurrentWeek,
   updateClosedWeek, deleteClosedWeek, addHistoricalWeek,
-  computePlatformTotals, computeOverallTotals, computeLiveBalance, computeRolloverLive,
+  computePlatformTotals, computeOverallTotals, computeOverallTotalsLive, computeLiveBalance, computeRolloverLive,
   computePhaseHistory, startNewPhase, removeLastPhase
 } from './finance-logic.js';
 import {
@@ -75,6 +75,7 @@ import {
 } from './finance-spreadsheet-import.js';
 import { filterAndSortForManage } from './platform-sort.js';
 import { initSortMenu } from './ui-sort.js';
+import { scheduleDailySnapshot } from './daily-snapshot-store.js';
 
 // --- Referências de DOM do painel principal (busca + lista) ---
 // Resolvidas por initFinanceControls(), chamada pelo mount() da view
@@ -94,6 +95,9 @@ let betHistoryCloseBtn = null;
 let currentSearch = '';
 // Ponto 5.1: um dos FINANCE_SORT_MENU_OPTIONS.value, ou null (Padrão).
 let currentMode = null;
+// AO VIVO é o padrão; "Total Fechado" alterna pro comportamento antigo
+// (só semanas fechadas). Resetado em resetFinanceListCache (SPA).
+let overviewLiveMode = true;
 let openRowId = null;
 // Semana do histórico atualmente em edição (no máximo uma por vez):
 // { platformId, weekStart } | null
@@ -344,6 +348,15 @@ export function initFinanceOverview() {
       renderFinanceList();
     });
   }
+
+  const totalClosedBtn = document.getElementById('financeOverviewTotalClosedBtn');
+  if (totalClosedBtn) {
+    totalClosedBtn.addEventListener('click', () => {
+      overviewLiveMode = !overviewLiveMode;
+      totalClosedBtn.textContent = overviewLiveMode ? '📦 Total Fechado' : '⚡ Voltar pro Ao Vivo';
+      renderFinanceOverview();
+    });
+  }
   
   if (newPhaseAllBtn) {
     newPhaseAllBtn.addEventListener('click', async () => {
@@ -403,7 +416,14 @@ export function renderFinanceOverview() {
 const phaseSelectEl = document.getElementById('financeOverviewPhaseSelect');
   const phaseFilter = phaseSelectEl && phaseSelectEl.value ? Number(phaseSelectEl.value) : null;
 
-  const totals = computeOverallTotals(platformsForOverview, from, to, resolveCtxForPlatform, new Date(), phaseFilter);
+  const computeFn = overviewLiveMode ? computeOverallTotalsLive : computeOverallTotals;
+  const totals = computeFn(platformsForOverview, from, to, resolveCtxForPlatform, new Date(), phaseFilter);
+  const noteEl = document.getElementById('financeOverviewNote');
+  if (noteEl) {
+    noteEl.textContent = overviewLiveMode
+      ? 'AO VIVO: semanas já fechadas + a semana atual em andamento (depósito, saque, aposta e bônus de hoje já entram). Com filtro de fase, a semana atual só entra pras plataformas em que aquela fase é a atual. "📦 Total Fechado" mostra só as semanas fechadas. Saldo e Rollover são sempre o valor atual da fase e não são afetados pelo filtro de datas.'
+      : 'TOTAL FECHADO: soma só das semanas já fechadas (a semana atual em andamento NÃO entra). Saldo e Rollover continuam sendo o valor atual da fase.';
+}
   const rolloverLabel = phaseFilter
     ? `Rollover (Fase ${phaseFilter}, todas as plataformas)`
     : 'Rollover (todas as plataformas)';
@@ -482,6 +502,7 @@ export function resetFinanceListCache() {
   editingBetEntry = null;
   reorderModeActive = false;
   lastVisibleList = [];
+  overviewLiveMode = true;
 }
 
 // ---------- LISTA DE PLATAFORMAS ----------
@@ -492,6 +513,7 @@ export function renderFinanceList() {
   const list = getVisibleList();
   lastVisibleList = list;
   reconcileList(list);
+  scheduleDailySnapshot(state.currentUid, state.platforms, resolveCtxForPlatform);
 }
 
 function dividerEl() {
