@@ -10,6 +10,7 @@ import { LEVEL_INFO } from './cycle-logic.js';
 // Usado só em view-inicio.js
 export function renderHeroSummary(stats) {
   const platformCountEl = document.getElementById('heroPlatformCount');
+  const platformCountNoteEl = document.getElementById('heroPlatformCountNote');
   const totalDepositsEl = document.getElementById('heroTotalDeposits');
   const bonusTodayEl = document.getElementById('heroBonusToday');
   const highlightEl = document.getElementById('heroNextHighlight');
@@ -17,12 +18,13 @@ export function renderHeroSummary(stats) {
   if (!platformCountEl) return;
 
   platformCountEl.textContent = String(stats.totalPlatforms);
+  if (platformCountNoteEl) platformCountNoteEl.textContent = `${stats.activeCycles} plataformas ativas`;
   totalDepositsEl.textContent = formatCurrency(stats.totalDeposits);
   bonusTodayEl.textContent = String(stats.bonusToday);
 
   if (stats.topPlatform && stats.topPlatformTotal > 0) {
     highlightEl.textContent = stats.topPlatform.name;
-    highlightNoteEl.textContent = `${formatCurrency(stats.topPlatformTotal)} no ciclo atual • ${stats.activeCycles} plataformas ativas.`;
+    highlightNoteEl.textContent = `${formatCurrency(stats.topPlatformTotal)} no ciclo atual.`;
   } else {
     highlightEl.textContent = stats.activeCycles > 0 ? 'Em dia' : 'Sem depósitos';
     highlightNoteEl.textContent = stats.activeCycles > 0
