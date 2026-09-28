@@ -23,6 +23,14 @@
   backdrop-filter: blur(4px);
 }
 
+/* appModal é criado no shell global e outros modais são anexados
+    dinamicamente ao body DEPOIS dele — com o mesmo z-index, a ordem do
+    DOM faz o modal mais recente (Histórico/Reinício/Apostas) ficar por
+    cima do confirm. appModal precisa SEMPRE vencer. */
+ .modal {
+   z-index: 210;
+ }
+
 .modal-content,
 .reset-modal-content,
 .history-modal-content,
