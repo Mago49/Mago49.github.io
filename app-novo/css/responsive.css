@@ -52,6 +52,10 @@
     gap: 0.4rem;
   }
 
+  .finance-panel-header input[type="search"] {
+    flex: 1 1 100%;
+  }
+
   #platformManagePanel .panel-header {
     flex-direction: column;
     align-items: stretch;
@@ -168,6 +172,18 @@
      padding: 0.55rem 0.4rem;
      font-size: 0.74rem;
    }
+
+   .finance-panel-header #financeReorderBtn,
+   .finance-panel-header .sort-menu {
+     flex: 1 1 0;
+  }
+   .finance-panel-header .sort-menu-toggle,
+   .finance-panel-header #financeReorderBtn {
+     padding: 0.55rem 0.4rem;
+     font-size: 0.76rem;
+     width: 100%;
+     justify-content: center;
+  }
 
   .pcards-toolbar {
     flex-direction: column;
