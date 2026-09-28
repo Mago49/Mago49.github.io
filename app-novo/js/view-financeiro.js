@@ -89,19 +89,27 @@ export async function mount(container) {
         <input type="date" id="financeOverviewFrom" aria-label="Data inicial" />
         <label for="financeOverviewTo">Até</label>
         <input type="date" id="financeOverviewTo" aria-label="Data final" />
-        <button type="button" id="financeOverviewClearBtn" class="btn-cancel-modal">Limpar filtro</button>
       </div>
 
       <div class="finance-overview-filter">
         <input type="search" id="financeOverviewPlatformFilter" placeholder="Filtrar por plataforma (nome ou parte dele)" aria-label="Filtrar Painel Geral por plataforma" style="flex:1; min-width:220px; padding:0.6rem 0.75rem; border:1px solid #e6e9ee; border-radius:12px; outline:none;" />
       </div>
 
-      <div class="finance-checkpoint">
-        <button type="button" id="financeOverviewPhaseToggleBtn" class="btn-cancel-modal">🔀 Filtrar por fase</button>
-        <div id="financeOverviewPhaseWrap" class="app-hidden" style="margin-top:0.5rem;">
-          <select id="financeOverviewPhaseSelect" aria-label="Filtrar Painel Geral por fase" style="padding:0.6rem 0.75rem; border:1px solid #e6e9ee; border-radius:12px; outline:none;"></select>
-        </div>
+      <div class="finance-checkpoint finance-overview-actions">
+        <button type="button" id="financeOverviewClearBtn">Limpar filtro</button>
+        <button type="button" id="financeOverviewPhaseToggleBtn">🔀 Filtrar por fase</button>
+        <button type="button" id="financeOverviewTotalClosedBtn">📦 Total Fechado</button>
+        <button type="button" id="financeOverviewNewPhaseAllBtn" class="finance-overview-wide">🔒 Iniciar nova fase em todas as plataformas</button>
       </div>
+
+      <div id="financeOverviewPhaseWrap" class="app-hidden">
+        <select id="financeOverviewPhaseSelect" aria-label="Filtrar Painel Geral por fase" style="padding:0.6rem 0.75rem; border:1px solid #e6e9ee; border-radius:12px; outline:none;"></select>
+      </div>
+
+      <p class="finance-close-week-note" id="financeOverviewNote"></p>
+
+      <div id="financeOverviewStats" class="finance-stats-grid"></div>
+    </section>
 
       <p class="finance-close-week-note">Soma de todas as plataformas com base nas semanas já fechadas (ou só das que baterem com o filtro de nome, se preenchido). Sem filtro, mostra todo o histórico. O Saldo (Balance) e o Rollover são sempre o valor atual da fase atual de cada plataforma e não são afetados pelo filtro de datas.</p>
 
