@@ -223,9 +223,18 @@ function moveManualOrder(platformId, direction) {
   refreshAllRows();
 }
 
+function getOverviewPlatformQuery() {
+  const el = document.getElementById('financeOverviewPlatformFilter');
+  return el ? el.value.trim().toLowerCase() : '';
+}
+
 function getVisibleList() {
   const q = currentSearch.trim().toLowerCase();
-  let list = state.platforms.filter(p => p.name.toLowerCase().includes(q));
+  const overviewQ = getOverviewPlatformQuery();
+   let list = state.platforms.filter(p => {
+     const n = p.name.toLowerCase();
+     return n.includes(q) && n.includes(overviewQ);
+   });
 
   if (currentMode === 'saldo-desc') {
     return [...list].sort((a, b) => computeLiveBalance(b, new Date(), resolveCtxForPlatform(b)) - computeLiveBalance(a, new Date(), resolveCtxForPlatform(a)));
@@ -303,7 +312,7 @@ export function initFinanceOverview() {
       if (filterFrame) cancelAnimationFrame(filterFrame);
       filterFrame = requestAnimationFrame(() => {
         filterFrame = null;
-        renderFinanceOverview();
+        renderFinanceList();
       });
     });
   }
@@ -332,7 +341,7 @@ export function initFinanceOverview() {
       if (platformFilterEl) platformFilterEl.value = '';
       const phaseSelectEl = document.getElementById('financeOverviewPhaseSelect');
       if (phaseSelectEl) phaseSelectEl.value = '';
-      renderFinanceOverview();
+      renderFinanceList();
     });
   }
   
