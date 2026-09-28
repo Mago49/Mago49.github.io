@@ -154,33 +154,43 @@
     max-height: 1100px;
   }
 
-  .vip-filter-bar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .vip-filter-btn {
-    width: 100%;
-  }
+   .vip-filter-bar {
+    flex-wrap: wrap;
+   }
+ 
+   .vip-filter-bar input[type="search"] {
+     flex: 1 1 100%;
+   }
+ 
+   .vip-filter-btn {
+     flex: 1 1 0;
+     width: auto;
+     padding: 0.55rem 0.4rem;
+     font-size: 0.74rem;
+   }
 
   .pcards-toolbar {
     flex-direction: column;
     align-items: stretch;
   }
 
-  /* Item 8 (Etapa 5): em telas muito estreitas, ⚙️ Reordenar / 👁 Badges /
-     ⇅ Ordenar também empilham cada um em largura total — mesmo
-     tratamento já dado aos botões de .hero-actions/.panel-actions neste
-     mesmo breakpoint. */
-  #platformManagePanel .panel-controls {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  #platformManagePanel .panel-controls > button,
-  #platformManagePanel .panel-controls .sort-menu {
-    width: 100%;
-  }
+#platformManagePanel .panel-controls {
+     flex-wrap: wrap;
+   }
+ 
+   #platformManagePanel .panel-controls > button,
+   #platformManagePanel .panel-controls .sort-menu {
+     flex: 1 1 0;
+     width: auto;
+   }
+ 
+   #platformManagePanel .panel-controls > button,
+   #platformManagePanel .panel-controls .sort-menu-toggle {
+     padding: 0.55rem 0.4rem;
+     font-size: 0.76rem;
+     width: 100%;
+     justify-content: center;
+   }
 
   .sort-menu {
     width: 100%;
