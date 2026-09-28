@@ -306,7 +306,7 @@ function renderHeatmapCanvas() {
   const cellW = 26;
   const cellH = 16;
   const labelWidth = 72;
-  const headerHeight = 34;
+  const headerHeight = 50;
 
   const width = labelWidth + dayKeys.length * cellW;
   const height = headerHeight + rows.length * cellH;
@@ -331,7 +331,7 @@ function renderHeatmapCanvas() {
   dayKeys.forEach((k, i) => {
     const [, m, d] = k.split('-');
     ctx.save();
-    ctx.translate(labelWidth + i * cellW + cellW / 2, headerHeight - 6);
+    ctx.translate(labelWidth + i * cellW + cellW / 2, headerHeight - 10);
     ctx.rotate(-Math.PI / 3);
     ctx.textAlign = 'right';
     ctx.fillText(`${d}/${m}`, 0, 0);
