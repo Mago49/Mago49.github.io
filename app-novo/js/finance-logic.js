@@ -73,7 +73,7 @@
 // sempre, sem Rollover Inicial nem bonusRollover. Ele não abre fase
 // nenhuma, só insere uma semana fechada dentro da fase já aberta.
 
-import { computeAutoAccruedBonusForWeek } from './bonus-ledger-logic.js';
+import { computeAutoAccruedBonusForWeek, getAccumulatedBonusThisWeek } from './bonus-ledger-logic.js';
 
 // Função auxiliar para formatar a data como YYYY-MM-DD mantendo o fuso horário local
 export function toLocalDateString(date) {
@@ -740,4 +740,43 @@ export function computeOverallTotals(platforms, from = null, to = null, resolveC
 // ao Saldo (P2.4). Mesmo `resolveCtx` opcional do computeOverallTotals.
 export function computeOverallRollover(platforms, refDate = new Date(), resolveCtx = () => ({})) {
   return (platforms || []).reduce((sum, p) => sum + computeRolloverLive(p, refDate, resolveCtx(p)), 0);
+}
+
+// Painel Geral AO VIVO (padrão): computeOverallTotals (semanas fechadas,
+// já com from/to/phaseFilter) + a semana ABERTA de cada plataforma
+// (depósito, saque, apostado, R.B. e bônus de fórmula + avulso).
+// Com phaseFilter: a semana aberta só entra pra plataformas em que a fase
+// escolhida É a fase atual (por construção a semana aberta pertence
+// inteira à fase atual — fases só começam na segunda-feira).
+// Saldo/Rollover já são ao vivo em computeOverallTotals — não mexer.
+export function computeOverallTotalsLive(platforms, from = null, to = null, resolveCtx = () => ({}), refDate = new Date(), phaseFilter = null) {
+  const totals = computeOverallTotals(platforms, from, to, resolveCtx, refDate, phaseFilter);
+
+  const weekStartStr = toLocalDateString(getWeekStart(refDate));
+  if ((from && weekStartStr < from) || (to && weekStartStr > to)) return totals;
+
+  (platforms || []).forEach(platform => {
+    if (isCurrentWeekClosed(platform, refDate)) return; // já contada via financeWeeks
+    const ctx = resolveCtx(platform);
+
+    if (phaseFilter !== null) {
+      const phase = computePhaseHistory(platform, refDate, ctx).find(ph => ph.phaseNumber === phaseFilter);
+      if (!phase || !phase.isCurrent) return;
+    }
+
+    const live = computeCurrentWeekLive(platform, refDate);
+    const bonusThisWeek = computeAutoAccruedBonusForWeek(platform, refDate, ctx)
+      + getAccumulatedBonusThisWeek(platform, refDate);
+
+    totals.deposit += live.deposit;
+    totals.withdrawal += live.withdrawal;
+    totals.difference += live.difference;
+    totals.wagered += live.wagered;
+    totals.betCount += live.betCount;
+    totals.resultBetting += live.resultBetting;
+    totals.bonus += bonusThisWeek;
+    totals.rbPlusBonus += live.resultBetting + bonusThisWeek;
+  });
+
+  return totals;
 }
