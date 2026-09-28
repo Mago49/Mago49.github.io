@@ -20,6 +20,7 @@ import {
 } from './analytics-logic.js';
 import { loadObrigadoValuePerAppearance } from './vip-obrigado-store.js';
 import { loadMisteriosoTemplates } from './vip-misterioso-store.js';
+import { scheduleDailySnapshot } from './daily-snapshot-store.js';
 
 let dailyTimer = null;
 let chartJsLoadPromise = null;
@@ -519,6 +520,7 @@ export async function mount(container) {
 
   obrigadoValuePerAppearance = await loadObrigadoValuePerAppearance(state.currentUid);
   misteriosoTemplates = await loadMisteriosoTemplates(state.currentUid);
+  scheduleDailySnapshot(state.currentUid, state.platforms, resolveCtxForPlatform);
 
   // Heatmap não depende do Chart.js — renderiza na hora, antes da
   // biblioteca terminar de baixar, pra não ficar esperando à toa.
