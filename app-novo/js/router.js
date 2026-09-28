@@ -4,6 +4,7 @@ import * as viewVip from './view-vip.js';
 import * as viewEdicao from './view-edicao.js';
 import * as viewFinanceiro from './view-financeiro.js';
 import * as viewGraficos from './view-graficos.js';
+import * as viewPerfil from './view-perfil.js';
 
 const appShellEl = document.getElementById('appShell');
 let routerStarted = false;
@@ -15,7 +16,8 @@ const routes = {
   '#/vip': viewVip,
   '#/edicao': viewEdicao,
   '#/financeiro': viewFinanceiro,
-  '#/graficos': viewGraficos
+  '#/graficos': viewGraficos,
+  '#/perfil': viewPerfil
 };
 
 function renderPlaceholder(nome) {
