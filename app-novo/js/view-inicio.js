@@ -51,9 +51,9 @@ export async function mount(container) {
         </div>
         <div class="hero-summary" aria-label="Resumo geral">
           <div class="summary-card">
-            <span class="summary-label">Plataformas</span>
+            <span class="summary-label">Plataformas Monitoradas</span>
             <span class="summary-value" id="heroPlatformCount">0</span>
-            <span class="summary-note">Quantidade total monitorada no painel.</span>
+            <span class="summary-note" id="heroPlatformCountNote">0 plataformas ativas</span>
           </div>
           <div class="summary-card">
             <span class="summary-label">Total acumulado</span>
@@ -66,7 +66,7 @@ export async function mount(container) {
             <span class="summary-note">Plataformas com evento no dia atual.</span>
           </div>
           <div class="summary-card">
-            <span class="summary-label">Status</span>
+            <span class="summary-label">Plataforma com Maior Depósito</span>
             <span class="summary-value" id="heroNextHighlight">Em dia</span>
             <span class="summary-note" id="heroNextHighlightNote">Visualização rápida do momento atual.</span>
           </div>
@@ -74,10 +74,11 @@ export async function mount(container) {
       </div>
     </section>
     <div class="hero-actions hub-actions">
-      <a class="btn-primary" href="#/edicao">Ver plataformas</a>
+      <a class="btn-primary" href="#/edicao">📝 Edição</a>
       <a class="btn-secondary" href="#/vip">Vip Bônus</a>
-      <a class="btn-secondary" href="#/calendario">Ir para calendário</a>
+      <a class="btn-secondary" href="#/calendario">📅 Calendário</a>
       <a class="btn-secondary" href="#/financeiro">💰 Financeiro</a>
+      <a class="btn-secondary" href="#/graficos">📊 Gráficos</a>
     </div>
     <div id="depositsTodayMount"></div>
     <div id="codigoMount"></div>
