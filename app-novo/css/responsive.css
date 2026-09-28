@@ -215,6 +215,14 @@
      justify-content: center;
    }
 
+   #platformManagePanel .sort-menu-dropdown,
+  .finance-panel-header .sort-menu-dropdown {
+    left: auto;
+    right: 0;
+    width: auto;
+    min-width: min(260px, calc(100vw - 2rem));
+  }
+
   .sort-menu {
     width: 100%;
   }
