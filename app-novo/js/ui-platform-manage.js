@@ -678,13 +678,28 @@ function buildCodigoFieldGroup(title, config, opts = {}) {
   wrapper.appendChild(divider);
 
   const label = document.createElement('div');
-  label.className = 'manage-section-label';
-  label.textContent = title;
+  label.className = 'manage-section-label manage-section-label-collapsible';
+  const labelText = document.createElement('span');
+  labelText.textContent = title;
+  const labelChevron = document.createElement('span');
+  labelChevron.className = 'platform-manage-chevron';
+  labelChevron.textContent = '▾';
+  label.appendChild(labelText);
+  label.appendChild(labelChevron);
   wrapper.appendChild(label);
 
   const fieldsWrap = document.createElement('div');
-  fieldsWrap.className = 'platform-form-fields';
+  // Minimizado por padrão — expande ao clicar no título. Reseta pra
+  // recolhido toda vez que "Dados" é reconstruída (mesmo espírito do
+  // Ponto 8).
+  fieldsWrap.className = 'platform-form-fields app-hidden';
   wrapper.appendChild(fieldsWrap);
+
+  label.addEventListener('click', () => {
+    const isOpen = !fieldsWrap.classList.contains('app-hidden');
+    fieldsWrap.classList.toggle('app-hidden', isOpen);
+    labelChevron.classList.toggle('open', !isOpen);
+  });
 
   // Cada campo nasce dentro do próprio wrapper (label + input juntos),
   // pra permitir esconder o par inteiro de uma vez quando o Tipo mudar
