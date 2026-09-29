@@ -780,3 +780,57 @@ export function computeOverallTotalsLive(platforms, from = null, to = null, reso
 
   return totals;
 }
+
+// Painel Geral, modo "Ao Vivo": SÓ a semana atual em andamento, somada
+// de todas as plataformas — nunca soma semanas fechadas (diferente de
+// computeOverallTotalsLive, que soma as duas coisas — esse é o modo
+// "Total Geral"). Saldo/Rollover seguem a mesma regra de sempre: valor
+// atual da fase (ou da fase filtrada via phaseFilter), nunca afetados
+// pelo filtro de datas nem pelo modo escolhido.
+export function computeOverallCurrentWeekOnly(platforms, from = null, to = null, resolveCtx = () => ({}), refDate = new Date(), phaseFilter = null) {
+  const totals = { deposit: 0, withdrawal: 0, difference: 0, wagered: 0, betCount: 0, bonus: 0, resultBetting: 0, rbPlusBonus: 0, balance: 0, rollover: 0 };
+
+  const weekStartStr = toLocalDateString(getWeekStart(refDate));
+  const weekInRange = (!from || weekStartStr >= from) && (!to || weekStartStr <= to);
+
+  (platforms || []).forEach(platform => {
+    const ctx = resolveCtx(platform);
+
+    // Saldo/Rollover: sempre somados, independente do filtro de data ou
+    // de a semana atual entrar ou não na soma dos fluxos abaixo.
+    if (phaseFilter !== null) {
+      const phase = computePhaseHistory(platform, refDate, ctx).find(ph => ph.phaseNumber === phaseFilter);
+      if (phase) {
+        totals.balance += phase.balance;
+        totals.rollover += phase.rollover;
+      }
+      // sem essa fase — exclusão silenciosa, mesmo padrão já usado em computeOverallTotals
+    } else {
+      totals.balance += computeLiveBalance(platform, refDate, ctx);
+      totals.rollover += computeRolloverLive(platform, refDate, ctx);
+    }
+
+    if (!weekInRange) return; // semana atual fora do filtro de datas — não soma os fluxos
+    if (isCurrentWeekClosed(platform, refDate)) return; // já fechada — não é mais "semana atual"
+
+    if (phaseFilter !== null) {
+      const phase = computePhaseHistory(platform, refDate, ctx).find(ph => ph.phaseNumber === phaseFilter);
+      if (!phase || !phase.isCurrent) return; // a semana atual só pertence à fase ATUAL
+    }
+
+    const live = computeCurrentWeekLive(platform, refDate);
+    const bonusThisWeek = computeAutoAccruedBonusForWeek(platform, refDate, ctx)
+      + getAccumulatedBonusThisWeek(platform, refDate);
+
+    totals.deposit += live.deposit;
+    totals.withdrawal += live.withdrawal;
+    totals.difference += live.difference;
+    totals.wagered += live.wagered;
+    totals.betCount += live.betCount;
+    totals.resultBetting += live.resultBetting;
+    totals.bonus += bonusThisWeek;
+    totals.rbPlusBonus += live.resultBetting + bonusThisWeek;
+  });
+
+  return totals;
+}
