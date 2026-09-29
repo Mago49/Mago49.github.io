@@ -111,7 +111,7 @@ export async function mount(container) {
       <div id="financeOverviewStats" class="finance-stats-grid"></div>
     </section>
 
-      <p class="finance-close-week-note">Soma de todas as plataformas com base nas semanas já fechadas (ou só das que baterem com o filtro de nome, se preenchido). Sem filtro, mostra todo o histórico. O Saldo (Balance) e o Rollover são sempre o valor atual da fase atual de cada plataforma e não são afetados pelo filtro de datas.</p>
+      <p class="finance-close-week-note" id="financeOverviewNote"></p>
 
       <div id="financeOverviewStats" class="finance-stats-grid"></div>
 
