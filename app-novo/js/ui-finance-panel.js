@@ -6,7 +6,20 @@
 // domingos, Bônus pra fechar a semana); o "Total da plataforma"; "Fases
 // do Saldo"; e o Histórico de semanas.
 //
-// === O QUE MUDOU NESTA SUB-ENTREGA (2) ===
+// === PAINEL GERAL — 3 MODOS NO MESMO BOTÃO (revisão pós-Etapa 8) ===
+// Um único botão (#financeOverviewModeBtn) cicla entre 3 modos, cada um
+// somando os fluxos (Depósito/Saque/Apostado/R.B./Bônus) de um jeito
+// diferente. Saldo e Rollover NUNCA mudam entre os modos — são sempre o
+// valor ao vivo da fase (ou da fase filtrada), como sempre foi:
+//   ⚡ Ao Vivo (padrão)   -> computeOverallCurrentWeekOnly: SÓ a semana
+//                            atual em andamento, de todas as plataformas.
+//   📦 Total Fechado      -> computeOverallTotals: só semanas já fechadas.
+//   📈 Total Geral        -> computeOverallTotalsLive: fechadas + a
+//                            semana atual, somadas juntas.
+// Os 3 modos continuam respeitando filtro de data, nome e fase — nenhuma
+// mudança nessa interseção, só na fonte dos fluxos somados.
+//
+// === O QUE MUDOU NA SUB-ENTREGA 2 (Bloco P + fases só em segunda) ===
 //
 // 1) BLOCO P — "Últimas apostas": botão azul ao lado de "Registrar
 //    aposta", abre um modal (mesmo padrão visual do Histórico de
@@ -23,17 +36,7 @@
 //    construção o bug de fronteira de fase que já causou duplicação de
 //    R.B./Bônus em produção) e PASSA A EXIGIR também um Rollover Inicial
 //    (obrigatório, mesmo tratamento do Saldo Inicial — sem isso o
-//    Rollover da fase nova nasceria incorreto). Por depender diretamente
-//    da assinatura já alterada, esses dois campos entram JUNTO com esta
-//    sub-entrega, mesmo o roteiro original tendo agrupado "Rollover
-//    Inicial" com a sub-entrega 3 — não dava pra migrar este formulário
-//    de outro jeito sem deixá-lo quebrado ou chamando a função com um
-//    valor fictício.
-//
-// NADA MAIS desta etapa entra aqui ainda: sem "Inserir bônus hoje", sem
-// "Bônus Acumulado" de domingo, sem Rollover visível nos quadrantes de
-// estatística (statsGridHtml) — isso é a sub-entrega 3/4, que vai EDITAR
-// este mesmo arquivo por cima (nunca reescrever do zero).
+//    Rollover da fase nova nasceria incorreto).
 //
 // === RECONCILIAÇÃO DE DOM (mesmo padrão já usado em Edição/Calendário/VIP) ===
 // Um Map (rowElements) guarda o elemento de cada linha já presente na
@@ -41,8 +44,20 @@
 // reconcileList() sincroniza o conjunto/ordem sem nunca esvaziar o
 // container (evita o salto de scroll já documentado nas outras views).
 //
-// === CUIDADO SPA (Adendo K12, aplicado aqui pela primeira vez neste
-//      arquivo) ===
+// === COLAPSO DE SEMANAS/FASES (revisão de UX) ===
+// Histórico e Fases nascem com SÓ o item mais recente expandido (última
+// semana fechada / fase atual) — os demais ficam recolhidos, com um
+// botão +/− por item. weekExpandedOverrides/phaseExpandedOverrides
+// guardam só as exceções manuais do usuário (chave
+// "`${platformId}::${chave-do-item}`"); sem entrada ali, o padrão é
+// "só o mais recente aberto". Os overrides são limpos (voltam ao padrão)
+// toda vez que a seção "Histórico"/"Fases" é recolhida e reaberta — nunca
+// carregam estado de uma sessão de visualização anterior. Ao abrir
+// "Histórico", a página rola pra centralizar a última semana fechada
+// (scrollLatestWeekIntoView) — resolve o problema de abrir sempre
+// mostrando a semana mais ANTIGA no topo da viewport.
+//
+// === CUIDADO SPA (Adendo K12) ===
 // `financeListEl`/`financeSearchEl` NÃO são resolvidos no topo do
 // módulo (isso quebraria, já que o router injeta o HTML da view DEPOIS
 // do módulo ser importado) — viram variáveis `let`, resolvidas dentro de
@@ -61,7 +76,7 @@ import {
   getWeekStart, getWeekEnd, toLocalDateString, toLocalDateTimeString,
   computeCurrentWeekLive, closeWeek, isCurrentWeekClosed, canCloseCurrentWeek,
   updateClosedWeek, deleteClosedWeek, addHistoricalWeek,
-  computePlatformTotals, computeOverallTotals, computeOverallTotalsLive, computeLiveBalance, computeRolloverLive,
+  computePlatformTotals, computeOverallTotals, computeOverallTotalsLive, computeOverallCurrentWeekOnly, computeLiveBalance, computeRolloverLive,
   computePhaseHistory, startNewPhase, removeLastPhase
 } from './finance-logic.js';
 import {
@@ -95,9 +110,10 @@ let betHistoryCloseBtn = null;
 let currentSearch = '';
 // Ponto 5.1: um dos FINANCE_SORT_MENU_OPTIONS.value, ou null (Padrão).
 let currentMode = null;
-// AO VIVO é o padrão; "Total Fechado" alterna pro comportamento antigo
-// (só semanas fechadas). Resetado em resetFinanceListCache (SPA).
-let overviewLiveMode = true;
+// Painel Geral — ciclo de um único botão (#financeOverviewModeBtn):
+// 'live' (padrão, só a semana atual) | 'closed' (só fechadas) | 'total'
+// (fechadas + atual). Resetado em resetFinanceListCache (SPA).
+let overviewMode = 'live';
 let openRowId = null;
 // Semana do histórico atualmente em edição (no máximo uma por vez):
 // { platformId, weekStart } | null
@@ -184,6 +200,22 @@ const FINANCE_SORT_MENU_OPTIONS = [
   { value: 'ativas', label: 'Ativas' },
   { value: 'inativas', label: 'Inativas' }
 ];
+
+// Painel Geral — os 3 modos possíveis do botão único, na ordem em que o
+// clique cicla entre eles. ⚡ Ao Vivo é sempre o primeiro (padrão de
+// abertura da view — ver resetFinanceListCache).
+const OVERVIEW_MODES = [
+  { key: 'live', label: '⚡ Ao Vivo' },
+  { key: 'closed', label: '📦 Total Fechado' },
+  { key: 'total', label: '📈 Total Geral' }
+];
+
+function applyOverviewModeButtonLabel() {
+  const btn = document.getElementById('financeOverviewModeBtn');
+  if (!btn) return;
+  const current = OVERVIEW_MODES.find(m => m.key === overviewMode) || OVERVIEW_MODES[0];
+  btn.textContent = current.label;
+}
 
 function formatDatePt(isoDateStr) {
   if (!isoDateStr) return '';
@@ -330,9 +362,10 @@ export function initFinanceOverview() {
   if (fromEl) fromEl.addEventListener('change', renderFinanceOverview);
   if (toEl) toEl.addEventListener('change', renderFinanceOverview);
   if (platformFilterEl) {
-    // Item 20 (metade "Plataforma") — restringe o Painel Geral a quem
-    // bate com o nome digitado. Mesmo adiamento pro próximo frame já
-    // usado na busca principal, pra não brigar com o teclado virtual.
+    // Item 20 (metade "Plataforma") — restringe o Painel Geral E a lista
+    // de plataformas abaixo a quem bate com o nome digitado (ver
+    // getVisibleList). Adiado pro próximo frame, pra não brigar com o
+    // teclado virtual.
     let filterFrame = null;
     platformFilterEl.addEventListener('input', () => {
       if (filterFrame) cancelAnimationFrame(filterFrame);
@@ -342,7 +375,7 @@ export function initFinanceOverview() {
       });
     });
   }
-  
+
   const phaseToggleBtn = document.getElementById('financeOverviewPhaseToggleBtn');
   const phaseWrap = document.getElementById('financeOverviewPhaseWrap');
   const phaseSelect = document.getElementById('financeOverviewPhaseSelect');
@@ -359,7 +392,7 @@ export function initFinanceOverview() {
     });
     phaseSelect.addEventListener('change', renderFinanceOverview);
   }
-  
+
   if (clearBtn) {
     clearBtn.addEventListener('click', () => {
       if (fromEl) fromEl.value = '';
@@ -371,15 +404,20 @@ export function initFinanceOverview() {
     });
   }
 
-  const totalClosedBtn = document.getElementById('financeOverviewTotalClosedBtn');
-  if (totalClosedBtn) {
-    totalClosedBtn.addEventListener('click', () => {
-      overviewLiveMode = !overviewLiveMode;
-      totalClosedBtn.textContent = overviewLiveMode ? '📦 Total Fechado' : '⚡ Voltar pro Ao Vivo';
+  // Painel Geral — botão único de 3 modos (ver OVERVIEW_MODES). Cada
+  // clique avança pro próximo modo do array, em ciclo (o último volta
+  // pro primeiro).
+  const modeBtn = document.getElementById('financeOverviewModeBtn');
+  if (modeBtn) {
+    applyOverviewModeButtonLabel();
+    modeBtn.addEventListener('click', () => {
+      const idx = OVERVIEW_MODES.findIndex(m => m.key === overviewMode);
+      overviewMode = OVERVIEW_MODES[(idx + 1) % OVERVIEW_MODES.length].key;
+      applyOverviewModeButtonLabel();
       renderFinanceOverview();
     });
   }
-  
+
   if (newPhaseAllBtn) {
     newPhaseAllBtn.addEventListener('click', async () => {
       const count = state.platforms.length;
@@ -429,23 +467,35 @@ export function renderFinanceOverview() {
 
   // Item 20 (metade "Plataforma") — some junto com Data (interseção),
   // já que os dois filtros são aplicados em cima do MESMO conjunto antes
-  // de computeOverallTotals somar.
+  // de somar.
   const platformQuery = (platformFilterEl?.value || '').trim().toLowerCase();
   const platformsForOverview = platformQuery
     ? state.platforms.filter(p => p.name.toLowerCase().includes(platformQuery))
     : state.platforms;
 
-const phaseSelectEl = document.getElementById('financeOverviewPhaseSelect');
+  const phaseSelectEl = document.getElementById('financeOverviewPhaseSelect');
   const phaseFilter = phaseSelectEl && phaseSelectEl.value ? Number(phaseSelectEl.value) : null;
 
-  const computeFn = overviewLiveMode ? computeOverallTotalsLive : computeOverallTotals;
-  const totals = computeFn(platformsForOverview, from, to, resolveCtxForPlatform, new Date(), phaseFilter);
+  // Painel Geral — 3 modos possíveis (ver OVERVIEW_MODES/nota no topo do
+  // arquivo). Saldo/Rollover NUNCA mudam entre eles — são sempre o valor
+  // ao vivo da fase (ou da fase filtrada), calculado dentro de cada uma
+  // das 3 funções da mesma forma.
+  let totals;
+  let noteText;
+  if (overviewMode === 'live') {
+    totals = computeOverallCurrentWeekOnly(platformsForOverview, from, to, resolveCtxForPlatform, new Date(), phaseFilter);
+    noteText = '⚡ AO VIVO: só a semana atual em andamento, de todas as plataformas (depósito, saque, aposta e bônus de hoje já entram). Com filtro de fase, só entra quem tem aquela fase como a atual. Saldo e Rollover são sempre o valor atual da fase e não são afetados pelo filtro de datas.';
+  } else if (overviewMode === 'closed') {
+    totals = computeOverallTotals(platformsForOverview, from, to, resolveCtxForPlatform, new Date(), phaseFilter);
+    noteText = '📦 TOTAL FECHADO: soma só das semanas já fechadas (a semana atual em andamento NÃO entra). Saldo e Rollover continuam sendo o valor atual da fase.';
+  } else {
+    totals = computeOverallTotalsLive(platformsForOverview, from, to, resolveCtxForPlatform, new Date(), phaseFilter);
+    noteText = '📈 TOTAL GERAL: semanas já fechadas + a semana atual em andamento, somadas juntas. Saldo e Rollover são sempre o valor atual da fase e não são afetados pelo filtro de datas.';
+  }
+
   const noteEl = document.getElementById('financeOverviewNote');
-  if (noteEl) {
-    noteEl.textContent = overviewLiveMode
-      ? 'AO VIVO: semanas já fechadas + a semana atual em andamento (depósito, saque, aposta e bônus de hoje já entram). Com filtro de fase, a semana atual só entra pras plataformas em que aquela fase é a atual. "📦 Total Fechado" mostra só as semanas fechadas. Saldo e Rollover são sempre o valor atual da fase e não são afetados pelo filtro de datas.'
-      : 'TOTAL FECHADO: soma só das semanas já fechadas (a semana atual em andamento NÃO entra). Saldo e Rollover continuam sendo o valor atual da fase.';
-}
+  if (noteEl) noteEl.textContent = noteText;
+
   const rolloverLabel = phaseFilter
     ? `Rollover (Fase ${phaseFilter}, todas as plataformas)`
     : 'Rollover (todas as plataformas)';
@@ -526,7 +576,7 @@ export function resetFinanceListCache() {
   lastVisibleList = [];
   weekExpandedOverrides.clear();
   phaseExpandedOverrides.clear();
-  overviewLiveMode = true;
+  overviewMode = 'live';
 }
 
 // ---------- LISTA DE PLATAFORMAS ----------
