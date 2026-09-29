@@ -98,7 +98,7 @@ export async function mount(container) {
       <div class="finance-checkpoint finance-overview-actions">
         <button type="button" id="financeOverviewClearBtn">Limpar filtro</button>
         <button type="button" id="financeOverviewPhaseToggleBtn">🔀 Filtrar por fase</button>
-        <button type="button" id="financeOverviewTotalClosedBtn">📦 Total Fechado</button>
+        <button type="button" id="financeOverviewModeBtn">⚡ Ao Vivo</button>
         <button type="button" id="financeOverviewNewPhaseAllBtn" class="finance-overview-wide">🔒 Iniciar nova fase em todas as plataformas</button>
       </div>
 
@@ -106,19 +106,12 @@ export async function mount(container) {
         <select id="financeOverviewPhaseSelect" aria-label="Filtrar Painel Geral por fase" style="padding:0.6rem 0.75rem; border:1px solid #e6e9ee; border-radius:12px; outline:none;"></select>
       </div>
 
-      <p class="finance-close-week-note" id="financeOverviewNote"></p>
-
-      <div id="financeOverviewStats" class="finance-stats-grid"></div>
-    </section>
-
-      <p class="finance-close-week-note" id="financeOverviewNote"></p>
-
       <div id="financeOverviewStats" class="finance-stats-grid"></div>
 
-      <div class="finance-checkpoint">
-        <button type="button" id="financeOverviewNewPhaseAllBtn" class="btn-cancel-modal">🔒 Iniciar nova fase em todas as plataformas</button>
-      </div>
+      <p class="finance-close-week-note" id="financeOverviewNote"></p>
     </section>
+
+    <section class="card-shell finance-panel" aria-label="Financeiro por plataforma">
 
     <section class="card-shell finance-panel" aria-label="Financeiro por plataforma">
       <div class="finance-panel-header">
