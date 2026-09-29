@@ -203,11 +203,11 @@ function renderDepositsTodayContent() {
 
   const prevBtn = document.createElement('button');
   prevBtn.type = 'button';
-  prevBtn.className = 'btn-cancel-modal';
+  prevBtn.className = 'btn-neutral';
   prevBtn.textContent = '←';
-  prevBtn.disabled = depositsTodayIndex === 0;
+  prevBtn.disabled = entries.length <= 1;
   prevBtn.addEventListener('click', () => {
-    depositsTodayIndex -= 1;
+    depositsTodayIndex = (depositsTodayIndex - 1 + entries.length) % entries.length;
     renderDepositsTodayContent();
   });
 
@@ -217,11 +217,11 @@ function renderDepositsTodayContent() {
 
   const nextBtn = document.createElement('button');
   nextBtn.type = 'button';
-  nextBtn.className = 'btn-cancel-modal';
+  nextBtn.className = 'btn-neutral';
   nextBtn.textContent = '→';
-  nextBtn.disabled = depositsTodayIndex === entries.length - 1;
+  nextBtn.disabled = entries.length <= 1;
   nextBtn.addEventListener('click', () => {
-    depositsTodayIndex += 1;
+    depositsTodayIndex = (depositsTodayIndex + 1) % entries.length;
     renderDepositsTodayContent();
   });
 
