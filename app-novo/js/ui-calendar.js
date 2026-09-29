@@ -38,6 +38,29 @@ export function createCalendar() {
   });
 
   state.calendar.render();
+
+  // Botão "today": nas visões semanal/diária o próprio FullCalendar já
+  // navega direto pro dia de hoje — nada a fazer. Na visão mensal
+  // (dayGridMonth), "today" só troca o MÊS exibido, sem centralizar a
+  // página na linha da semana atual (mesmo ajuste que scrollToCurrentWeek()
+  // já faz na abertura da página). Escuta o clique direto no botão nativo
+  // em vez de usar datesSet: se o usuário já estiver no mês atual (só
+  // rolou a página), o intervalo de datas não muda e datesSet nunca
+  // dispararia, deixando o clique sem efeito. Duplo requestAnimationFrame
+  // garante que a grade do mês (se tiver mudado) já foi repintada antes
+  // de procurar a célula de hoje.
+  const todayBtn = calendarEl.querySelector('.fc-today-button');
+  if (todayBtn) {
+    todayBtn.addEventListener('click', () => {
+      if (state.calendar.view.type !== 'dayGridMonth') return;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          scrollToCurrentWeek();
+        });
+      });
+    });
+  }
+  
   return state.calendar;
 }
 
