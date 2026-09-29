@@ -101,6 +101,28 @@ let overviewLiveMode = true;
 let openRowId = null;
 // Semana do histórico atualmente em edição (no máximo uma por vez):
 // { platformId, weekStart } | null
+// Semanas/fases cujo estado foi alterado manualmente pelo usuário —
+// chave "`${platformId}::${weekStart}`" / "`${platformId}::${phaseNumber}`".
+// Sem entrada aqui, o padrão é: só o item mais recente nasce expandido.
+let weekExpandedOverrides = new Map();
+let phaseExpandedOverrides = new Map();
+
+function isWeekExpanded(key, isFirst) {
+  return weekExpandedOverrides.has(key) ? weekExpandedOverrides.get(key) : isFirst;
+}
+function isPhaseExpanded(key, isCurrent) {
+  return phaseExpandedOverrides.has(key) ? phaseExpandedOverrides.get(key) : isCurrent;
+}
+function clearOverridesForPlatform(map, platformId) {
+  const prefix = `${platformId}::`;
+  [...map.keys()].forEach(key => { if (key.startsWith(prefix)) map.delete(key); });
+}
+function scrollLatestWeekIntoView(platformId) {
+  requestAnimationFrame(() => {
+    const el = document.querySelector(`.platform-manage-row[data-id="${platformId}"] [data-latest-week="true"]`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+}
 let editingWeek = null;
 // Data digitada na busca do histórico (dentro da linha aberta) — string
 // 'AAAA-MM-DD' ou null. Reseta toda vez que uma linha é aberta/fechada.
@@ -502,6 +524,8 @@ export function resetFinanceListCache() {
   editingBetEntry = null;
   reorderModeActive = false;
   lastVisibleList = [];
+  weekExpandedOverrides.clear();
+  phaseExpandedOverrides.clear();
   overviewLiveMode = true;
 }
 
@@ -542,16 +566,21 @@ function buildCollapsibleSection(p, sectionKey, label, buildContentFn) {
   header.addEventListener('click', () => {
     if (isExpanded) {
       expandedSections.delete(sectionKey);
-      if (sectionKey === 'phases') startingPhaseId = null;
+      if (sectionKey === 'phases') {
+        startingPhaseId = null;
+        clearOverridesForPlatform(phaseExpandedOverrides, p.id);
+       }
       if (sectionKey === 'history') {
         editingWeek = null;
         historyDateFilter = null;
         addingHistoricalWeekId = null;
+        clearOverridesForPlatform(weekExpandedOverrides, p.id);
       }
     } else {
       expandedSections.add(sectionKey);
     }
     refreshRow(p.id);
+    if (!isExpanded && sectionKey === 'history') scrollLatestWeekIntoView(p.id);
   });
   wrapper.appendChild(header);
 
@@ -1059,7 +1088,7 @@ function buildPhaseContent(p) {
   const list = document.createElement('div');
   list.className = 'finance-history';
   [...phases].reverse().forEach(phase => {
-    list.appendChild(buildPhaseCard(phase));
+    list.appendChild(buildPhaseCard(phase, p.id));
   });
   fragment.appendChild(list);
 
@@ -1209,17 +1238,34 @@ function buildPhaseControls(p) {
   return wrap;
 }
 
-function buildPhaseCard(phase) {
+function buildPhaseCard(phase, platformId) {
   const card = document.createElement('div');
   card.className = 'finance-week-card' + (phase.isCurrent ? ' finance-total-card' : '');
+  const key = `${platformId}::${phase.phaseNumber}`;
+  const isExpanded = isPhaseExpanded(key, phase.isCurrent);
 
   const header = document.createElement('div');
   header.className = 'finance-week-card-header';
   const startLabel = phase.startDate ? formatDateTimePt(phase.startDate) : 'início';
   const endLabel = phase.endDate ? formatDateTimePt(phase.endDate) : 'agora (atual)';
-  header.innerHTML = `<span>Fase ${phase.phaseNumber}: ${startLabel} – ${endLabel}</span>`;
+  const rangeSpan = document.createElement('span');
+  rangeSpan.textContent = `Fase ${phase.phaseNumber}: ${startLabel} – ${endLabel}`;
+  const toggleBtn = document.createElement('button');
+  toggleBtn.type = 'button';
+  toggleBtn.className = 'bet-manage-btn';
+  toggleBtn.textContent = isExpanded ? '−' : '+';
+  toggleBtn.setAttribute('aria-label', isExpanded ? 'Recolher fase' : 'Expandir fase');
+  toggleBtn.addEventListener('click', () => {
+    phaseExpandedOverrides.set(key, !isExpanded);
+    openRowId = platformId;
+    refreshRow(platformId);
+  });
+  header.appendChild(rangeSpan);
+  header.appendChild(toggleBtn);
+  
   card.appendChild(header);
 
+ if (isExpanded) {
   const stats = document.createElement('div');
   stats.className = 'finance-stats-grid';
   stats.innerHTML = statsGridHtml(phase, {
@@ -1230,6 +1276,7 @@ function buildPhaseCard(phase) {
     rolloverLabel: phase.isCurrent ? 'Rollover da fase atual' : 'Rollover da fase'
   });
   card.appendChild(stats);
+ }
 
   return card;
 }
@@ -1291,12 +1338,12 @@ function buildHistoryContent(p) {
   const history = document.createElement('div');
   history.className = 'finance-history';
 
-  weeks.forEach(w => {
+  weeks.forEach((w, idx) => {
     const isEditing = !!editingWeek
       && editingWeek.platformId === p.id
       && editingWeek.weekStart === w.weekStart;
 
-    history.appendChild(isEditing ? buildWeekCardEditing(p, w) : buildWeekCardReadOnly(p, w));
+    history.appendChild(isEditing ? buildWeekCardEditing(p, w) : buildWeekCardReadOnly(p, w, idx === 0));
   });
 
   fragment.appendChild(history);
@@ -1717,9 +1764,12 @@ function buildSpreadsheetHistoricalWeekControls(p, wrap) {
   });
 }
 
-function buildWeekCardReadOnly(p, w) {
+function buildWeekCardReadOnly(p, w, isFirst) {
   const card = document.createElement('div');
   card.className = 'finance-week-card';
+  const key = `${p.id}::${w.weekStart}`;
+  const isExpanded = isWeekExpanded(key, isFirst);
+  if (isFirst) card.dataset.latestWeek = 'true';
 
   const header = document.createElement('div');
   header.className = 'finance-week-card-header';
@@ -1729,6 +1779,18 @@ function buildWeekCardReadOnly(p, w) {
 
   const btnGroup = document.createElement('div');
   btnGroup.className = 'finance-week-card-actions';
+
+  const toggleBtn = document.createElement('button');
+  toggleBtn.type = 'button';
+  toggleBtn.className = 'bet-manage-btn';
+  toggleBtn.textContent = isExpanded ? '−' : '+';
+  toggleBtn.setAttribute('aria-label', isExpanded ? 'Recolher semana' : 'Expandir semana');
+  toggleBtn.addEventListener('click', () => {
+    weekExpandedOverrides.set(key, !isExpanded);
+    openRowId = p.id;
+    refreshRow(p.id);
+  });
+  btnGroup.appendChild(toggleBtn);
 
   const editBtn = document.createElement('button');
   editBtn.type = 'button';
@@ -1761,6 +1823,7 @@ function buildWeekCardReadOnly(p, w) {
   header.appendChild(btnGroup);
   card.appendChild(header);
 
+ if (isExpanded) {
   const stats = document.createElement('div');
   stats.className = 'finance-stats-grid';
   stats.innerHTML = statsGridHtml(w, {
@@ -1769,6 +1832,7 @@ function buildWeekCardReadOnly(p, w) {
     rolloverLabel: 'Rollover (no momento do fechamento)'
   });
   card.appendChild(stats);
+}
 
   return card;
 }
