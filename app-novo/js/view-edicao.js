@@ -205,6 +205,9 @@ export async function mount(container) {
                 <input type="checkbox" id="badgeVisibilityTotal" style="width:auto;" /> Total (Soma depositada)
               </label>
               <label style="display:flex; align-items:center; gap:0.4rem; padding:0.5rem 0.7rem; cursor:pointer;">
+                <input type="checkbox" id="badgeVisibilityDeposit" style="width:auto;" /> Depósito: X dias
+              </label>
+              <label style="display:flex; align-items:center; gap:0.4rem; padding:0.5rem 0.7rem; cursor:pointer;">
                 <input type="checkbox" id="badgeVisibilityCycleDay" style="width:auto;" /> Dia do ciclo
               </label>
             </div>
