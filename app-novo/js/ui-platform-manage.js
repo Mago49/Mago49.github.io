@@ -115,6 +115,7 @@ let manageBadgeVisibilityBtn = null;
 let manageBadgeVisibilityDropdown = null;
 let badgeVisibilityTotalCheckbox = null;
 let badgeVisibilityCycleDayCheckbox = null;
+let badgeVisibilityDepositCheckbox = null;
 
 // --- Referências de DOM dos 3 modais ---
 // Resolvidas por initModalListeners(), chamada pelo mount() da view
@@ -412,7 +413,7 @@ function buildRow(p) {
   // o badge continua omitido de propósito. Este badge NÃO tem preferência
   // de visibilidade (Item 25a é só sobre Total e Dia do ciclo).
   const daysSinceDeposit = getDaysSinceLastDeposit(p);
-  if (daysSinceDeposit !== null && daysSinceDeposit >= 7) {
+  if (daysSinceDeposit !== null && daysSinceDeposit >= 7 && badgeVisibility.depositDayBadge) {
     const depositDayBadge = document.createElement('span');
     depositDayBadge.className = 'cycle-day deposit-day-badge';
     depositDayBadge.textContent = `Depósito: ${daysSinceDeposit} dias`;
@@ -1223,6 +1224,7 @@ export function initManageControls() {
   manageBadgeVisibilityDropdown = document.getElementById('manageBadgeVisibilityDropdown');
   badgeVisibilityTotalCheckbox = document.getElementById('badgeVisibilityTotal');
   badgeVisibilityCycleDayCheckbox = document.getElementById('badgeVisibilityCycleDay');
+  badgeVisibilityDepositCheckbox = document.getElementById('badgeVisibilityDeposit');
 
   initAddRow();
 
@@ -1305,6 +1307,7 @@ export function initManageControls() {
     const visibility = getCachedPreferences().badgeVisibility;
     if (badgeVisibilityTotalCheckbox) badgeVisibilityTotalCheckbox.checked = visibility.totalBadge;
     if (badgeVisibilityCycleDayCheckbox) badgeVisibilityCycleDayCheckbox.checked = visibility.cycleDayBadge;
+    if (badgeVisibilityDepositCheckbox) badgeVisibilityDepositCheckbox.checked = visibility.depositDayBadge;
 
     function toggleDropdown() {
       const willOpen = !manageBadgeVisibilityDropdown.classList.contains('open');
@@ -1327,7 +1330,8 @@ export function initManageControls() {
     function onVisibilityChange() {
       const newVisibility = {
         totalBadge: badgeVisibilityTotalCheckbox ? badgeVisibilityTotalCheckbox.checked : true,
-        cycleDayBadge: badgeVisibilityCycleDayCheckbox ? badgeVisibilityCycleDayCheckbox.checked : true
+        cycleDayBadge: badgeVisibilityCycleDayCheckbox ? badgeVisibilityCycleDayCheckbox.checked : true,
+        depositDayBadge: badgeVisibilityDepositCheckbox ? badgeVisibilityDepositCheckbox.checked : true
       };
       saveBadgeVisibility(state.currentUid, newVisibility);
       // Muda o CONTEÚDO de todas as linhas (badges aparecem/somem) sem
@@ -1342,6 +1346,7 @@ export function initManageControls() {
     document.addEventListener('click', onDocumentClick);
     if (badgeVisibilityTotalCheckbox) badgeVisibilityTotalCheckbox.addEventListener('change', onVisibilityChange);
     if (badgeVisibilityCycleDayCheckbox) badgeVisibilityCycleDayCheckbox.addEventListener('change', onVisibilityChange);
+    if (badgeVisibilityDepositCheckbox) badgeVisibilityDepositCheckbox.addEventListener('change', onVisibilityChange);
 
     closeBadgeDropdown = () => document.removeEventListener('click', onDocumentClick);
   }
