@@ -350,6 +350,25 @@ function statsGridHtml(totals, opts = {}) {
   `;
 }
 
+// Reconstrói as opções do seletor de fase a partir do estado atual —
+// chamada sempre que uma fase é aberta ou removida (individualmente ou
+// em massa), pra nunca deixar o dropdown desatualizado até a próxima
+// visita à rota. Preserva a seleção atual se ela ainda existir depois da
+// mudança; senão volta pra "Todas as fases".
+function rebuildPhaseSelectOptions() {
+  const phaseSelect = document.getElementById('financeOverviewPhaseSelect');
+  if (!phaseSelect) return;
+  const previousValue = phaseSelect.value;
+  const maxPhase = state.platforms.reduce((max, p) => Math.max(max, (p.balancePhases || []).length + 1), 1);
+  phaseSelect.innerHTML = '<option value="">Todas as fases</option>' +
+    Array.from({ length: maxPhase }, (_, i) => i + 1)
+      .map(n => `<option value="${n}">Fase ${n}</option>`)
+      .join('');
+  if (previousValue && Number(previousValue) <= maxPhase) {
+    phaseSelect.value = previousValue;
+  }
+}
+
 // ---------- PAINEL GERAL (topo da página — todas as plataformas) ----------
 
 export function initFinanceOverview() {
@@ -381,12 +400,7 @@ export function initFinanceOverview() {
   const phaseSelect = document.getElementById('financeOverviewPhaseSelect');
 
   if (phaseToggleBtn && phaseWrap && phaseSelect) {
-    const maxPhase = state.platforms.reduce((max, p) => Math.max(max, (p.balancePhases || []).length + 1), 1);
-    phaseSelect.innerHTML = '<option value="">Todas as fases</option>' +
-      Array.from({ length: maxPhase }, (_, i) => i + 1)
-        .map(n => `<option value="${n}">Fase ${n}</option>`)
-        .join('');
-
+    rebuildPhaseSelectOptions();
     phaseToggleBtn.addEventListener('click', () => {
       phaseWrap.classList.toggle('app-hidden');
     });
@@ -450,6 +464,7 @@ export function initFinanceOverview() {
       // só aqui, igual já era no Sistema 1.
       savePlatforms(state.currentUid, state.platforms);
       refreshAllRows();
+      rebuildPhaseSelectOptions();
       renderFinanceList();
     });
   }
@@ -1235,6 +1250,7 @@ function buildPhaseControls(p) {
       startingPhaseId = null;
       openRowId = p.id;
       refreshRow(p.id);
+      rebuildPhaseSelectOptions();
       renderFinanceList();
     });
 
@@ -1279,6 +1295,7 @@ function buildPhaseControls(p) {
       savePlatform(state.currentUid, p);
       openRowId = p.id;
       refreshRow(p.id);
+      rebuildPhaseSelectOptions();
       renderFinanceList();
     });
     actions.appendChild(removeBtn);
