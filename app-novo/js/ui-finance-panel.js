@@ -799,6 +799,17 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
   weekLabel.textContent = `${live.weekStart.toLocaleDateString('pt-BR')} – ${live.weekEnd.toLocaleDateString('pt-BR')}`;
   section.appendChild(weekLabel);
 
+  // Bônus ao vivo da semana: fórmula + avulso (mesma conta do Painel Geral).
+  // Semana já fechada: usa o valor real congelado, igual ao que o Saldo conta.
+  let bonusLive;
+  if (closed) {
+    const closedWeek = (p.financeWeeks || []).find(w => w.weekStart === toLocalDateString(live.weekStart));
+    bonusLive = closedWeek ? (Number(closedWeek.bonus) || 0) : 0;
+  } else {
+    bonusLive = computeAutoAccruedBonusForWeek(p, new Date(), ctx)
+      + getAccumulatedBonusThisWeek(p, new Date());
+  }
+
   const rolloverLive = computeRolloverLive(p, new Date(), ctx);
   const statsWrap = document.createElement('div');
   statsWrap.className = 'finance-week-current';
@@ -810,6 +821,7 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
       ${statBox('Apostado', formatCurrency(live.wagered))}
       ${statBox('N° Apostas', String(live.betCount))}
       ${statBox('R.B.', formatCurrency(live.resultBetting), live.resultBetting >= 0 ? 'positive' : 'negative')}
+      ${statBox('Bônus', formatCurrency(bonusLive), 'positive')}
       ${statBox('Saldo (Balance)', formatCurrency(liveBalance), 'positive')}
       ${statBox('Rollover', formatCurrency(rolloverLive), 'positive')}
     </div>`;
