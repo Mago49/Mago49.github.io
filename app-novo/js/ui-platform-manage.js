@@ -99,7 +99,7 @@
 
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
-import { getMonthStart, getCurrentCycleDay, getTotalDepositsSinceCycle, getDaysSinceLastDeposit, colorForLevel, getEffectiveBetDayKeys } from './cycle-logic.js';
+import { getMonthStart, getCurrentCycleDay, getTotalDepositsSinceCycle, getDaysSinceLastDeposit, colorForLevel, getEffectiveBetDayKeys, recordLevelChange } from './cycle-logic.js';
 import { savePlatform, deletePlatformDoc } from './platforms-store.js';
 import { filterAndSortForManage } from './platform-sort.js';
 import { initSortMenu } from './ui-sort.js';
@@ -603,6 +603,17 @@ function buildActionsSection(p) {
   return section;
 }
 
+// Data/hora local (não toISOString, pra não pular de dia em fuso atrás de UTC).
+function toLocalDateTimeSeconds(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  const ss = String(date.getSeconds()).padStart(2, '0');
+  return `${y}-${m}-${d}T${hh}:${mm}:${ss}`;
+}
+
 function buildBetSection(p) {
   const betSection = document.createElement('div');
   betSection.className = 'bet-section';
@@ -628,7 +639,9 @@ function buildBetSection(p) {
   betTodayBtn.addEventListener('click', () => {
     if (alreadyBetToday) return;
     if (!p.betDays) p.betDays = [];
-    p.betDays.push(todayStr);
+    // A0: grava data E hora (AAAA-MM-DDTHH:mm:ss, local). Todo leitor de
+    // betDays usa slice(0,10), então nada quebra. O feed do Perfil usa a hora.
+    p.betDays.push(toLocalDateTimeSeconds(new Date()));
     savePlatform(state.currentUid, p);
     // Não afeta filtro/ordenação — só o conteúdo desta linha muda.
     refreshRow(p.id);
@@ -898,8 +911,13 @@ function buildDataSection(p) {
       return;
     }
     p.name = name;
-    p.level = levelSelect.value === '' ? null : Number(levelSelect.value);
-    p.group = groupSelect.value === '' ? null : groupSelect.value;
+    const newLevel = levelSelect.value === '' ? null : Number(levelSelect.value);
+    const newGroup = groupSelect.value === '' ? null : groupSelect.value;
+    // A0: registra a vigência ANTES de sobrescrever (lê o valor antigo).
+    // Vale a partir de hoje 00:00; o passado não é reescrito.
+    recordLevelChange(p, newLevel, newGroup, new Date());
+    p.level = newLevel;
+    p.group = newGroup;
 
     // Bloco C — os 3 grupos de código são lidos e gravados junto com
     // nome/nível/grupo, no mesmo clique em "Salvar" e no mesmo
@@ -979,6 +997,8 @@ function initAddRow() {
       balancePhases: [],
       obrigadoDays: [],
       misteriosoBonusLog: [],
+      otherBonusLog: [],
+      levelHistory: [],
       codigoConfig: { tipo: null, fixo: '', baseDate: null, variavelInicio: 0 },
       codigoDeposito: { fixo: '', baseDate: null, variavelInicio: 0, valorMinimo: 0 },
       codigoAposta: { fixo: '', baseDate: null, variavelInicio: 0, valorMinimo: 0 }
