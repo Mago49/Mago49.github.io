@@ -33,6 +33,8 @@ export const DEFAULT_PLATFORMS = Array.from({ length: 33 }, (_, i) => ({
   // { date, rawValue, scale, rolloverValue, createdAt } — ver
   // bonus-ledger-logic.js/finance-logic.js.
   otherBonusLog: [],
+  // A0 — vigência de nível/grupo: [{ date:'AAAA-MM-DD', level, group }]
+  levelHistory: [],
   codigoConfig: { tipo: null, fixo: '', baseDate: null, variavelInicio: 0 },
   codigoDeposito: { fixo: '', baseDate: null, variavelInicio: 0, valorMinimo: 0 },
   codigoAposta: { fixo: '', baseDate: null, variavelInicio: 0, valorMinimo: 0 }
@@ -83,6 +85,7 @@ export function normalizePlatformData(parsed) {
       // contas que carregaram a conta antes desta funcionalidade existir
       // simplesmente começam com o array vazio, nunca `undefined`.
       otherBonusLog: Array.isArray(p.otherBonusLog) ? p.otherBonusLog : [],
+      levelHistory: Array.isArray(p.levelHistory) ? p.levelHistory : [],
       codigoConfig: (p.codigoConfig && typeof p.codigoConfig === 'object')
         ? p.codigoConfig : { tipo: null, fixo: '', baseDate: null, variavelInicio: 0 },
       codigoDeposito: (p.codigoDeposito && typeof p.codigoDeposito === 'object')
