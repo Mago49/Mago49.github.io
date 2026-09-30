@@ -139,26 +139,7 @@ export function getExpectedBonusForDate(platform, date, ctx = {}) {
   return total;
 }
 
-  // Misterioso — só se `d` é uma data de emissão do ciclo ATUAL e o
-  // ciclo não está encerrado (mesma trava já usada em
-  // computeMisteriosoForecast/getEditableMisteriosoEvents,
-  // ui-vip-panel.js — datas de emissão de um ciclo encerrado não
-  // representam bônus real).
-  if (ctx.misteriosoTemplate && !platform.cycleEnded) {
-    const isEmissionDay = computeEmissionDates(platform, d).some(emDate =>
-      startOfDay(emDate).getTime() === d.getTime()
-    );
-    if (isEmissionDay) {
-      const dateKey = toLocalDateKey(d);
-      total += getEffectiveMisteriosoValue(platform, dateKey, ctx.misteriosoTemplate) || 0;
-    }
-  }
-
-  return total;
-}
-
-// Açúcar sintático — "esperado de hoje". Usado pelo botão "Inserir bônus
-// hoje" (mostra o valor previsto antes de confirmar) e pela subtração
+// Usado pelo botão "Inserir bônus hoje" (mostra o valor previsto antes de confirmar) e pela subtração
 // em computeBonusDiffToday.
 export function getExpectedBonusToday(platform, refDate = new Date(), ctx = {}) {
   return getExpectedBonusForDate(platform, refDate, ctx);
