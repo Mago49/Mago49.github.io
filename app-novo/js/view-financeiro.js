@@ -17,7 +17,7 @@
 
 import { state } from './state.js';
 import {
-  initFinanceControls, initFinanceOverview, initBetHistoryModalListeners,
+  initFinanceControls, initFinanceOverview, initBetHistoryModalListeners, initWithdrawalsModalListeners,
   renderFinanceList, refreshAllRows, resetFinanceListCache,
   setBonusContextResolver
 } from './ui-finance-panel.js';
@@ -56,6 +56,14 @@ function createModals() {
         <h2 id="betHistoryTitle">Últimas apostas</h2>
         <div id="betHistoryList"></div>
         <button class="history-close" id="betHistoryCloseBtn">Fechar</button>
+      </div>
+    </div>
+
+    <div class="history-modal" id="withdrawalsModal">
+      <div class="history-modal-content">
+        <h2 id="withdrawalsTitle">Saques</h2>
+        <div id="withdrawalsList"></div>
+        <button class="history-close" id="withdrawalsCloseBtn">Fechar</button>
       </div>
     </div>
   `;
@@ -168,6 +176,7 @@ export async function mount(container) {
   sortMenuCleanup = initFinanceControls();
   initFinanceOverview();
   initBetHistoryModalListeners();
+  initWithdrawalsModalListeners();
 
   renderFinanceList(); // já chama renderFinanceOverview() internamente
   scheduleDailyUpdate();

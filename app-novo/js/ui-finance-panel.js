@@ -159,6 +159,15 @@ let expandedSections = new Set();
 let currentBetHistoryPlatform = null;
 let editingBetEntry = null;
 
+// Saques — modal "Editar saques" (só semana em aberto, mesmo padrão do
+// modal "Últimas apostas"). Edita só o VALOR; a data/hora nunca muda.
+let withdrawalsModal = null;
+let withdrawalsTitle = null;
+let withdrawalsList = null;
+let withdrawalsCloseBtn = null;
+let currentWithdrawalsPlatform = null;
+let editingWithdrawal = null;
+
 // Etapa 7, sub-entrega 3: resolve o ctx (Obrigado/Misterioso) de CADA
 // plataforma — setado uma vez pela view (view-financeiro.js), depois de
 // carregar os dois do Firestore. Sem chamar setBonusContextResolver
@@ -587,6 +596,8 @@ export function resetFinanceListCache() {
   expandedSections = new Set();
   currentBetHistoryPlatform = null;
   editingBetEntry = null;
+  currentWithdrawalsPlatform = null;
+  editingWithdrawal = null;
   reorderModeActive = false;
   lastVisibleList = [];
   weekExpandedOverrides.clear();
@@ -799,17 +810,6 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
   weekLabel.textContent = `${live.weekStart.toLocaleDateString('pt-BR')} – ${live.weekEnd.toLocaleDateString('pt-BR')}`;
   section.appendChild(weekLabel);
 
-  // Bônus ao vivo da semana: fórmula + avulso (mesma conta do Painel Geral).
-  // Semana já fechada: usa o valor real congelado, igual ao que o Saldo conta.
-  let bonusLive;
-  if (closed) {
-    const closedWeek = (p.financeWeeks || []).find(w => w.weekStart === toLocalDateString(live.weekStart));
-    bonusLive = closedWeek ? (Number(closedWeek.bonus) || 0) : 0;
-  } else {
-    bonusLive = computeAutoAccruedBonusForWeek(p, new Date(), ctx)
-      + getAccumulatedBonusThisWeek(p, new Date());
-  }
-
   const rolloverLive = computeRolloverLive(p, new Date(), ctx);
   const statsWrap = document.createElement('div');
   statsWrap.className = 'finance-week-current';
@@ -821,7 +821,6 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
       ${statBox('Apostado', formatCurrency(live.wagered))}
       ${statBox('N° Apostas', String(live.betCount))}
       ${statBox('R.B.', formatCurrency(live.resultBetting), live.resultBetting >= 0 ? 'positive' : 'negative')}
-      ${statBox('Bônus', formatCurrency(bonusLive), 'positive')}
       ${statBox('Saldo (Balance)', formatCurrency(liveBalance), 'positive')}
       ${statBox('Rollover', formatCurrency(rolloverLive), 'positive')}
     </div>`;
@@ -898,6 +897,16 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
   });
   withdrawForm.appendChild(withdrawInput);
   withdrawForm.appendChild(withdrawBtn);
+
+  // Botão curto na MESMA linha do saque (cabe em tela pequena).
+  const withdrawEditBtn = document.createElement('button');
+  withdrawEditBtn.className = 'bet-manage-btn';
+  withdrawEditBtn.type = 'button';
+  withdrawEditBtn.textContent = '✏️ Editar';
+  withdrawEditBtn.style.flex = '0 0 auto';
+  withdrawEditBtn.setAttribute('aria-label', 'Editar saques da semana');
+  withdrawEditBtn.addEventListener('click', () => showWithdrawalsModal(p));
+  withdrawForm.appendChild(withdrawEditBtn);
   section.appendChild(withdrawForm);
 
   // --- registrar aposta + Últimas apostas (Bloco P) ---
@@ -2191,6 +2200,163 @@ function renderBetHistoryList() {
 
     betHistoryList.appendChild(item);
   });
+}
+
+// ============================================================
+// MODAL "EDITAR SAQUES" (só semana em aberto)
+// ============================================================
+// Mesmo padrão do modal "Últimas apostas". Só o VALOR é editável (data/
+// hora nunca mudam). Semanas já fechadas continuam sendo corrigidas pelo
+// card de edição de cada semana (buildWeekCardEditing). Este botão só é
+// montado enquanto a semana atual está aberta (ver buildCurrentWeekSection).
+
+function getCurrentWeekWithdrawals(platform, refDate = new Date()) {
+  const weekStart = getWeekStart(refDate);
+  const weekEnd = getWeekEnd(weekStart);
+  return (platform.withdrawals || []).filter(e => {
+    const d = new Date(e.date);
+    return d >= weekStart && d <= weekEnd;
+  });
+}
+
+function showWithdrawalsModal(platform) {
+  currentWithdrawalsPlatform = platform;
+  editingWithdrawal = null;
+  renderWithdrawalsList();
+  if (withdrawalsModal) withdrawalsModal.style.display = 'flex';
+}
+
+function closeWithdrawalsModal() {
+  if (withdrawalsModal) withdrawalsModal.style.display = 'none';
+  currentWithdrawalsPlatform = null;
+  editingWithdrawal = null;
+}
+
+function renderWithdrawalsList() {
+  if (!withdrawalsList || !currentWithdrawalsPlatform) return;
+  const platform = currentWithdrawalsPlatform;
+
+  const live = computeCurrentWeekLive(platform);
+  if (withdrawalsTitle) {
+    withdrawalsTitle.textContent = `Saques — ${platform.name} (${live.weekStart.toLocaleDateString('pt-BR')} – ${live.weekEnd.toLocaleDateString('pt-BR')})`;
+  }
+
+  withdrawalsList.innerHTML = '';
+
+  const entries = [...getCurrentWeekWithdrawals(platform)].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  if (entries.length === 0) {
+    withdrawalsList.innerHTML = '<div class="history-empty">Nenhum saque registrado nesta semana ainda.</div>';
+    return;
+  }
+
+  entries.forEach(entry => {
+    const item = document.createElement('div');
+    item.className = 'history-item';
+
+    if (editingWithdrawal === entry) {
+      const itemContent = document.createElement('div');
+      itemContent.className = 'history-item-content';
+
+      const dateSpan = document.createElement('span');
+      dateSpan.className = 'history-date';
+      dateSpan.textContent = formatBetEntryDateTime(entry.date);
+      itemContent.appendChild(dateSpan);
+
+      const valueInput = document.createElement('input');
+      valueInput.type = 'number';
+      valueInput.min = '0';
+      valueInput.step = '0.01';
+      valueInput.value = entry.value;
+      valueInput.className = 'history-value-input';
+      valueInput.setAttribute('aria-label', 'Valor do saque');
+      itemContent.appendChild(valueInput);
+      item.appendChild(itemContent);
+
+      const saveBtn = document.createElement('button');
+      saveBtn.className = 'history-edit-btn';
+      saveBtn.textContent = 'Salvar';
+      saveBtn.addEventListener('click', async () => {
+        const newValue = parseFloat(valueInput.value);
+        if (isNaN(newValue) || newValue <= 0) {
+          await showAppAlert('Digite um valor válido');
+          return;
+        }
+        entry.value = newValue;
+        savePlatform(state.currentUid, platform);
+        editingWithdrawal = null;
+        renderWithdrawalsList();
+        refreshRow(platform.id);
+        renderFinanceList();
+      });
+      item.appendChild(saveBtn);
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'history-cancel-btn';
+      cancelBtn.textContent = 'Cancelar';
+      cancelBtn.addEventListener('click', () => {
+        editingWithdrawal = null;
+        renderWithdrawalsList();
+      });
+      item.appendChild(cancelBtn);
+    } else {
+      const itemContent = document.createElement('div');
+      itemContent.className = 'history-item-content';
+
+      const dateSpan = document.createElement('span');
+      dateSpan.className = 'history-date';
+      dateSpan.textContent = formatBetEntryDateTime(entry.date);
+      itemContent.appendChild(dateSpan);
+
+      const valueSpan = document.createElement('span');
+      valueSpan.className = 'history-value';
+      valueSpan.textContent = formatCurrency(entry.value);
+      itemContent.appendChild(valueSpan);
+      item.appendChild(itemContent);
+
+      const editBtn = document.createElement('button');
+      editBtn.className = 'history-edit-btn';
+      editBtn.textContent = 'Editar';
+      editBtn.addEventListener('click', () => {
+        editingWithdrawal = entry;
+        renderWithdrawalsList();
+      });
+      item.appendChild(editBtn);
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'history-delete-btn';
+      deleteBtn.textContent = 'Excluir';
+      deleteBtn.addEventListener('click', async () => {
+        const ok = await showAppConfirm(`Excluir este saque de ${formatCurrency(entry.value)}? Isso também remove o valor do Saldo.`);
+        if (!ok) return;
+        const idx = platform.withdrawals.indexOf(entry);
+        if (idx !== -1) platform.withdrawals.splice(idx, 1);
+        savePlatform(state.currentUid, platform);
+        renderWithdrawalsList();
+        refreshRow(platform.id);
+        renderFinanceList();
+      });
+      item.appendChild(deleteBtn);
+    }
+
+    withdrawalsList.appendChild(item);
+  });
+}
+
+// Resolve o modal "Editar saques" — chamada UMA VEZ por mount() da view,
+// DEPOIS que a view já criou e anexou o modal ao document.body.
+export function initWithdrawalsModalListeners() {
+  withdrawalsModal = document.getElementById('withdrawalsModal');
+  withdrawalsTitle = document.getElementById('withdrawalsTitle');
+  withdrawalsList = document.getElementById('withdrawalsList');
+  withdrawalsCloseBtn = document.getElementById('withdrawalsCloseBtn');
+
+  if (withdrawalsCloseBtn) withdrawalsCloseBtn.addEventListener('click', closeWithdrawalsModal);
+  if (withdrawalsModal) {
+    withdrawalsModal.addEventListener('click', (e) => {
+      if (e.target === withdrawalsModal) closeWithdrawalsModal();
+    });
+  }
 }
 
 // Resolve o modal "Últimas apostas" e liga seus listeners fixos —
