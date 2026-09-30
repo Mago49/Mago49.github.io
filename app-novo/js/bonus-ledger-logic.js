@@ -35,7 +35,7 @@
 // contribuem em nada — VIP diário/semanal/mensal continuam funcionando
 // normalmente, porque não dependem de ctx (só de platform.group/level).
 
-import { vipBonusTable, computeEmissionDates, isBetDayEffective } from './cycle-logic.js';
+import { getVipConfigAt, computeEmissionDates, isBetDayEffective } from './cycle-logic.js';
 import { getEffectiveMisteriosoValue } from './misterioso-logic.js';
 
 function startOfDay(date) {
@@ -73,16 +73,6 @@ function toLocalDateKey(date) {
   return `${y}-${m}-${dd}`;
 }
 
-// Config VIP (daily/weekly/monthly) da plataforma — valores UNITÁRIOS
-// (por ocorrência), a mesma tabela que cycle-logic.js já usa dentro de
-// getVipBonus, só que aqui precisamos do valor de UM dia/UMA semana/UM
-// mês, não do total acumulado do mês inteiro que getVipBonus devolve.
-// Reaproveita vipBonusTable (exportada por cycle-logic.js) pra nunca
-// duplicar os números da tabela em dois lugares.
-function getVipUnitConfig(platform) {
-  return vipBonusTable[platform.group]?.[platform.level] || { daily: 0, weekly: 0, monthly: 0 };
-}
-
 // "Apostei hoje" já registrado pra uma data específica — usado só pro
 // diário do grupo 'com', que depende do clique (grupo 'sem' recebe o
 // diário todo dia, sem depender de nada, mesma regra de getVipBonus).
@@ -95,42 +85,59 @@ function hasBetOnDate(platform, date) {
   return isBetDayEffective(platform, key);
 }
 
-// === "Esperado" de UM dia específico — soma tudo que a fórmula já sabe
-//      que é devido NAQUELE dia, pra essa plataforma. ===
-// Base tanto do "esperado hoje" (subtração do botão "Inserir bônus
-// hoje") quanto do acúmulo automático da semana inteira (soma dia a dia,
-// ver computeAutoAccruedBonusForWeek).
-export function getExpectedBonusForDate(platform, date, ctx = {}) {
+// === A0 — "Esperado" de UM dia, SEPARADO POR TIPO ===
+// Fonte ÚNICA do cálculo. Nível/grupo vêm de getVipConfigAt (vigentes
+// NAQUELE dia). getExpectedBonusForDate (abaixo) só soma este resultado,
+// então o feed do Perfil e o Saldo/Rollover ao vivo nunca divergem.
+export function getExpectedBonusBreakdownForDate(platform, date, ctx = {}) {
   const d = startOfDay(date);
-  const cfg = getVipUnitConfig(platform);
-  let total = 0;
+  const { group, cfg } = getVipConfigAt(platform, d);
+  const out = { vipDaily: 0, vipWeekly: 0, vipMonthly: 0, obrigado: 0, misterioso: 0 };
 
-  // Diário — 'sem' recebe todo dia; 'com' só nos dias em que "Apostei
-  // hoje" já foi registrado (mesma condição usada em getVipBonus).
-  if (platform.group === 'sem') {
-    total += Number(cfg.daily) || 0;
-  } else if (platform.group === 'com' && hasBetOnDate(platform, d)) {
-    total += Number(cfg.daily) || 0;
+  // Diário — 'sem' recebe todo dia; 'com' só nos dias liberados (manual
+  // ou automático via mínimo do nível vigente no dia).
+  if (group === 'sem') {
+    out.vipDaily = cfg.daily;
+  } else if (group === 'com' && hasBetOnDate(platform, d)) {
+    out.vipDaily = cfg.daily;
   }
 
-  // Semanal — só na segunda-feira. Vale pros dois grupos (mesma regra já
-  // usada em getVipBonus, que não distingue grupo pro semanal/mensal).
-  if (d.getDay() === 1) {
-    total += Number(cfg.weekly) || 0;
-  }
+  // Semanal — só na segunda-feira, com o nível da segunda.
+  if (d.getDay() === 1) out.vipWeekly = cfg.weekly;
 
-  // Mensal — só no dia 1.
-  if (d.getDate() === 1) {
-    total += Number(cfg.monthly) || 0;
-  }
+  // Mensal — só no dia 1, com o nível vigente no dia 1.
+  if (d.getDate() === 1) out.vipMonthly = cfg.monthly;
 
-  // Obrigado — dia fixo do mês (1-31), independente de ciclo/reset
-  // (mesma regra de ui-vip-panel.js: obrigadoDays nunca é filtrado por
-  // cycleEnded).
+  // Obrigado — dia fixo do mês, independente de ciclo/reset.
   const obrigadoValue = Number(ctx.obrigadoValuePerAppearance) || 0;
   if (obrigadoValue > 0 && (platform.obrigadoDays || []).includes(d.getDate())) {
-    total += obrigadoValue;
+    out.obrigado = obrigadoValue;
   }
+
+  // Misterioso — só em data de emissão do ciclo ATUAL, ciclo não encerrado.
+  if (ctx.misteriosoTemplate && !platform.cycleEnded) {
+    const isEmissionDay = computeEmissionDates(platform, d).some(emDate =>
+      startOfDay(emDate).getTime() === d.getTime()
+    );
+    if (isEmissionDay) {
+      out.misterioso = getEffectiveMisteriosoValue(platform, toLocalDateKey(d), ctx.misteriosoTemplate) || 0;
+    }
+  }
+
+  return out;
+}
+
+// Total esperado do dia — soma do detalhamento, na mesma ordem de sempre.
+export function getExpectedBonusForDate(platform, date, ctx = {}) {
+  const b = getExpectedBonusBreakdownForDate(platform, date, ctx);
+  let total = 0;
+  total += b.vipDaily;
+  total += b.vipWeekly;
+  total += b.vipMonthly;
+  total += b.obrigado;
+  total += b.misterioso;
+  return total;
+}
 
   // Misterioso — só se `d` é uma data de emissão do ciclo ATUAL e o
   // ciclo não está encerrado (mesma trava já usada em
