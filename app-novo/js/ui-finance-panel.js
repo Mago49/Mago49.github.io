@@ -80,7 +80,7 @@ import {
   computePhaseHistory, startNewPhase, removeLastPhase
 } from './finance-logic.js';
 import {
-  getExpectedBonusToday, computeBonusDiffToday,
+  getExpectedBonusToday, computeBonusDiffToday, getAlreadyLoggedToday,
   getAccumulatedBonusThisWeek, computeAutoAccruedBonusForWeek
 } from './bonus-ledger-logic.js';
 import { getCachedPreferences, saveManualOrder, saveBadgeVisibility } from './user-preferences-store.js';
@@ -1071,7 +1071,27 @@ function buildDailyBonusSection(p, ctx) {
     }
 
     const expected = getExpectedBonusToday(p, new Date(), ctx);
-    const diff = computeBonusDiffToday(p, valorDigitado, new Date(), ctx);
+    const alreadyLogged = getAlreadyLoggedToday(p, new Date());
+    // A0: arredonda em centavos pra nunca deixar sobra de ponto flutuante
+    // (ex: -0.0000001) passar como positivo/negativo por engano.
+    const diff = Math.round(computeBonusDiffToday(p, valorDigitado, new Date(), ctx) * 100) / 100;
+
+    // A0: avulso = valor digitado − esperado do dia (− o que já foi
+    // lançado hoje). Nunca pode ser negativo; zero também não gera
+    // lançamento (nada a registrar, nem no Rollover).
+    if (diff < 0) {
+      await showAppAlert(
+        `Valor menor que o esperado hoje. O sistema já conta ${formatCurrency(expected)} pela fórmula` +
+        (alreadyLogged > 0 ? ` e ${formatCurrency(alreadyLogged)} já lançados hoje` : '') +
+        `. Digite o TOTAL recebido hoje, que precisa ser maior que isso.`
+      );
+      return;
+    }
+    if (diff === 0) {
+      await showAppAlert('Esse valor é igual ao que o sistema já conta hoje. Não há nada a lançar.');
+      return;
+    }
+
     const rolloverValue = diff * currentScale;
 
     const ok = await showAppConfirm(
