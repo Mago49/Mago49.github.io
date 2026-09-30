@@ -37,6 +37,59 @@ function toLocalDayKey(dateInput) {
   return `${y}-${m}-${dd}`;
 }
 
+// === A0 — NÍVEL/GRUPO COM VIGÊNCIA ===
+// levelHistory: [{ date:'AAAA-MM-DD', level, group }], em ordem crescente.
+// Cada entrada vale a partir das 00:00 do dia dela. Sem histórico, vale
+// p.level/p.group (plataformas antigas nada reescrevem).
+export function getLevelAt(platform, refDate = new Date()) {
+  const hist = platform.levelHistory;
+  if (!Array.isArray(hist) || hist.length === 0) {
+    return { level: platform.level ?? null, group: platform.group ?? null };
+  }
+  const key = toLocalDayKey(refDate);
+  let found = hist[0];
+  for (const entry of hist) {
+    if (entry.date <= key) found = entry; else break;
+  }
+  return { level: found.level ?? null, group: found.group ?? null };
+}
+
+// Config VIP (valores unitários) + grupo vigentes num dia específico.
+export function getVipConfigAt(platform, refDate = new Date()) {
+  const { level, group } = getLevelAt(platform, refDate);
+  const raw = vipBonusTable[group]?.[level] || { daily: 0, weekly: 0, monthly: 0 };
+  return {
+    level, group,
+    cfg: {
+      daily: Number(raw.daily) || 0,
+      weekly: Number(raw.weekly) || 0,
+      monthly: Number(raw.monthly) || 0
+    }
+  };
+}
+
+// Registra a troca de nível/grupo. CHAMAR ANTES de atribuir p.level/p.group.
+// Devolve true se houve mudança. Primeira mudança empilha antes a entrada-base
+// (valor antigo, data 1970) pra não perder o passado. Duas trocas no mesmo
+// dia substituem a entrada do dia.
+export function recordLevelChange(platform, newLevel, newGroup, refDate = new Date()) {
+  const oldLevel = platform.level ?? null;
+  const oldGroup = platform.group ?? null;
+  const nl = newLevel ?? null;
+  const ng = newGroup ?? null;
+  if (oldLevel === nl && oldGroup === ng) return false;
+
+  if (!Array.isArray(platform.levelHistory)) platform.levelHistory = [];
+  const hist = platform.levelHistory;
+  if (hist.length === 0) hist.push({ date: '1970-01-01', level: oldLevel, group: oldGroup });
+
+  const key = toLocalDayKey(refDate);
+  const last = hist[hist.length - 1];
+  if (last.date === key) { last.level = nl; last.group = ng; }
+  else hist.push({ date: key, level: nl, group: ng });
+  return true;
+}
+
 // Todos os dias, dentro de [start, end], em que "Apostei hoje" está
 // EFETIVAMENTE liberado pra essa plataforma: manual (platform.betDays) OU
 // automático (soma de betEntries.wagered daquele dia >= mínimo do nível).
@@ -53,7 +106,24 @@ export function getEffectiveBetDayKeys(platform, start, end) {
     })
     .map(dateStr => dateStr.slice(0, 10));
 
-  if (platform.group !== 'com') return new Set(manualKeys);
+  // A0: grupo e mínimo vêm do nível/grupo VIGENTES em cada dia.
+  const wageredByDay = {};
+  (platform.betEntries || []).forEach(e => {
+    const d = new Date(e.date);
+    if (d < start || d > end) return;
+    const key = toLocalDayKey(e.date);
+    wageredByDay[key] = (wageredByDay[key] || 0) + (Number(e.wagered) || 0);
+  });
+
+  const autoKeys = [];
+  Object.keys(wageredByDay).forEach(key => {
+    const { level, group } = getLevelAt(platform, new Date(`${key}T00:00:00`));
+    if (group !== 'com') return;
+    const minimo = BET_MINIMUM_BY_LEVEL[level] || 0;
+    if (minimo > 0 && wageredByDay[key] >= minimo) autoKeys.push(key);
+  });
+
+  return new Set([...manualKeys, ...autoKeys]);
 
   const minimo = BET_MINIMUM_BY_LEVEL[platform.level] || 0;
   const autoKeys = [];
@@ -242,41 +312,33 @@ export function getVipBonus(platform, refDate = new Date()) {
   const hoje = new Date(refDate);
   hoje.setHours(23, 59, 59, 999);
 
-  const cfg = vipBonusTable[platform.group]?.[platform.level] || {
-    daily: 0,
-    weekly: 0,
-    monthly: 0
-  };
-
-  const daily = Number(cfg.daily) || 0;
-  const weekly = Number(cfg.weekly) || 0;
-  const monthly = Number(cfg.monthly) || 0;
-
   const ano = hoje.getFullYear();
   const mes = hoje.getMonth();
   const diasNoMes = new Date(ano, mes + 1, 0).getDate();
 
-  let segundasNoMes = 0;
+  // "Apostei hoje" conta sempre a partir do dia 1 do mês (getMonthStart),
+  // independente de Reinício — regra inalterada.
+  const betKeys = getEffectiveBetDayKeys(platform, getMonthStart(hoje), hoje);
+
+  // A0: soma dia a dia, cada dia com o nível/grupo vigentes NAQUELE dia.
+  // Sem aposta: diário todo dia do mês (projeção, como sempre).
+  // Com aposta: diário só nos dias liberados, até hoje.
+  // Semanal: nas segundas, com o nível da segunda.
+  let dailyTotal = 0;
+  let weeklyTotal = 0;
   for (let d = 1; d <= diasNoMes; d++) {
-    if (new Date(ano, mes, d).getDay() === 1) {
-      segundasNoMes++;
+    const day = new Date(ano, mes, d);
+    const { group, cfg } = getVipConfigAt(platform, day);
+    if (group === 'sem') {
+      dailyTotal += cfg.daily;
+    } else if (group === 'com' && day <= hoje && betKeys.has(toLocalDayKey(day))) {
+      dailyTotal += cfg.daily;
     }
+    if (day.getDay() === 1) weeklyTotal += cfg.weekly;
   }
 
-  const weeklyTotal = weekly * segundasNoMes;
-  const monthlyTotal = monthly;
-
-  let dailyTotal = daily * diasNoMes;
-
-  // apenas o diário das plataformas "com" depende do botão "Apostei hoje".
-  // Conta SEMPRE a partir do dia 1 do mês (getMonthStart) — não do ciclo
-  // manual (getCycleStart) — porque o bônus diário é mensal por definição
-  // e não pode ser afetado por um Reinício no meio do mês.
-  if (platform.group === 'com') {
-    const start = getMonthStart(hoje);
-    const uniqueBetDays = getEffectiveBetDayKeys(platform, start, hoje);
-    dailyTotal = daily * uniqueBetDays.size;
-  }
+  // Mensal: creditado no dia 1, com o nível vigente no dia 1.
+  const monthlyTotal = getVipConfigAt(platform, new Date(ano, mes, 1)).cfg.monthly;
 
   return {
     daily: dailyTotal,
