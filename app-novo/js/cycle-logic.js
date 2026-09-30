@@ -124,23 +124,6 @@ export function getEffectiveBetDayKeys(platform, start, end) {
   });
 
   return new Set([...manualKeys, ...autoKeys]);
-
-  const minimo = BET_MINIMUM_BY_LEVEL[platform.level] || 0;
-  const autoKeys = [];
-  if (minimo > 0) {
-    const wageredByDay = {};
-    (platform.betEntries || []).forEach(e => {
-      const d = new Date(e.date);
-      if (d < start || d > end) return;
-      const key = toLocalDayKey(e.date);
-      wageredByDay[key] = (wageredByDay[key] || 0) + (Number(e.wagered) || 0);
-    });
-    Object.keys(wageredByDay).forEach(key => {
-      if (wageredByDay[key] >= minimo) autoKeys.push(key);
-    });
-  }
-
-  return new Set([...manualKeys, ...autoKeys]);
 }
 
 // Açúcar sintático — "esse dia específico está liberado?" (usado por
