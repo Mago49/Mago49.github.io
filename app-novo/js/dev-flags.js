@@ -12,4 +12,4 @@
 // Mude para false SÓ quando TODAS as etapas do roteiro estiverem prontas
 // e validadas — aí sim o sistema volta a gravar de verdade. Essa troca é
 // a ÚNICA linha que precisa mudar pra "ligar" o sistema de vez.
-export const SAFE_MODE = true;
+export const SAFE_MODE = false;
