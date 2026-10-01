@@ -454,6 +454,7 @@ export async function mount(container) {
       </div>
       <p class="graficos-note">VIP/Obrigado/Misterioso são a PROJEÇÃO do mês atual (mesma fórmula da aba VIP); Avulso é o valor real já lançado via "Inserir bônus hoje" neste mês.</p>
       <div class="chart-wrap" style="height:280px;"><canvas id="graficoBonusTipo"></canvas></div>
+    </section>
 
       <section class="card-shell graficos-section" aria-label="Ranking de Plataformas" style="margin-top:1.1rem;">
       <div class="section-heading" style="padding:0 0 0.9rem;">
@@ -495,6 +496,7 @@ export async function mount(container) {
       </div>
       <p id="roiBonusEmptyNote" class="graficos-note app-hidden">Nenhuma plataforma com bônus registrado ainda.</p>
       <div class="chart-wrap"><canvas id="graficoRoiBonus"></canvas></div>
+    </section>
 
      <section class="card-shell graficos-section" aria-label="Heatmap Geral" style="margin-top:1.1rem;">
       <div class="section-heading" style="padding:0 0 0.9rem;">

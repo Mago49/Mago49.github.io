@@ -107,7 +107,6 @@ export async function mount(container) {
         <button type="button" id="financeOverviewClearBtn">Limpar filtro</button>
         <button type="button" id="financeOverviewPhaseToggleBtn">🔀 Filtrar por fase</button>
         <button type="button" id="financeOverviewModeBtn">⚡ Ao Vivo</button>
-        <button type="button" id="financeOverviewNewPhaseAllBtn" class="finance-overview-wide">🔒 Iniciar nova fase em todas as plataformas</button>
       </div>
 
       <div id="financeOverviewPhaseWrap" class="app-hidden">
@@ -118,8 +117,6 @@ export async function mount(container) {
 
       <p class="finance-close-week-note" id="financeOverviewNote"></p>
     </section>
-
-    <section class="card-shell finance-panel" aria-label="Financeiro por plataforma">
 
     <section class="card-shell finance-panel" aria-label="Financeiro por plataforma">
       <div class="finance-panel-header">

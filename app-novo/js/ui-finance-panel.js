@@ -84,7 +84,7 @@ import {
   getAccumulatedBonusThisWeek, computeAutoAccruedBonusForWeek
 } from './bonus-ledger-logic.js';
 import { getCachedPreferences, saveManualOrder, saveBadgeVisibility } from './user-preferences-store.js';
-import { savePlatforms, savePlatform } from './platforms-store.js';
+import { savePlatform } from './platforms-store.js';
 import {
   parseFinanceSpreadsheet, formatImportedFieldName, formatImportedNumber
 } from './finance-spreadsheet-import.js';
@@ -384,7 +384,6 @@ export function initFinanceOverview() {
   const fromEl = document.getElementById('financeOverviewFrom');
   const toEl = document.getElementById('financeOverviewTo');
   const clearBtn = document.getElementById('financeOverviewClearBtn');
-  const newPhaseAllBtn = document.getElementById('financeOverviewNewPhaseAllBtn');
   const platformFilterEl = document.getElementById('financeOverviewPlatformFilter');
 
   if (fromEl) fromEl.addEventListener('change', renderFinanceOverview);
@@ -438,43 +437,6 @@ export function initFinanceOverview() {
       overviewMode = OVERVIEW_MODES[(idx + 1) % OVERVIEW_MODES.length].key;
       applyOverviewModeButtonLabel();
       renderFinanceOverview();
-    });
-  }
-
-  if (newPhaseAllBtn) {
-    newPhaseAllBtn.addEventListener('click', async () => {
-      const count = state.platforms.length;
-      // Etapa 7: fase só pode começar numa segunda-feira. Pra "todas de
-      // uma vez" (que não tem como pedir Saldo/Rollover Inicial
-      // individual de cada plataforma), usamos sempre a segunda-feira
-      // da semana atual — nunca "agora" cru, que quase nunca cai numa
-      // segunda.
-      const mondayThisWeek = getWeekStart(new Date());
-      const mondayLabel = mondayThisWeek.toLocaleDateString('pt-BR');
-      const ok = await showAppConfirm(
-        `Iniciar uma nova fase pra todas as ${count} plataformas, a partir de segunda-feira ` +
-        `(${mondayLabel} — toda fase nova precisa começar numa segunda-feira, pra nunca dividir ` +
-        `uma semana entre duas fases), com Saldo Inicial e Rollover Inicial R$ 0,00 pra todas? ` +
-        `O resultado da fase atual de cada uma continua guardado (visível em "Fases do Saldo" ` +
-        `dentro de cada plataforma). Se cada plataforma tiver um Saldo/Rollover real diferente pra ` +
-        `migrar, prefira abrir a fase individualmente em cada uma.`
-      );
-      if (!ok) return;
-
-      let failedCount = 0;
-      state.platforms.forEach(p => {
-        const result = startNewPhase(p, mondayThisWeek, 0, 0);
-        if (!result.ok) failedCount += 1; // não deveria acontecer (mondayThisWeek é sempre segunda)
-      });
-      if (failedCount > 0) {
-        await showAppAlert(`${failedCount} plataforma(s) não puderam abrir a fase (erro inesperado de data). Tente abrir individualmente nelas.`);
-      }
-      // Ação em massa DE VERDADE — savePlatforms (plural) é o correto
-      // só aqui, igual já era no Sistema 1.
-      savePlatforms(state.currentUid, state.platforms);
-      refreshAllRows();
-      rebuildPhaseSelectOptions();
-      renderFinanceList();
     });
   }
 }

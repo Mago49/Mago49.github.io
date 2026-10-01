@@ -4,42 +4,6 @@
 
 import { db, collection, doc, getDoc, getDocs, deleteDoc, writeBatch } from './firebase-init.js';
 
-export const PLATFORM_NAMES = [
-  'A73', 'DDUU', 'EE44', 'FXX', 'HHH5', 'NNZZ', 'PP11', '1UUU', '11TT', '35C',
-  '36Q', '44MM', '45T', '5TTT', '53D', '552X', '551X', '61T', '63V', '66GG',
-  '68D', '7GGG', '7JJJ', '72B', '79C', '83H', '838X', '84D', '877X', '899V',
-  '93D', '93K', '988K'
-];
-
-export const DEFAULT_PLATFORMS = Array.from({ length: 33 }, (_, i) => ({
-  id: 'p' + (i + 1),
-  name: PLATFORM_NAMES[i],
-  lastResetDate: null,
-  deposits: [],
-  betDays: [],
-  cycleEnded: false,
-  level: null,
-  group: null,
-  withdrawals: [],
-  betEntries: [],
-  financeWeeks: [],
-  depositLog: [],
-  balancePhases: [],
-  obrigadoDays: [],
-  misteriosoBonusLog: [],
-  // Etapa 7 (Bloco F Item 16.1 / Bloco P) — log permanente de bônus
-  // avulso ("Inserir bônus hoje"), nunca apagado por Fim/Reinício, mesma
-  // regra de depositLog/betEntries/misteriosoBonusLog. Cada entrada:
-  // { date, rawValue, scale, rolloverValue, createdAt } — ver
-  // bonus-ledger-logic.js/finance-logic.js.
-  otherBonusLog: [],
-  // A0 — vigência de nível/grupo: [{ date:'AAAA-MM-DD', level, group }]
-  levelHistory: [],
-  codigoConfig: { tipo: null, fixo: '', baseDate: null, variavelInicio: 0 },
-  codigoDeposito: { fixo: '', baseDate: null, variavelInicio: 0, valorMinimo: 0 },
-  codigoAposta: { fixo: '', baseDate: null, variavelInicio: 0, valorMinimo: 0 }
-}));
-
 // depositLog: histórico PERMANENTE de depósitos, usado só pelo Financeiro
 // (Página 5). Diferente de `deposits` (que Fim/Reinício do ciclo VIP zeram
 // de propósito, ver ui-platform-manage.js), depositLog nunca é apagado —
@@ -66,8 +30,10 @@ export function normalizePlatformData(parsed) {
     const depositLog = Array.isArray(p.depositLog) ? p.depositLog : deposits.slice();
 
     return {
-      id: p.id || ('p' + (i + 1)),
-      name: p.name || PLATFORM_NAMES[i] || ('P' + (i + 1)),
+      // id vem SEMPRE de d.id (injetado em loadPlatformsFromFirestore) —
+      // o campo `id` dentro do documento nunca é a fonte de verdade.
+      id: p.id,
+      name: p.name || ('P' + (i + 1)),
       lastResetDate: p.lastResetDate || null,
       deposits,
       betDays: Array.isArray(p.betDays) ? p.betDays : [],
@@ -99,41 +65,41 @@ export function normalizePlatformData(parsed) {
 // Referência do doc-sentinela: a ÚNICA prova de que "esta conta já foi
 // inicializada alguma vez". Vive FORA da coleção `platforms` de propósito
 // (users/{uid}/meta/initialized) — assim nunca é tocado por engano por
-// nenhuma ação que mexe em plataformas (savePlatform, savePlatforms,
+// nenhuma ação que mexe em plataformas (savePlatform,
 // deletePlatformDoc). Uma vez gravado, nunca mais é escrito de novo.
 function getInitializedSentinelRef(uid) {
   return doc(db, 'users', uid, 'meta', 'initialized');
 }
 
 // CORREÇÃO CRÍTICA (bug real, já causou perda de dados mais de uma vez):
-// antes, uma leitura vazia da coleção `platforms` (snap.empty === true)
-// era tratada como sinônimo de "conta nova" e disparava a criação dos 33
-// documentos padrão — SOBRESCREVENDO os 33 documentos existentes, já que
-// os ids (p1...p33) são sempre os mesmos. O problema: `snap.empty` não
-// distingue "conta realmente nova" de "a leitura falhou/veio incompleta
-// por instabilidade de rede" — o SDK do Firestore pode devolver uma
-// snapshot vazia sem lançar nenhuma exceção nesse cenário. Resultado:
-// perda total e silenciosa de nível VIP, depósitos, saques, semanas
-// fechadas e fases — sem nenhum erro visível avisando que algo deu
-// errado.
+// uma leitura vazia da coleção `platforms` (snap.empty === true) NUNCA
+// pode ser tratada como sinônimo de "conta nova" com escrita de dados
+// padrão — `snap.empty` não distingue "conta realmente nova" de "a
+// leitura falhou/veio incompleta por instabilidade de rede" (o SDK pode
+// devolver snapshot vazia sem lançar exceção).
 //
-// SOLUÇÃO — doc-sentinela: `users/{uid}/meta/initialized` é gravado UMA
-// única vez, no mesmo batch atômico que cria as 33 plataformas padrão, e
-// nunca mais é tocado depois disso. Ele vira a fonte de verdade sobre
-// "essa conta já existiu antes", independente do que a leitura da
-// coleção `platforms` disser num instante específico:
-//   - coleção vazia + sentinela NÃO existe -> conta genuinamente nova,
-//     cria os 33 documentos padrão (comportamento de sempre).
-//   - coleção vazia + sentinela EXISTE -> leitura anômala (rede/cache),
-//     NUNCA escreve nada — lança um erro com code 'EMPTY_READ_ANOMALY'
-//     pra quem chamou decidir o que fazer (ver auth-guard.js, que trata
-//     esse erro de forma diferente de um erro de conexão comum: mostra
-//     um aviso específico e NÃO deixa a página seguir com dados vazios).
+// DOC-SENTINELA: `users/{uid}/meta/initialized` é a prova de que "esta
+// conta já existiu antes". Vive FORA da coleção `platforms`.
+//   - coleção com dados + sentinela existe   -> leitura normal.
+//   - coleção com dados + sentinela AUSENTE  -> AUTOCURA: cria SÓ o
+//     sentinela (nunca toca em plataformas). Best-effort: falha aqui
+//     nunca impede o carregamento (só log).
+//   - coleção vazia + sentinela NÃO existe   -> conta nova de verdade:
+//     grava SÓ o sentinela e devolve lista vazia (conta abre vazia —
+//     não existe mais conjunto padrão de plataformas).
+//   - coleção vazia + sentinela EXISTE       -> leitura anômala: NUNCA
+//     escreve nada, lança 'EMPTY_READ_ANOMALY' (ver auth-guard.js).
+// Antes de considerar a leitura vazia, tenta uma segunda vez (pequena
+// espera) pra absorver soluços passageiros de conexão.
 //
-// Antes de sequer cogitar a leitura como "vazia de verdade", tenta ler a
-// coleção uma segunda vez (com uma pequena espera) — absorve soluços
-// passageiros de conexão sem gerar alarme falso nem, no outro extremo,
-// arriscar apagar dados por causa de uma falha momentânea.
+// Toda escrita aqui passa pelo writeBatch de firebase-init.js, então
+// SAFE_MODE continua bloqueando automaticamente.
+function writeSentinelOnly(uid) {
+  const batch = writeBatch(db);
+  batch.set(getInitializedSentinelRef(uid), { createdAt: new Date().toISOString() });
+  return batch.commit();
+}
+
 export async function loadPlatformsFromFirestore(uid) {
   const colRef = collection(db, 'users', uid, 'platforms');
   let snap = await getDocs(colRef);
@@ -143,46 +109,32 @@ export async function loadPlatformsFromFirestore(uid) {
     snap = await getDocs(colRef);
   }
 
+  const sentinelRef = getInitializedSentinelRef(uid);
+
   if (!snap.empty) {
-    return normalizePlatformData(snap.docs.map(d => d.data())) || [];
+    // Autocura (somente criação): há plataformas mas o sentinela falta.
+    // Fire-and-forget — NÃO bloqueia o carregamento (o resultado não
+    // influencia o retorno). Falha só é logada. Escrita passa pelo
+    // writeBatch de firebase-init.js, então SAFE_MODE bloqueia.
+    getDoc(sentinelRef)
+      .then(s => (s.exists() ? null : writeSentinelOnly(uid)))
+      .catch(err => console.error('Sentinela: verificação/criação falhou (dados carregados normalmente):', err));
+    // id SEMPRE de d.id, sobrepondo qualquer `id` salvo dentro do doc.
+    return normalizePlatformData(snap.docs.map(d => ({ ...d.data(), id: d.id }))) || [];
   }
 
-  const sentinelRef = getInitializedSentinelRef(uid);
   const sentinelSnap = await getDoc(sentinelRef);
 
   if (sentinelSnap.exists()) {
-    // Conta já foi inicializada antes (sentinela existe), mas a coleção
-    // de plataformas veio vazia mesmo após a segunda tentativa — isso
-    // nunca deveria acontecer numa leitura saudável. Recusa escrever
-    // qualquer coisa e devolve o erro pra camada de auth decidir a UI.
     const err = new Error('Leitura vazia anômala: a conta já tem plataformas cadastradas, mas a coleção veio vazia nesta leitura. Nenhum dado foi apagado ou sobrescrito.');
     err.code = 'EMPTY_READ_ANOMALY';
     throw err;
   }
 
-  // Sentinela não existe: primeira inicialização de verdade desta conta.
-  const initial = DEFAULT_PLATFORMS.slice();
-  const batch = writeBatch(db);
-  initial.forEach(p => batch.set(doc(colRef, p.id), p));
-  batch.set(sentinelRef, { createdAt: new Date().toISOString() });
-  await batch.commit();
-  return initial;
-}
-
-// Salva TODAS as plataformas de uma vez — reescreve os 33 documentos.
-// USAR SÓ pra ações em massa de verdade (ex: "Iniciar nova fase em todas
-// as plataformas" no Painel Geral do Financeiro). Chamar isso a partir de
-// uma aba com dados desatualizados em memória sobrescreve no Firestore
-// qualquer alteração feita por OUTRA aba nesse meio tempo — foi essa a
-// causa da perda de dados de nível VIP/depósitos quando várias páginas
-// ficam abertas ao mesmo tempo. Pra qualquer ação que mexe em UMA única
-// plataforma (a grande maioria dos botões do app), usar savePlatform.
-export function savePlatforms(uid, list) {
-  if (!uid) return;
-  const colRef = collection(db, 'users', uid, 'platforms');
-  const batch = writeBatch(db);
-  list.forEach(p => batch.set(doc(colRef, p.id), p));
-  batch.commit().catch(err => console.error('Erro ao salvar no Firebase:', err));
+  // Sentinela não existe: primeira inicialização de verdade. Conta abre
+  // vazia — grava só o sentinela.
+  await writeSentinelOnly(uid);
+  return [];
 }
 
 // Salva UMA única plataforma (não reescreve as outras 32). Usar sempre

@@ -32,6 +32,12 @@ import { getEffectiveMisteriosoValue } from './misterioso-logic.js';
 // muito antigas que nunca tiveram este recurso.
 const MAX_BACKFILL_MONTHS = 12;
 
+// Primeiro mês que o fechamento automático pode gravar. Meses anteriores
+// NÃO são fechados: o cálculo de um mês antigo usa a configuração ATUAL
+// (valor por aparição do Obrigado, ciclo vigente do Misterioso) e sairia
+// impreciso — um retrato fixo errado e permanente é pior que nenhum.
+const HISTORY_FIRST_MONTH = '2026-10';
+
 function getHistoryCollection(uid) {
   return collection(db, 'users', uid, 'vipHistory');
 }
@@ -181,6 +187,10 @@ export async function checkAndCloseMonthlyHistory(uid, platforms, templates, obr
 
     // Nunca fecha o mês corrente nem qualquer mês futuro — só passados.
     if (candidateYearMonth >= currentYearMonth) continue;
+
+    // O cursor só anda para trás: qualquer mês daqui em diante também é
+    // anterior ao primeiro mês permitido — por isso break, não continue.
+    if (candidateYearMonth < HISTORY_FIRST_MONTH) break;
 
     const existing = await loadHistoryMonth(uid, candidateYearMonth);
     if (existing) continue; // já fechado — segue procurando mais pra trás só se necessário

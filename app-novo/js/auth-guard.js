@@ -112,8 +112,12 @@ export function initAuth({ onLogin, onLogout }) {
           }
 
           console.error('Erro ao carregar dados do Firebase:', err);
-          await showAppAlert('Não foi possível carregar seus dados. Verifique sua internet e tente novamente.');
-          state.platforms = [];
+          // Qualquer outro erro de leitura: NUNCA abrir o app com lista
+          // vazia (risco de ação salvar vazio por cima de dados reais).
+          // Mesmo tratamento da anomalia: fica no carregamento.
+          await showAppAlert('Não foi possível carregar seus dados. Verifique sua internet e recarregue a página antes de continuar.');
+          showLoading();
+          return;
         }
 
         showApp();
