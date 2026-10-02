@@ -559,8 +559,9 @@ export function deleteClosedWeek(platform, weekStart) {
   const entry = list[index];
 
   if (entry.backfilled) {
-    const eventDate = new Date(weekStart);
-    eventDate.setHours(12, 0, 0, 0);
+    // CORRIGIDO: mesmo instante gravado em addHistoricalWeek (segunda 12:00
+    // LOCAL). new Date('AAAA-MM-DD') seria UTC e cairia no domingo.
+    const eventDate = new Date(`${weekStart}T12:00:00`);
     const eventDateStr = eventDate.toISOString();
 
     if (platform.depositLog) {

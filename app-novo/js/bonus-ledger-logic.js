@@ -152,7 +152,7 @@ export function getExpectedBonusToday(platform, refDate = new Date(), ctx = {}) 
 export function getAlreadyLoggedToday(platform, refDate = new Date()) {
   const key = toLocalDateKey(refDate);
   return (platform.otherBonusLog || [])
-    .filter(e => e.date && e.date.slice(0, 10) === key)
+    .filter(e => e.date && toLocalDateKey(e.date) === key)
     .reduce((sum, e) => sum + (Number(e.rawValue) || 0), 0);
 }
 

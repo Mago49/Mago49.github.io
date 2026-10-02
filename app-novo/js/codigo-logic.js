@@ -49,7 +49,7 @@ function daysSinceBase(baseDate, refDate = new Date()) {
   if (!baseDate) return 0;
   const base = startOfDay(baseDate);
   const today = startOfDay(refDate);
-  const diff = Math.floor((today - base) / (1000 * 60 * 60 * 24));
+  const diff = Math.round((today - base) / (1000 * 60 * 60 * 24));
   return diff > 0 ? diff : 0;
 }
 

@@ -8,6 +8,15 @@
 import { state } from './state.js';
 import { computeEmissionDates, sumDepositsUpTo, colorForLevel } from './cycle-logic.js';
 
+// Chave de dia LOCAL (AAAA-MM-DD). toISOString() converte pra UTC e
+// desloca o dia em alguns fusos.
+function toLocalDayKey(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 // Cria a instância do FullCalendar e guarda em state.calendar.
 // Chamar uma única vez, depois que #calendar já existe no DOM.
 export function createCalendar() {
@@ -109,9 +118,9 @@ export function updateCalendarEvents(onDone) {
         const isDay30 = emIndex === emissionDates.length - 1; // último item = bônus do dia 30
 
         state.calendar.addEvent({
-          id: `emit_${platform.id}_${emDate.toISOString().slice(0, 10)}`,
+          id: `emit_${platform.id}_${toLocalDayKey(emDate)}`,
           title: platform.name,
-          start: emDate.toISOString().slice(0, 10),
+          start: toLocalDayKey(emDate),
           allDay: true,
           display: 'block',
           backgroundColor: bg,

@@ -129,8 +129,13 @@ export function getEffectiveBetDayKeys(platform, start, end) {
 // Açúcar sintático — "esse dia específico está liberado?" (usado por
 // bonus-ledger-logic.js). dateKey: 'AAAA-MM-DD' local.
 export function isBetDayEffective(platform, dateKey) {
-  const d = new Date(`${dateKey}T00:00:00`);
-  return getEffectiveBetDayKeys(platform, d, d).has(dateKey);
+  // CORRIGIDO: a janela cobre o DIA INTEIRO (00:00 -> 23:59:59.999).
+  // Antes start=end=meia-noite, e qualquer aposta feita depois das 00:00
+  // caia em `d > end` e era descartada (Saldo/Rollover/Historico divergiam
+  // da aba VIP).
+  const start = new Date(`${dateKey}T00:00:00`);
+  const end = new Date(`${dateKey}T23:59:59.999`);
+  return getEffectiveBetDayKeys(platform, start, end).has(dateKey);
 }
 
 export function getCycleStart(platform, refDate = new Date()) {
@@ -157,7 +162,7 @@ export function getCurrentCycleDay(platform, refDate = new Date()) {
   const today = new Date(refDate);
   today.setHours(0, 0, 0, 0);
 
-  const daysSinceCycleStart = Math.floor((today - cycleStart) / (1000 * 60 * 60 * 24));
+  const daysSinceCycleStart = Math.round((today - cycleStart) / (1000 * 60 * 60 * 24));
 
   if (daysSinceCycleStart < 0) return 0;
   return daysSinceCycleStart + 1;
@@ -193,7 +198,7 @@ export function getDaysSinceLastDeposit(platform, refDate = new Date()) {
   const today = new Date(refDate);
   today.setHours(0, 0, 0, 0);
 
-  const daysSince = Math.floor((today - start) / (1000 * 60 * 60 * 24));
+  const daysSince = Math.round((today - start) / (1000 * 60 * 60 * 24));
   return daysSince + 1;
 }
 
@@ -233,7 +238,7 @@ export const LEVEL_INFO = [
   { min: 150,  label: '150–299' },
   { min: 300,  label: '300–599' },
   { min: 600,  label: '600–999' },
-  { min: 1000, label: '1.000–1.099' },
+  { min: 1000, label: '1.000–1.999' },
   { min: 2000, label: '2.000–5.000' }
 ];
 

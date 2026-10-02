@@ -1182,46 +1182,94 @@ function showBetModal(platform) {
   betModal.style.display = 'flex';
 }
 
+// Chave de dia LOCAL (AAAA-MM-DD) — nunca toISOString (desloca o dia).
+function localDayKey(date) {
+  const d = new Date(date);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Item 15: a lista mostra TODOS os dias efetivos do mês (os mesmos que o
+// badge "🎲 X dia(s)" e o Bônus VIP usam): manuais (betDays, removíveis) e
+// automáticos (valor apostado do dia >= mínimo do nível, só leitura).
+// Automático = getEffectiveBetDayKeys com betDays vazio (mesma fonte única,
+// nenhuma regra duplicada aqui).
 function renderBetList() {
   betList.innerHTML = '';
   if (!currentBetPlatform) return;
+  const p = currentBetPlatform;
 
-  // Mesma regra de buildBetSection: mês atual (getMonthStart), não ciclo.
-  const monthStart = getMonthStart(new Date());
-  const days = (currentBetPlatform.betDays || [])
-    .filter(d => new Date(`${d.slice(0, 10)}T00:00:00`) >= monthStart)
-    .map(d => d.slice(0, 10))
-    .filter((v, i, arr) => arr.indexOf(v) === i)
-    .sort((a, b) => b.localeCompare(a));
+  const now = new Date();
+  const todayKey = localDayKey(now);
+  const monthStart = getMonthStart(now);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
-  if (days.length === 0) {
-    betList.innerHTML = '<div class="bet-empty">Nenhuma aposta registrada neste mês.</div>';
+  const manualKeys = new Set(
+    (p.betDays || [])
+      .map(d => d.slice(0, 10))
+      .filter(k => {
+        const dt = new Date(`${k}T00:00:00`);
+        return dt >= monthStart && dt <= monthEnd;
+      })
+  );
+  const autoKeys = getEffectiveBetDayKeys({ ...p, betDays: [] }, monthStart, now);
+
+  const wageredByDay = {};
+  (p.betEntries || []).forEach(e => {
+    const k = localDayKey(e.date);
+    wageredByDay[k] = (wageredByDay[k] || 0) + (Number(e.wagered) || 0);
+  });
+
+  const allKeys = [...new Set([...manualKeys, ...autoKeys])].sort((a, b) => b.localeCompare(a));
+
+  if (allKeys.length === 0) {
+    betList.innerHTML = '<div class="bet-empty">Nenhum dia de aposta neste mês.</div>';
     return;
   }
 
-  days.forEach(dateStr => {
+  const counting = allKeys.filter(k => k <= todayKey).length;
+  const summary = document.createElement('div');
+  summary.className = 'bet-empty';
+  summary.textContent = `${counting} dia(s) contando no mês (igual ao badge).`;
+  betList.appendChild(summary);
+
+  allKeys.forEach(dateStr => {
     const [y, m, d] = dateStr.split('-');
+    const isManual = manualKeys.has(dateStr);
+    const isAuto = autoKeys.has(dateStr);
+    const isFuture = dateStr > todayKey;
+
     const item = document.createElement('div');
     item.className = 'bet-list-item';
 
     const label = document.createElement('span');
     label.textContent = `${d}/${m}/${y}`;
-
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'bet-list-remove';
-    removeBtn.textContent = 'Remover';
-    removeBtn.addEventListener('click', () => {
-      currentBetPlatform.betDays = (currentBetPlatform.betDays || [])
-        .filter(dd => dd.slice(0, 10) !== dateStr);
-      savePlatform(state.currentUid, currentBetPlatform);
-      renderBetList();
-      openRowId = currentBetPlatform.id;
-      // Não afeta filtro/ordenação — só o conteúdo da linha muda.
-      refreshRow(currentBetPlatform.id);
-    });
-
     item.appendChild(label);
-    item.appendChild(removeBtn);
+
+    const tag = document.createElement('span');
+    tag.style.cssText = 'font-size:0.75rem; font-weight:600; color:#64748b; flex:1; text-align:right;';
+    const parts = [];
+    if (isManual) parts.push('manual');
+    if (isAuto) parts.push(`auto · apostado ${formatCurrency(wageredByDay[dateStr] || 0)}`);
+    if (isFuture) parts.push('futuro — ainda não conta');
+    tag.textContent = parts.join(' + ');
+    item.appendChild(tag);
+
+    if (isManual) {
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'bet-list-remove';
+      removeBtn.textContent = 'Remover';
+      removeBtn.addEventListener('click', () => {
+        currentBetPlatform.betDays = (currentBetPlatform.betDays || [])
+          .filter(dd => dd.slice(0, 10) !== dateStr);
+        savePlatform(state.currentUid, currentBetPlatform);
+        renderBetList();
+        openRowId = currentBetPlatform.id;
+        // Não afeta filtro/ordenação — só o conteúdo da linha muda.
+        refreshRow(currentBetPlatform.id);
+      });
+      item.appendChild(removeBtn);
+    }
+
     betList.appendChild(item);
   });
 }
@@ -1490,6 +1538,18 @@ export function initModalListeners() {
     const already = currentBetPlatform.betDays.some(d => d.slice(0, 10) === dateStr);
     if (already) {
       await showAppAlert('Este dia já está registrado.');
+      return;
+    }
+
+    // Item 15b: dia que já conta automaticamente (apostado >= mínimo do
+    // nível) não precisa — nem deve — ser gravado como manual.
+    const autoOnly = getEffectiveBetDayKeys(
+      { ...currentBetPlatform, betDays: [] },
+      new Date(`${dateStr}T00:00:00`),
+      new Date(`${dateStr}T23:59:59.999`)
+    );
+    if (autoOnly.has(dateStr)) {
+      await showAppAlert('Este dia já conta automaticamente (valor apostado atingiu o mínimo do nível). Nada foi gravado.');
       return;
     }
 
