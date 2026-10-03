@@ -73,7 +73,7 @@
 // sempre, sem Rollover Inicial nem bonusRollover. Ele não abre fase
 // nenhuma, só insere uma semana fechada dentro da fase já aberta.
 
-import { computeAutoAccruedBonusForWeek, getAccumulatedBonusThisWeek } from './bonus-ledger-logic.js';
+import { computeAutoAccruedBonusForWeek, getAccumulatedBonusThisWeek, getExpectedBonusForDate } from './bonus-ledger-logic.js';
 
 // Função auxiliar para formatar a data como YYYY-MM-DD mantendo o fuso horário local
 export function toLocalDateString(date) {
@@ -199,13 +199,28 @@ function getCurrentPhaseInitialRollover(platform) {
 // Retorna { ok: false, reason: 'not-monday' } em caso de recusa, ou
 // { ok: true, entry } em caso de sucesso — mesmo formato já usado por
 // addHistoricalWeek(), pra manter o padrão de retorno do arquivo.
-export function startNewPhase(platform, date = new Date(), initialBalance = 0, initialRollover = 0) {
+export function startNewPhase(platform, date = new Date(), initialBalance = 0, initialRollover = 0, refDate = new Date()) {
   const chosenDate = new Date(date);
   if (chosenDate.getDay() !== 1) {
     return { ok: false, reason: 'not-monday' };
   }
 
+  // SUB-ENTREGA 2 (item 6): fases PASSADAS podem ser inseridas (migração
+  // de planilha antiga), então NÃO exige mais "data > última fase". Recusa
+  // só data FUTURA e data REPETIDA. A fase entra na ORDEM CRONOLÓGICA —
+  // computePhaseHistory/getCurrentPhaseStartDate assumem fronteiras em
+  // ordem crescente (a última do array é sempre a fase atual).
+  const chosenKey = toLocalDateString(chosenDate);
+  if (chosenKey > toLocalDateString(refDate)) {
+    return { ok: false, reason: 'future' };
+  }
+
   if (!platform.balancePhases) platform.balancePhases = [];
+  const duplicate = platform.balancePhases.some(ph => toLocalDateString(new Date(ph.date)) === chosenKey);
+  if (duplicate) {
+    return { ok: false, reason: 'duplicate' };
+  }
+
   const safeInitialBalance = Math.max(0, Number(initialBalance) || 0);
   const safeInitialRollover = Math.max(0, Number(initialRollover) || 0);
   const entry = {
@@ -215,7 +230,21 @@ export function startNewPhase(platform, date = new Date(), initialBalance = 0, i
     initialRollover: safeInitialRollover
   };
   platform.balancePhases.push(entry);
+  platform.balancePhases.sort((a, b) => new Date(a.date) - new Date(b.date));
   return { ok: true, entry };
+}
+
+// Remove a fase de número `phaseNumber` (>= 2; a Fase 1 não tem fronteira
+// pra remover). Fase N corresponde à fronteira balancePhases[N - 2] — a
+// fase removida se junta de volta com a anterior e o Saldo/Rollover
+// Inicial dela é descartado. NENHUM lançamento (depósito, saque, aposta,
+// semana fechada) é apagado: só a fronteira. A fase seguinte mantém os
+// próprios valores iniciais. Retorna a fronteira removida, ou null.
+export function removePhaseByNumber(platform, phaseNumber) {
+  const phases = platform.balancePhases || [];
+  const idx = Number(phaseNumber) - 2;
+  if (!Number.isInteger(idx) || idx < 0 || idx >= phases.length) return null;
+  return phases.splice(idx, 1)[0];
 }
 
 // Remove a última fronteira de fase criada — a fase mais recente se
@@ -541,6 +570,12 @@ export function updateClosedWeek(platform, weekStart, updatedFields) {
   entry.bonus = bonus;
   entry.resultBetting = resultBetting;
   entry.rbPlusBonus = resultBetting + bonus;
+  // Saldo só é editável em semana de BACKFILL (valor digitado pelo
+  // usuário, sem como recalcular). Em semana fechada normal continua fixo
+  // (retrato calculado no fechamento — ver nota acima da função).
+  if (entry.backfilled && updatedFields.balance !== undefined) {
+    entry.balance = Math.max(0, Number(updatedFields.balance) || 0);
+  }
   entry.editedAt = new Date().toISOString();
 
   return entry;
@@ -603,6 +638,11 @@ export function addHistoricalWeek(platform, dateInWeek, fields, refDate = new Da
   const betCount = Number(fields.betCount) || 0;
   const bonus = Number(fields.bonus) || 0;
   const resultBetting = Number(fields.resultBetting) || 0;
+  // Saldo final da semana, digitado pelo usuário (vem da planilha dele).
+  // É só um RETRATO (exibição no card + gráfico de Saldo Global): o Saldo
+  // ao vivo NUNCA lê este campo — é sempre calculado pelos movimentos +
+  // Saldo Inicial da fase. Ausente/inválido = 0 (comportamento anterior).
+  const balance = Math.max(0, Number(fields.balance) || 0);
 
   const entry = {
     weekStart: weekStartStr,
@@ -615,7 +655,7 @@ export function addHistoricalWeek(platform, dateInWeek, fields, refDate = new Da
     bonus,
     resultBetting,
     rbPlusBonus: resultBetting + bonus,
-    balance: 0,
+    balance,
     closedAt: new Date().toISOString(),
     backfilled: true
   };
@@ -834,4 +874,194 @@ export function computeOverallCurrentWeekOnly(platforms, from = null, to = null,
   });
 
   return totals;
+}
+
+// ============================================================
+// SUB-ENTREGA 2 (item 16) — PAINEL GERAL POR QUALQUER PERÍODO
+// ============================================================
+// As 3 funções computeOverall* acima NÃO foram alteradas (analytics-logic
+// usa computeOverallTotals). O Painel Geral passa a usar só esta.
+//
+// Regras por semana FECHADA (financeWeeks):
+//   - período cobre a semana INTEIRA  -> valores congelados (exatos, com o
+//     bônus real digitado no fechamento);
+//   - período CORTA a semana (normal) -> soma dia a dia pelos registros
+//     brutos; bônus = fórmula + avulso => entra em `estimatedWeeks`;
+//   - período CORTA a semana (backfill, sem detalhe por dia) -> fica de
+//     fora, listada em `excludedBackfill`.
+// Dias de semanas SEM fechamento (a atual, e semanas passadas esquecidas)
+// são somados dia a dia (modos 'total' e 'live').
+//
+// Modos: 'live' = só dias da semana atual; 'closed' = só semanas fechadas;
+// 'total' = fechadas + dias ainda não fechados até hoje.
+// Saldo/Rollover: sempre o valor ao vivo da fase (ou da fase filtrada),
+// nunca afetados por período nem por modo.
+
+function addDaysKey(dayKey, n) {
+  const [y, m, d] = dayKey.split('-').map(Number);
+  return toLocalDateString(new Date(y, m - 1, d + n));
+}
+
+// null = sem limite (inferior em maxLo, superior em minHi)
+function maxLo(...keys) {
+  const f = keys.filter(k => k !== null && k !== undefined);
+  return f.length ? f.reduce((a, b) => (a > b ? a : b)) : null;
+}
+function minHi(...keys) {
+  const f = keys.filter(k => k !== null && k !== undefined);
+  return f.length ? f.reduce((a, b) => (a < b ? a : b)) : null;
+}
+
+function earliestDayKey(platform) {
+  const keys = [];
+  ['depositLog', 'withdrawals', 'betEntries', 'otherBonusLog'].forEach(field => {
+    (platform[field] || []).forEach(e => {
+      if (e && e.date && !isNaN(new Date(e.date).getTime())) keys.push(toLocalDateString(new Date(e.date)));
+    });
+  });
+  (platform.financeWeeks || []).forEach(w => { if (w.weekStart) keys.push(w.weekStart); });
+  return keys.length ? keys.reduce((a, b) => (a < b ? a : b)) : null;
+}
+
+// Soma dia a dia, de loKey a hiKey (ambos 'AAAA-MM-DD', inclusivos).
+function sumPlatformDays(platform, loKey, hiKey, ctx) {
+  const res = { deposit: 0, withdrawal: 0, wagered: 0, betCount: 0, resultBetting: 0, bonus: 0 };
+  if (!loKey || !hiKey || loKey > hiKey) return res;
+
+  const inRange = (e) => {
+    if (!e || !e.date) return false;
+    const t = new Date(e.date);
+    if (isNaN(t.getTime())) return false;
+    const k = toLocalDateString(t);
+    return k >= loKey && k <= hiKey;
+  };
+
+  (platform.depositLog || []).filter(inRange).forEach(e => { res.deposit += Number(e.value) || 0; });
+  (platform.withdrawals || []).filter(inRange).forEach(e => { res.withdrawal += Number(e.value) || 0; });
+  (platform.betEntries || []).filter(inRange).forEach(e => {
+    res.wagered += Number(e.wagered) || 0;
+    res.betCount += Number(e.betCount) || 0;
+    res.resultBetting += Number(e.resultBetting) || 0;
+  });
+  // Bônus avulso (quando existe, entra) + fórmula de cada dia.
+  (platform.otherBonusLog || []).filter(inRange).forEach(e => { res.bonus += Number(e.rawValue) || 0; });
+
+  let key = loKey;
+  let guard = 0;
+  while (key <= hiKey && guard < 800) {
+    const [y, m, d] = key.split('-').map(Number);
+    res.bonus += getExpectedBonusForDate(platform, new Date(y, m - 1, d), ctx) || 0;
+    key = addDaysKey(key, 1);
+    guard++;
+  }
+  return res;
+}
+
+export function computeOverallTotalsPeriod(platforms, from = null, to = null, resolveCtx = () => ({}), refDate = new Date(), phaseFilter = null, mode = 'total') {
+  const totals = { deposit: 0, withdrawal: 0, difference: 0, wagered: 0, betCount: 0, bonus: 0, resultBetting: 0, rbPlusBonus: 0, balance: 0, rollover: 0 };
+  const estimatedWeeks = [];
+  const excludedBackfill = [];
+  let unclosedPastWeeks = 0;
+
+  const todayKey = toLocalDateString(refDate);
+  const currentWeekStartKey = toLocalDateString(getWeekStart(refDate));
+
+  const addDays = (s) => {
+    totals.deposit += s.deposit;
+    totals.withdrawal += s.withdrawal;
+    totals.wagered += s.wagered;
+    totals.betCount += s.betCount;
+    totals.resultBetting += s.resultBetting;
+    totals.bonus += s.bonus;
+  };
+
+  (platforms || []).forEach(platform => {
+    const ctx = resolveCtx(platform);
+
+    let phase = null;
+    let phaseLo = null;
+    let phaseHi = null;
+    if (phaseFilter !== null) {
+      phase = computePhaseHistory(platform, refDate, ctx).find(ph => ph.phaseNumber === phaseFilter);
+      if (!phase) return; // exclusão silenciosa — plataforma sem essa fase
+      phaseLo = phase.startDate ? toLocalDateString(new Date(phase.startDate)) : null;
+      phaseHi = phase.endDate ? addDaysKey(toLocalDateString(new Date(phase.endDate)), -1) : null;
+      totals.balance += phase.balance;
+      totals.rollover += phase.rollover;
+    } else {
+      totals.balance += computeLiveBalance(platform, refDate, ctx);
+      totals.rollover += computeRolloverLive(platform, refDate, ctx);
+    }
+
+    // --- Semanas fechadas ---
+    if (mode !== 'live') {
+      (platform.financeWeeks || []).forEach(w => {
+        if (phase) {
+          const weekEndDate = new Date(w.weekEnd);
+          const ps = phase.startDate ? new Date(phase.startDate) : null;
+          const pe = phase.endDate ? new Date(phase.endDate) : null;
+          if (ps && !(weekEndDate > ps)) return;
+          if (pe && !(weekEndDate <= pe)) return;
+        }
+
+        const intersects = (!to || to >= w.weekStart) && (!from || from <= w.weekEnd);
+        if (!intersects) return;
+
+        const covered = (!from || from <= w.weekStart) && (!to || to >= w.weekEnd);
+        if (covered) {
+          totals.deposit += w.deposit;
+          totals.withdrawal += w.withdrawal;
+          totals.wagered += w.wagered;
+          totals.betCount += w.betCount;
+          totals.bonus += w.bonus;
+          totals.resultBetting += w.resultBetting;
+          return;
+        }
+
+        if (w.backfilled) {
+          excludedBackfill.push({ platformName: platform.name, weekStart: w.weekStart });
+          return;
+        }
+
+        const lo = maxLo(from, w.weekStart, phaseLo);
+        const hi = minHi(to, w.weekEnd, phaseHi, todayKey);
+        estimatedWeeks.push({ platformName: platform.name, weekStart: w.weekStart });
+        if (lo !== null && hi !== null && lo <= hi) {
+          addDays(sumPlatformDays(platform, lo, hi, ctx));
+        }
+      });
+    }
+
+    // --- Dias de semanas ainda NÃO fechadas ---
+    if (mode !== 'closed') {
+      const closedKeys = new Set((platform.financeWeeks || []).map(w => w.weekStart));
+      const lowerBound = mode === 'live'
+        ? currentWeekStartKey
+        : minHi(earliestDayKey(platform), currentWeekStartKey);
+      const lo = maxLo(from, lowerBound, phaseLo);
+      const hi = minHi(to, todayKey, phaseHi);
+
+      if (lo !== null && hi !== null && lo <= hi) {
+        let cursor = toLocalDateString(getWeekStart(new Date(`${lo}T12:00:00`)));
+        while (cursor <= hi) {
+          if (!closedKeys.has(cursor)) {
+            const segLo = maxLo(lo, cursor);
+            const segHi = minHi(hi, addDaysKey(cursor, 6));
+            if (segLo <= segHi) {
+              const s = sumPlatformDays(platform, segLo, segHi, ctx);
+              addDays(s);
+              const hasData = s.deposit || s.withdrawal || s.wagered || s.betCount || s.resultBetting || s.bonus;
+              if (hasData && cursor < currentWeekStartKey) unclosedPastWeeks++;
+            }
+          }
+          cursor = addDaysKey(cursor, 7);
+        }
+      }
+    }
+  });
+
+  totals.difference = totals.withdrawal - totals.deposit;
+  totals.rbPlusBonus = totals.resultBetting + totals.bonus;
+
+  return { totals, estimatedWeeks, excludedBackfill, unclosedPastWeeks };
 }

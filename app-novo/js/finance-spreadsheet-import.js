@@ -189,7 +189,10 @@ export function parseFinanceSpreadsheet(text, platformNames = []) {
       continue;
     }
 
-    if (['difference', 'balance', 'rbPlusBonus'].includes(field)) {
+    // Saldo (balance) NÃO é mais ignorado: é lido como campo OPCIONAL
+    // (retrato da semana, vem da planilha do usuário). Difference e
+    // R.B. + Bonus continuam calculados pelo sistema.
+    if (['difference', 'rbPlusBonus'].includes(field)) {
       if (!result.ignoredFields.includes(field)) result.ignoredFields.push(field);
       continue;
     }
@@ -200,7 +203,8 @@ export function parseFinanceSpreadsheet(text, platformNames = []) {
       item.sourceRows[field] = rowIndex + 1;
 
       if (raw === '') {
-        item.missing.push(field);
+        // Saldo em branco não invalida a plataforma (campo opcional).
+        if (field !== 'balance') item.missing.push(field);
         return;
       }
 
@@ -249,7 +253,8 @@ export function formatImportedFieldName(field) {
     wagered: 'Apostado',
     betCount: 'N° de apostas',
     bonus: 'Bônus',
-    resultBetting: 'R.B.'
+    resultBetting: 'R.B.',
+    balance: 'Saldo'
   }[field] || field;
 }
 

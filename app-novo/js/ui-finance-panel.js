@@ -76,8 +76,8 @@ import {
   getWeekStart, getWeekEnd, toLocalDateString, toLocalDateTimeString,
   computeCurrentWeekLive, closeWeek, isCurrentWeekClosed, canCloseCurrentWeek,
   updateClosedWeek, deleteClosedWeek, addHistoricalWeek,
-  computePlatformTotals, computeOverallTotals, computeOverallTotalsLive, computeOverallCurrentWeekOnly, computeLiveBalance, computeRolloverLive,
-  computePhaseHistory, startNewPhase, removeLastPhase
+  computePlatformTotals, computeOverallTotalsPeriod, computeLiveBalance, computeRolloverLive,
+  computePhaseHistory, startNewPhase, removePhaseByNumber
 } from './finance-logic.js';
 import {
   getExpectedBonusToday, computeBonusDiffToday, getAlreadyLoggedToday,
@@ -441,6 +441,40 @@ export function initFinanceOverview() {
   }
 }
 
+// Avisos do Painel Geral (estimado / backfill fora da soma / semanas
+// passadas sem fechamento). Elemento criado aqui, logo depois da nota —
+// textContent (nome de plataforma é texto do usuário, nunca innerHTML).
+function renderOverviewWarnings(noteEl, result) {
+  if (!noteEl) return;
+  let warnEl = document.getElementById('financeOverviewWarn');
+  if (!warnEl) {
+    warnEl = document.createElement('p');
+    warnEl.id = 'financeOverviewWarn';
+    warnEl.className = 'finance-close-week-note';
+    noteEl.insertAdjacentElement('afterend', warnEl);
+  }
+
+  const fmt = (item) => `${item.platformName} ${formatDatePt(item.weekStart)}`;
+  const list = (items) => {
+    const shown = items.slice(0, 6).map(fmt).join(', ');
+    return items.length > 6 ? `${shown} (+${items.length - 6})` : shown;
+  };
+
+  const lines = [];
+  if (result.estimatedWeeks.length > 0) {
+    lines.push(`⚠ ESTIMADO: ${result.estimatedWeeks.length} semana(s) fechada(s) foram cortadas pelo período e somadas dia a dia — o bônus delas é fórmula + avulso, não o valor real digitado no fechamento (${list(result.estimatedWeeks)}).`);
+  }
+  if (result.excludedBackfill.length > 0) {
+    lines.push(`⚠ FORA DA SOMA: ${result.excludedBackfill.length} semana(s) antiga(s) adicionada(s) à mão foram cortadas pelo período e só têm o total da semana, sem detalhe por dia (${list(result.excludedBackfill)}).`);
+  }
+  if (result.unclosedPastWeeks > 0) {
+    lines.push(`ℹ ${result.unclosedPastWeeks} semana(s) passada(s) sem fechamento foram somadas dia a dia.`);
+  }
+
+  warnEl.textContent = lines.join('  ');
+  warnEl.style.display = lines.length ? '' : 'none';
+}
+
 export function renderFinanceOverview() {
   const statsEl = document.getElementById('financeOverviewStats');
   if (!statsEl) return;
@@ -466,21 +500,23 @@ export function renderFinanceOverview() {
   // arquivo). Saldo/Rollover NUNCA mudam entre eles — são sempre o valor
   // ao vivo da fase (ou da fase filtrada), calculado dentro de cada uma
   // das 3 funções da mesma forma.
-  let totals;
+  // Sub-entrega 2 (item 16): UMA função de período pros 3 modos — qualquer
+  // "De"/"Até" funciona (ver computeOverallTotalsPeriod em finance-logic.js).
+  const result = computeOverallTotalsPeriod(platformsForOverview, from, to, resolveCtxForPlatform, new Date(), phaseFilter, overviewMode);
+  const totals = result.totals;
+
   let noteText;
   if (overviewMode === 'live') {
-    totals = computeOverallCurrentWeekOnly(platformsForOverview, from, to, resolveCtxForPlatform, new Date(), phaseFilter);
-    noteText = '⚡ AO VIVO: só a semana atual em andamento, de todas as plataformas (depósito, saque, aposta e bônus de hoje já entram). Com filtro de fase, só entra quem tem aquela fase como a atual. Saldo e Rollover são sempre o valor atual da fase e não são afetados pelo filtro de datas.';
+    noteText = '⚡ AO VIVO: só os dias da semana atual (segunda até hoje) que caem no período escolhido, de todas as plataformas. Com filtro de fase, só entra quem tem aquela fase como a atual. Saldo e Rollover são sempre o valor atual da fase e não são afetados pelo período.';
   } else if (overviewMode === 'closed') {
-    totals = computeOverallTotals(platformsForOverview, from, to, resolveCtxForPlatform, new Date(), phaseFilter);
-    noteText = '📦 TOTAL FECHADO: soma só das semanas já fechadas (a semana atual em andamento NÃO entra). Saldo e Rollover continuam sendo o valor atual da fase.';
+    noteText = '📦 TOTAL FECHADO: só semanas já fechadas. Semana inteira dentro do período usa os valores fechados; semana cortada pelo período é somada dia a dia. Saldo e Rollover continuam sendo o valor atual da fase.';
   } else {
-    totals = computeOverallTotalsLive(platformsForOverview, from, to, resolveCtxForPlatform, new Date(), phaseFilter);
-    noteText = '📈 TOTAL GERAL: semanas já fechadas + a semana atual em andamento, somadas juntas. Saldo e Rollover são sempre o valor atual da fase e não são afetados pelo filtro de datas.';
+    noteText = '📈 TOTAL GERAL: semanas fechadas + dias ainda não fechados até hoje, qualquer período. Semana fechada inteira dentro do período usa os valores fechados; cortada pelo período é somada dia a dia. Saldo e Rollover são sempre o valor atual da fase.';
   }
 
   const noteEl = document.getElementById('financeOverviewNote');
   if (noteEl) noteEl.textContent = noteText;
+  renderOverviewWarnings(noteEl, result);
 
   const rolloverLabel = phaseFilter
     ? `Rollover (Fase ${phaseFilter}, todas as plataformas)`
@@ -1177,6 +1213,7 @@ function buildPhaseControls(p) {
     dateInput.type = 'date';
     const defaultMonday = getWeekStart(new Date());
     dateInput.value = toLocalDateString(defaultMonday);
+    dateInput.max = toLocalDateString(new Date()); // fase futura não é permitida
     dateInput.setAttribute('aria-label', 'Data de início da nova fase (precisa ser uma segunda-feira)');
 
     const initialBalanceInput = document.createElement('input');
@@ -1234,19 +1271,34 @@ function buildPhaseControls(p) {
         await showAppAlert('A nova fase só pode começar numa SEGUNDA-FEIRA — escolha outra data. Essa trava existe pra nenhuma semana ficar dividida entre duas fases.');
         return;
       }
+      if (toLocalDateString(chosenDate) > toLocalDateString(new Date())) {
+        await showAppAlert('A fase não pode começar numa data futura.');
+        return;
+      }
 
       const dateLabel = chosenDate.toLocaleDateString('pt-BR');
-      const ok = await showAppConfirm(
-        `Fechar a fase atual de ${p.name} e começar uma nova a partir de segunda-feira, ${dateLabel}, ` +
-        `com Saldo Inicial de ${formatCurrency(initialBalance)} e Rollover Inicial de ${formatCurrency(initialRollover)}? ` +
-        `Tudo registrado ANTES desse instante continua contando na fase que está fechando (guardada pra ` +
-        `sempre em "Fases do Saldo"); a partir dele, conta na fase nova.`
-      );
+      const existingPhases = p.balancePhases || [];
+      const lastPhase = existingPhases.length ? existingPhases[existingPhases.length - 1] : null;
+      const isInsertingPast = !!lastPhase && toLocalDateString(chosenDate) < toLocalDateString(new Date(lastPhase.date));
+      const confirmText = isInsertingPast
+        ? `Inserir uma fase que começa em segunda-feira, ${dateLabel}, ENTRE as fases já existentes de ${p.name}, ` +
+          `com Saldo Inicial de ${formatCurrency(initialBalance)} e Rollover Inicial de ${formatCurrency(initialRollover)}? ` +
+          `A fase atual e as fases seguintes continuam como estão; só a fase anterior a essa data passa a terminar nela.`
+        : `Fechar a fase atual de ${p.name} e começar uma nova a partir de segunda-feira, ${dateLabel}, ` +
+          `com Saldo Inicial de ${formatCurrency(initialBalance)} e Rollover Inicial de ${formatCurrency(initialRollover)}? ` +
+          `Tudo registrado ANTES desse instante continua contando na fase que está fechando (guardada pra ` +
+          `sempre em "Fases do Saldo"); a partir dele, conta na fase nova.`;
+      const ok = await showAppConfirm(confirmText);
       if (!ok) return;
 
       const result = startNewPhase(p, chosenDate, initialBalance, initialRollover);
       if (!result.ok) {
-        await showAppAlert('Não foi possível abrir a fase: a data escolhida não é uma segunda-feira.');
+        const reasons = {
+          'not-monday': 'a data escolhida não é uma segunda-feira.',
+          'future': 'a data escolhida é futura.',
+          'duplicate': 'já existe uma fase começando nessa data.'
+        };
+        await showAppAlert(`Não foi possível abrir a fase: ${reasons[result.reason] || 'dados inválidos.'}`);
         return;
       }
       savePlatform(state.currentUid, p);
@@ -1286,24 +1338,6 @@ function buildPhaseControls(p) {
   });
   actions.appendChild(startBtn);
 
-  if ((p.balancePhases || []).length > 0) {
-    const removeBtn = document.createElement('button');
-    removeBtn.type = 'button';
-    removeBtn.className = 'btn-cancel-modal';
-    removeBtn.textContent = 'Remover última fase';
-    removeBtn.addEventListener('click', async () => {
-      const ok = await showAppConfirm('Remover a última fase (e o Saldo/Rollover Inicial dela)? O Saldo e o Rollover passam a contar de novo a partir de antes dela.');
-      if (!ok) return;
-      removeLastPhase(p);
-      savePlatform(state.currentUid, p);
-      openRowId = p.id;
-      refreshRow(p.id);
-      rebuildPhaseSelectOptions();
-      renderFinanceList();
-    });
-    actions.appendChild(removeBtn);
-  }
-
   wrap.appendChild(actions);
   return wrap;
 }
@@ -1330,8 +1364,37 @@ function buildPhaseCard(phase, platformId) {
     openRowId = platformId;
     refreshRow(platformId);
   });
+  const phaseBtnGroup = document.createElement('div');
+  phaseBtnGroup.className = 'finance-week-card-actions';
+  phaseBtnGroup.appendChild(toggleBtn);
+
+  // Fase 1 não tem fronteira própria (começa no início) — não removível.
+  if (phase.phaseNumber >= 2) {
+    const removePhaseBtn = document.createElement('button');
+    removePhaseBtn.type = 'button';
+    removePhaseBtn.className = 'history-delete-btn';
+    removePhaseBtn.textContent = 'Remover';
+    removePhaseBtn.addEventListener('click', async () => {
+      const platform = state.platforms.find(pp => pp.id === platformId);
+      if (!platform) return;
+      const ok = await showAppConfirm(
+        `Remover a Fase ${phase.phaseNumber} (começa em ${startLabel})? Ela se junta de volta à fase anterior e o Saldo/Rollover Inicial dela é descartado. Nenhum depósito, saque, aposta ou semana fechada é apagado.`
+      );
+      if (!ok) return;
+      const removed = removePhaseByNumber(platform, phase.phaseNumber);
+      if (!removed) return;
+      savePlatform(state.currentUid, platform);
+      clearOverridesForPlatform(phaseExpandedOverrides, platformId);
+      openRowId = platformId;
+      refreshRow(platformId);
+      rebuildPhaseSelectOptions();
+      renderFinanceList();
+    });
+    phaseBtnGroup.appendChild(removePhaseBtn);
+  }
+
   header.appendChild(rangeSpan);
-  header.appendChild(toggleBtn);
+  header.appendChild(phaseBtnGroup);
   
   card.appendChild(header);
 
@@ -1495,7 +1558,7 @@ function buildManualHistoricalWeekControls(p, wrap) {
 
   const note = document.createElement('p');
   note.className = 'finance-close-week-note';
-  note.textContent = 'Escolha qualquer dia dentro da semana que quer inserir (a semana inteira, de segunda a domingo, é calculada a partir dele). Diferença e R.B. + Bônus são calculados sozinhos.';
+  note.textContent = 'Escolha qualquer dia dentro da semana que quer inserir (a semana inteira, de segunda a domingo, é calculada a partir dele). Diferença e R.B. + Bônus são calculados sozinhos. O Saldo final é o valor que você anotou naquele dia — fica gravado só como retrato da semana (card e gráfico); o Saldo atual continua sendo calculado pelos movimentos + Saldo Inicial da fase.';
   wrap.appendChild(note);
 
   const dateRow = document.createElement('div');
@@ -1533,6 +1596,14 @@ function buildManualHistoricalWeekControls(p, wrap) {
   row3.appendChild(resultInput);
   wrap.appendChild(row3);
 
+  // Saldo final daquela semana (da planilha do usuário) — retrato da
+  // semana, não altera o Saldo ao vivo.
+  const row4 = document.createElement('div');
+  row4.className = 'finance-entry-form';
+  const balanceInput = numberInput('Saldo final da semana', ''); balanceInput.min = '0';
+  row4.appendChild(balanceInput);
+  wrap.appendChild(row4);
+
   const actions = document.createElement('div');
   actions.className = 'reset-modal-buttons';
 
@@ -1552,9 +1623,10 @@ function buildManualHistoricalWeekControls(p, wrap) {
     const betCount = parseInt(betCountInput.value, 10);
     const bonus = parseFloat(bonusInput.value);
     const resultBetting = parseFloat(resultInput.value);
+    const balance = parseFloat(balanceInput.value);
 
-    if ([deposit, withdrawal, wagered, betCount, bonus, resultBetting].some(v => isNaN(v))) {
-      await showAppAlert('Preencha todos os campos com valores válidos.');
+    if ([deposit, withdrawal, wagered, betCount, bonus, resultBetting, balance].some(v => isNaN(v)) || balance < 0) {
+      await showAppAlert('Preencha todos os campos com valores válidos (o Saldo final pode ser 0, mas não negativo).');
       return;
     }
 
@@ -1566,7 +1638,7 @@ function buildManualHistoricalWeekControls(p, wrap) {
     const ok = await showAppConfirm(`Adicionar a semana de ${rangeLabel} pra ${p.name}, com Depósito ${formatCurrency(deposit)} e Saque ${formatCurrency(withdrawal)}?`);
     if (!ok) return;
 
-    const result = addHistoricalWeek(p, chosenDate, { deposit, withdrawal, wagered, betCount, bonus, resultBetting });
+    const result = addHistoricalWeek(p, chosenDate, { deposit, withdrawal, wagered, betCount, bonus, resultBetting, balance });
     if (!result.ok) {
       await showAppAlert(describeAddHistoricalWeekFailure(result.reason));
       return;
@@ -1607,7 +1679,7 @@ function buildSpreadsheetHistoricalWeekControls(p, wrap) {
 
   const note = document.createElement('p');
   note.className = 'finance-close-week-note';
-  note.textContent = 'Copie da planilha o bloco que contém os nomes das plataformas e as linhas Deposit, Withdrawal, Bonus, Amount wagered, N° Betting e Result Betting. Pode colar várias plataformas de uma vez.';
+  note.textContent = 'Copie da planilha o bloco que contém os nomes das plataformas e as linhas Deposit, Withdrawal, Bonus, Amount wagered, N° Betting e Result Betting. Inclua também a linha Balance (Saldo) pra gravar o saldo final da semana. Pode colar várias plataformas de uma vez.';
   wrap.appendChild(note);
 
   const dateRow = document.createElement('div');
@@ -1682,7 +1754,7 @@ function buildSpreadsheetHistoricalWeekControls(p, wrap) {
 
     const title = document.createElement('p');
     title.className = 'finance-close-week-note';
-    title.textContent = `Plataformas reconhecidas: ${parsed.platforms.length}. Apenas as linhas brutas serão importadas; Diferença, Saldo e R.B. + Bônus são ignorados.`;
+    title.textContent = `Plataformas reconhecidas: ${parsed.platforms.length}. As linhas brutas e o Saldo (se vier na planilha) serão importados; Diferença e R.B. + Bônus são calculados pelo sistema.`;
     preview.appendChild(title);
 
     const list = document.createElement('div');
@@ -1701,7 +1773,7 @@ function buildSpreadsheetHistoricalWeekControls(p, wrap) {
 
       if (item.valid) {
         const f = item.fields;
-        values.textContent = `✓ Dep. ${formatImportedNumber(f.deposit)} | Saque ${formatImportedNumber(f.withdrawal)} | Apostado ${formatImportedNumber(f.wagered)} | ${formatImportedNumber(f.betCount)} apostas | Bônus ${formatImportedNumber(f.bonus)} | R.B. ${formatImportedNumber(f.resultBetting)}`;
+        values.textContent = `✓ Dep. ${formatImportedNumber(f.deposit)} | Saque ${formatImportedNumber(f.withdrawal)} | Apostado ${formatImportedNumber(f.wagered)} | ${formatImportedNumber(f.betCount)} apostas | Bônus ${formatImportedNumber(f.bonus)} | R.B. ${formatImportedNumber(f.resultBetting)}${f.balance !== undefined ? ` | Saldo ${formatImportedNumber(f.balance)}` : ' | Saldo (não informado → 0)'}`;
       } else {
         const missing = item.missing.map(formatImportedFieldName);
         const invalid = item.invalid.map(x => `${formatImportedFieldName(x.field)} (${x.raw})`);
@@ -1952,6 +2024,18 @@ function buildWeekCardEditing(p, w) {
   row3.appendChild(resultInput);
   card.appendChild(row3);
 
+  // Semana de BACKFILL: o Saldo foi digitado pelo usuário, então pode ser
+  // corrigido. Em semana fechada normal continua fixo (retrato do fechamento).
+  let balanceEditInput = null;
+  if (w.backfilled) {
+    const rowBalance = document.createElement('div');
+    rowBalance.className = 'finance-entry-form';
+    balanceEditInput = numberInput('Saldo final da semana', w.balance);
+    balanceEditInput.min = '0';
+    rowBalance.appendChild(balanceEditInput);
+    card.appendChild(rowBalance);
+  }
+
   const actions = document.createElement('div');
   actions.className = 'reset-modal-buttons';
 
@@ -1966,13 +2050,15 @@ function buildWeekCardEditing(p, w) {
     const betCount = parseInt(betCountInput.value, 10);
     const bonus = parseFloat(bonusInput.value);
     const resultBetting = parseFloat(resultInput.value);
+    const editedBalance = balanceEditInput ? parseFloat(balanceEditInput.value) : undefined;
 
-    if ([deposit, withdrawal, wagered, betCount, bonus, resultBetting].some(v => isNaN(v))) {
+    if ([deposit, withdrawal, wagered, betCount, bonus, resultBetting].some(v => isNaN(v))
+      || (balanceEditInput && (isNaN(editedBalance) || editedBalance < 0))) {
       await showAppAlert('Preencha todos os campos com valores válidos.');
       return;
     }
 
-    updateClosedWeek(p, w.weekStart, { deposit, withdrawal, wagered, betCount, bonus, resultBetting });
+    updateClosedWeek(p, w.weekStart, { deposit, withdrawal, wagered, betCount, bonus, resultBetting, balance: editedBalance });
     savePlatform(state.currentUid, p);
     editingWeek = null;
     openRowId = p.id;
