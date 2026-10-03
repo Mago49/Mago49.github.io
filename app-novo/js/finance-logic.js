@@ -163,30 +163,39 @@ export function canCloseCurrentWeek(refDate = new Date()) {
   return refDate.getDay() === 0;
 }
 
-// Data-fronteira da fase ATUAL (a mais recente), ou null se a plataforma
-// nunca teve nenhuma fase criada (aí conta desde o início).
-function getCurrentPhaseStartDate(platform) {
-  const phases = platform.balancePhases || [];
-  if (phases.length === 0) return null;
-  return phases[phases.length - 1].date;
+// SUB-ENTREGA 3 — "fase vigente NUMA DATA". Fase vigente em refDate = a
+// fronteira mais recente com date <= refDate. Com refDate = agora, é a
+// fase atual de sempre (fases futuras já são recusadas por startNewPhase).
+// Com refDate = domingo de uma semana ATRASADA, ignora uma fase aberta na
+// segunda seguinte — é isso que permite fechar uma semana passada sem
+// contaminar o resultado com a fase (e o Saldo Inicial) da semana nova.
+function getPhaseAsOf(platform, refDate = new Date()) {
+  let found = null;
+  (platform.balancePhases || []).forEach(ph => {
+    const d = new Date(ph.date);
+    if (d <= refDate && (!found || d > new Date(found.date))) found = ph;
+  });
+  return found;
 }
 
-// Saldo Inicial da fase ATUAL — 0 se a plataforma nunca teve nenhuma fase
-// criada.
-function getCurrentPhaseInitialBalance(platform) {
-  const phases = platform.balancePhases || [];
-  if (phases.length === 0) return 0;
-  return Number(phases[phases.length - 1].initialBalance) || 0;
+// Data-fronteira da fase vigente em refDate, ou null se nenhuma fase
+// existia ainda (aí conta desde o início).
+function getCurrentPhaseStartDate(platform, refDate = new Date()) {
+  const phase = getPhaseAsOf(platform, refDate);
+  return phase ? phase.date : null;
 }
 
-// Rollover Inicial da fase ATUAL — mesmo padrão de
-// getCurrentPhaseInitialBalance, campo novo desta etapa. 0 pra fases
-// antigas (criadas antes desta funcionalidade existir) ou pra quem nunca
-// abriu nenhuma fase.
-function getCurrentPhaseInitialRollover(platform) {
-  const phases = platform.balancePhases || [];
-  if (phases.length === 0) return 0;
-  return Number(phases[phases.length - 1].initialRollover) || 0;
+// Saldo Inicial da fase vigente em refDate — 0 se nenhuma.
+function getCurrentPhaseInitialBalance(platform, refDate = new Date()) {
+  const phase = getPhaseAsOf(platform, refDate);
+  return phase ? (Number(phase.initialBalance) || 0) : 0;
+}
+
+// Rollover Inicial da fase vigente em refDate — 0 pra fases antigas
+// (criadas antes desta funcionalidade existir) ou se nenhuma.
+function getCurrentPhaseInitialRollover(platform, refDate = new Date()) {
+  const phase = getPhaseAsOf(platform, refDate);
+  return phase ? (Number(phase.initialRollover) || 0) : 0;
 }
 
 // Fecha a fase atual e começa uma nova. `date` PRECISA cair numa
@@ -272,10 +281,14 @@ export function removeLastPhase(platform) {
 //
 // PISO EM ZERO: saldo nunca é negativo na prática — trava em R$ 0,00.
 export function computeLiveBalance(platform, refDate = new Date(), ctx = {}) {
-  const phaseStart = getCurrentPhaseStartDate(platform);
+  const phaseStart = getCurrentPhaseStartDate(platform, refDate);
   const phaseStartDate = phaseStart ? new Date(phaseStart) : null;
-  const isInCurrentPhase = (dateStr) => !phaseStartDate || new Date(dateStr) > phaseStartDate;
-  const initialBalance = getCurrentPhaseInitialBalance(platform);
+  // SUB-ENTREGA 3: teto = domingo 23:59:59.999 da semana de refDate. Nada
+  // lançado DEPOIS dela entra no cálculo — nunca retroage. Com refDate =
+  // agora não muda nada (não existe lançamento depois do domingo atual).
+  const capEnd = getWeekEnd(getWeekStart(refDate));
+  const isInCurrentPhase = (dateStr) => (!phaseStartDate || new Date(dateStr) > phaseStartDate) && new Date(dateStr) <= capEnd;
+  const initialBalance = getCurrentPhaseInitialBalance(platform, refDate);
 
   const depositTotal = (platform.depositLog || [])
     .filter(d => isInCurrentPhase(d.date))
@@ -322,6 +335,114 @@ export function computeLiveBalance(platform, refDate = new Date(), ctx = {}) {
   return Math.max(0, balance);
 }
 
+// ============================================================
+// SUB-ENTREGA 4 — ROLLOVER SEQUENCIAL (piso em zero a CADA evento)
+// ============================================================
+// ANTES: Rollover = inicial + depósitos + bônus - apostado, com piso em zero
+// só no FIM. Quem apostava mais que o Rollover disponível deixava um
+// "excedente" que continuava subtraindo de depósitos futuros (ex: depósito
+// 10, aposta 20, depósito 30 => mostrava 20 em vez de 30).
+// AGORA: simulação em ordem cronológica, R = max(0, R + evento):
+//   + depósito (depositLog, por horário)
+//   + bônus (fórmula do dia / avulso com a escala R, por horário)
+//   - aposta (por horário)
+// Aposta que passa do que existe zera o Rollover e o excesso é PERDIDO
+// (não abate depósito/bônus que chegarem depois).
+//
+// Semanas FECHADAS:
+//  - bônus (bonusRollover congelado, já com a diferença do bônus real):
+//    entra no INÍCIO da semana (apostas feitas na semana abatem o bônus
+//    recebido nela — mesmo modelo do fechamento de domingo);
+//  - apostas: se os registros brutos da semana batem com o total congelado
+//    (semana normal, nunca editada nem backfill), entram cada uma no seu
+//    horário; senão (semana editada ou backfill) entram em bloco no FIM da
+//    semana, depois dos depósitos dela (piso aplicado no fim da semana).
+// Semana ABERTA: tudo por horário; bônus de fórmula entra no início de
+// cada dia.
+// Com dados que nunca passam do Rollover disponível, o resultado é
+// IDÊNTICO ao da fórmula antiga.
+function simulateRollover(platform, { initialRollover = 0, windowStart = null, windowEnd = null, refDate = new Date(), includeOpenWeek = true, ctx = {} } = {}) {
+  const inWindow = (dateStr) => {
+    const d = new Date(dateStr);
+    return (!windowStart || d > windowStart) && (!windowEnd || d <= windowEnd);
+  };
+
+  // p = prioridade no MESMO instante: 0 bônus/início, 1 depósito, 2 aposta.
+  const events = [];
+
+  (platform.depositLog || []).forEach(e => {
+    if (!e || !inWindow(e.date)) return;
+    const v = Number(e.value) || 0;
+    if (v) events.push({ t: new Date(e.date).getTime(), p: 1, v });
+  });
+
+  // apostas brutas agrupadas pela segunda-feira da semana delas
+  const betsByWeek = new Map();
+  (platform.betEntries || []).forEach(e => {
+    if (!e || !e.date || isNaN(new Date(e.date).getTime())) return;
+    const key = toLocalDateString(getWeekStart(new Date(e.date)));
+    if (!betsByWeek.has(key)) betsByWeek.set(key, []);
+    betsByWeek.get(key).push(e);
+  });
+
+  (platform.financeWeeks || []).filter(w => inWindow(w.weekEnd)).forEach(w => {
+    const [y, m, d] = String(w.weekStart).split('-').map(Number);
+    const start = new Date(y, m - 1, d, 0, 0, 0, 0);
+    const end = getWeekEnd(start);
+
+    const bonusLump = Number(w.bonusRollover) || 0;
+    if (bonusLump) events.push({ t: start.getTime(), p: 0, v: bonusLump });
+
+    const frozen = Number(w.wagered) || 0;
+    const raw = betsByWeek.get(w.weekStart) || [];
+    const rawSum = raw.reduce((sum, e) => sum + (Number(e.wagered) || 0), 0);
+    const consistent = !w.backfilled && Math.abs(rawSum - frozen) < 0.005;
+
+    if (consistent) {
+      raw.forEach(e => {
+        const v = Number(e.wagered) || 0;
+        if (v) events.push({ t: new Date(e.date).getTime(), p: 2, v: -v });
+      });
+    } else if (frozen) {
+      events.push({ t: end.getTime(), p: 2, v: -frozen });
+    }
+  });
+
+  if (includeOpenWeek && !isCurrentWeekClosed(platform, refDate)) {
+    const weekStart = getWeekStart(refDate);
+    const weekEnd = getWeekEnd(weekStart);
+    const inOpenWeek = (e) => {
+      if (!e || !inWindow(e.date)) return false;
+      const d = new Date(e.date);
+      return d >= weekStart && d <= weekEnd;
+    };
+
+    (platform.betEntries || []).filter(inOpenWeek).forEach(e => {
+      const v = Number(e.wagered) || 0;
+      if (v) events.push({ t: new Date(e.date).getTime(), p: 2, v: -v });
+    });
+    (platform.otherBonusLog || []).filter(inOpenWeek).forEach(e => {
+      const v = Number(e.rolloverValue) || 0;
+      if (v) events.push({ t: new Date(e.date).getTime(), p: 1, v });
+    });
+
+    const today = new Date(refDate);
+    today.setHours(0, 0, 0, 0);
+    const lastDay = today < weekEnd ? today : weekEnd;
+    const cursor = new Date(weekStart);
+    while (cursor <= lastDay) {
+      const v = getExpectedBonusForDate(platform, cursor, ctx) || 0;
+      if (v) events.push({ t: cursor.getTime(), p: 0, v });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  }
+
+  events.sort((a, b) => (a.t - b.t) || (a.p - b.p));
+  let rollover = Math.max(0, Number(initialRollover) || 0);
+  events.forEach(e => { rollover = Math.max(0, rollover + e.v); });
+  return rollover;
+}
+
 // ROLLOVER (novo, Bloco P) AO VIVO — nunca armazenado por semana, sempre
 // recalculado a partir dos dados brutos + Rollover Inicial da fase atual:
 //   Rollover = Rollover Inicial (da fase atual)
@@ -333,44 +454,25 @@ export function computeLiveBalance(platform, refDate = new Date(), ctx = {}) {
 //              financeWeeks[].bonusRollover)
 //            − Apostado da fase atual (fechadas + semana aberta)
 // PISO EM ZERO, mesmo espírito do Saldo.
+function computeRolloverRaw(platform, refDate = new Date(), ctx = {}) {
+  const phaseStart = getCurrentPhaseStartDate(platform, refDate);
+  // SUB-ENTREGA 3: teto = domingo 23:59:59.999 da semana de refDate. Nada
+  // lançado DEPOIS dela entra no cálculo — nunca retroage.
+  return simulateRollover(platform, {
+    initialRollover: getCurrentPhaseInitialRollover(platform, refDate),
+    windowStart: phaseStart ? new Date(phaseStart) : null,
+    windowEnd: getWeekEnd(getWeekStart(refDate)),
+    refDate,
+    includeOpenWeek: true,
+    ctx
+  });
+}
+
+// Rollover ao vivo com PISO em zero — assinatura e resultado idênticos aos
+// de sempre. A versão sem piso (computeRolloverRaw) só existe pro
+// fechamento de semana somar a diferença do bônus antes de aplicar o piso.
 export function computeRolloverLive(platform, refDate = new Date(), ctx = {}) {
-  const phaseStart = getCurrentPhaseStartDate(platform);
-  const phaseStartDate = phaseStart ? new Date(phaseStart) : null;
-  const isInCurrentPhase = (dateStr) => !phaseStartDate || new Date(dateStr) > phaseStartDate;
-  const initialRollover = getCurrentPhaseInitialRollover(platform);
-
-  const depositTotal = (platform.depositLog || [])
-    .filter(d => isInCurrentPhase(d.date))
-    .reduce((s, d) => s + (Number(d.value) || 0), 0);
-
-  const weeksInPhase = (platform.financeWeeks || []).filter(w => isInCurrentPhase(w.weekEnd));
-  const closedBonusRollover = weeksInPhase.reduce((s, w) => s + (Number(w.bonusRollover) || 0), 0);
-  const closedWagered = weeksInPhase.reduce((s, w) => s + (Number(w.wagered) || 0), 0);
-
-  const weekStart = getWeekStart(refDate);
-  const weekEnd = getWeekEnd(weekStart);
-
-  // Mesma guarda de computeLiveBalance — ver comentário lá.
-  const weekAlreadyClosed = isCurrentWeekClosed(platform, refDate);
-
-  // Bônus 1 (fórmula), ao vivo, 1:1 — só enquanto a semana ainda está
-  // aberta, sempre da fase atual por construção (ver nota do Saldo acima
-  // sobre fases só em segunda-feira).
-  const autoAccruedThisWeek = weekAlreadyClosed ? 0 : computeAutoAccruedBonusForWeek(platform, refDate, ctx);
-
-  // Bônus 2 (avulso), ao vivo, já escalado — só enquanto a semana ainda
-  // está aberta.
-  const currentWeekOtherBonus = (platform.otherBonusLog || []).filter(e => isInCurrentPhase(e.date));
-  const currentWeekRollover = weekAlreadyClosed ? 0 : sumInRange(currentWeekOtherBonus, weekStart, weekEnd, 'rolloverValue');
-
-  const currentWeekBets = (platform.betEntries || []).filter(b => isInCurrentPhase(b.date));
-  const currentWeekWagered = weekAlreadyClosed ? 0 : sumInRange(currentWeekBets, weekStart, weekEnd, 'wagered');
-
-  const rollover = initialRollover + depositTotal
-    + closedBonusRollover + autoAccruedThisWeek + currentWeekRollover
-    - closedWagered - currentWeekWagered;
-
-  return Math.max(0, rollover);
+  return Math.max(0, computeRolloverRaw(platform, refDate, ctx));
 }
 
 // Monta a lista de TODAS as fases de uma plataforma (inclusive a atual),
@@ -458,7 +560,14 @@ export function computePhaseHistory(platform, refDate = new Date(), ctx = {}) {
       resultBetting,
       rbPlusBonus: resultBetting + bonus,
       balance: Math.max(0, initialBalance + deposit - withdrawal + resultBetting + bonus),
-      rollover: Math.max(0, initialRollover + deposit + bonusRollover - wagered)
+      rollover: simulateRollover(platform, {
+        initialRollover,
+        windowStart: startDate,
+        windowEnd: endDate || getWeekEnd(getWeekStart(refDate)),
+        refDate,
+        includeOpenWeek: isCurrent,
+        ctx
+      })
     });
   }
 
@@ -494,7 +603,6 @@ export function closeWeek(platform, bonus, refDate = new Date(), ctx = {}) {
   // substitua — o que já foi somado ao vivo (fórmula + avulso, cada um
   // com sua escala) já É o valor final; este campo é só um RETRATO pra
   // exibição no card do histórico, mesmo espírito do `balance` abaixo.
-  const rolloverAtClose = computeRolloverLive(platform, refDate, ctx);
 
   // O que a fórmula (Bônus 1) já vinha somando sozinha pro Saldo/Rollover
   // ao vivo durante esta semana.
@@ -518,7 +626,16 @@ export function closeWeek(platform, bonus, refDate = new Date(), ctx = {}) {
   // escalado pelo botão R de cada lançamento) — CONGELADO aqui pra
   // sempre, porque depois do fechamento não há mais como reconstituir
   // qual parte do valor final de domingo tinha escala diferente de 1:1.
-  const bonusRollover = autoAccruedThisWeek + otherBonusRolloverThisWeek;
+  //
+  // REGRA DO ROLLOVER NO FECHAMENTO: o bônus REAL digitado pode ser maior
+  // (ou menor) que o que o sistema já tinha contabilizado (fórmula +
+  // avulso). A DIFERENÇA entra no Rollover 1:1 (mesma diferença que
+  // ajusta o Saldo, acima). Apostas já feitas na semana já estão
+  // descontadas (o Rollover subtrai todo o apostado da fase), e o que
+  // sobrar segue pra semana seguinte porque o Rollover é acumulado por
+  // fase (initialRollover + depósitos + bonusRollover - apostado).
+  const bonusDiff = bonusNum - autoAccruedThisWeek - otherBonusRawThisWeek;
+  const bonusRollover = autoAccruedThisWeek + otherBonusRolloverThisWeek + bonusDiff;
 
   const entry = {
     weekStart: toLocalDateString(live.weekStart),
@@ -533,12 +650,16 @@ export function closeWeek(platform, bonus, refDate = new Date(), ctx = {}) {
     resultBetting: live.resultBetting,
     rbPlusBonus: live.resultBetting + bonusNum,
     balance: balanceAtClose,
-    rolloverAtClose,
+    rolloverAtClose: 0, // recalculado logo após gravar a semana (abaixo)
     closedAt: new Date().toISOString()
   };
 
   if (!platform.financeWeeks) platform.financeWeeks = [];
   platform.financeWeeks.push(entry);
+  // Retrato do Rollover = Rollover ao vivo com a semana JÁ fechada (inclui
+  // a diferença do bônus e o piso sequencial). Antes de gravar, a semana
+  // ainda contava como aberta e o retrato sairia incompleto.
+  entry.rolloverAtClose = computeRolloverLive(platform, refDate, ctx);
   return entry;
 }
 
@@ -561,6 +682,21 @@ export function updateClosedWeek(platform, weekStart, updatedFields) {
   const betCount = Number(updatedFields.betCount) || 0;
   const bonus = Number(updatedFields.bonus) || 0;
   const resultBetting = Number(updatedFields.resultBetting) || 0;
+
+  // Editar o BÔNUS de uma semana fechada automaticamente resolve o
+  // "Bônus real pendente" (o usuário já informou o valor).
+  const oldBonusValue = Number(entry.bonus) || 0;
+  // Semana fechada pela regra nova (tem bonusRollover) e que NÃO é
+  // backfill: corrigir o bônus move o Rollover pela mesma diferença,
+  // igual ao fechamento. Backfill nunca soma bônus no Rollover (decisão
+  // do usuário: só depósitos). rolloverAtClose é retrato fixo, não muda.
+  if (!entry.backfilled && entry.bonusRollover !== undefined && bonus !== oldBonusValue) {
+    entry.bonusRollover = (Number(entry.bonusRollover) || 0) + (bonus - oldBonusValue);
+  }
+  if (entry.bonusPending === true && bonus !== (Number(entry.bonus) || 0)) {
+    entry.bonusPending = false;
+    entry.bonusConfirmedAt = new Date().toISOString();
+  }
 
   entry.deposit = deposit;
   entry.withdrawal = withdrawal;
@@ -1064,4 +1200,113 @@ export function computeOverallTotalsPeriod(platforms, from = null, to = null, re
   totals.rbPlusBonus = totals.resultBetting + totals.bonus;
 
   return { totals, estimatedWeeks, excludedBackfill, unclosedPastWeeks };
+}
+
+// ============================================================
+// SUB-ENTREGA 3 — FECHAMENTO AUTOMÁTICO DE SEMANAS ATRASADAS (item 5)
+// ============================================================
+// O domingo NÃO muda: fechar manualmente (com o bônus real) continua
+// igual. Isto é só uma segunda chance, rodada na PRÓXIMA abertura do
+// Financeiro (o app não roda em segundo plano — não existe gravar às
+// 23:55 de domingo).
+//
+// Regras:
+//  - Só semanas COMPLETAS e passadas (weekStart < segunda da semana atual).
+//  - Só a partir de AUTO_CLOSE_FIRST_WEEK (trava: nunca fecha semanas
+//    retroativas "desde sempre").
+//  - Por plataforma, só DEPOIS da última semana fechada dela e a partir da
+//    semana da primeira atividade registrada (plataforma sem nenhum
+//    registro nunca entra). Fecha todas as que faltarem, 1, 2 ou mais, na
+//    ordem cronológica (cada fechamento é a base do seguinte).
+//  - Fecha mesmo sem lançamentos (tudo zerado).
+//  - Cada semana é calculada COMO ESTAVA no domingo dela (refDate = domingo
+//    23:59:59.999): fase vigente naquela data + teto de data. Nada de
+//    segunda em diante retroage — o bônus de segunda (semanal, mensal,
+//    Obrigado, Misterioso) pertence SEMPRE à semana nova.
+//  - Bônus gravado = o que o sistema já contabilizou (fórmula + avulso).
+//    A semana fica com autoClosed:true e, se esse bônus for > 0,
+//    bonusPending:true (painel "Bônus real" até o usuário confirmar).
+//  - Não grava no Firestore: devolve as plataformas alteradas pra view
+//    salvar com savePlatform (mesmo caminho de sempre).
+export const AUTO_CLOSE_FIRST_WEEK = '2026-09-21';
+
+export function autoCloseOverdueWeeks(platforms, resolveCtx = () => ({}), refDate = new Date(), firstWeek = AUTO_CLOSE_FIRST_WEEK) {
+  const currentWeekStartKey = toLocalDateString(getWeekStart(refDate));
+  const touched = [];
+  const summary = [];
+  let weeksClosed = 0;
+
+  (platforms || []).forEach(platform => {
+    const earliest = earliestDayKey(platform);
+    if (!earliest) return; // nunca teve nenhum registro — nada a fechar
+
+    const closedKeys = (platform.financeWeeks || []).map(w => w.weekStart);
+    const lastClosed = closedKeys.length ? closedKeys.reduce((a, b) => (a > b ? a : b)) : null;
+    const firstActivityWeek = toLocalDateString(getWeekStart(new Date(`${earliest}T12:00:00`)));
+
+    const startKey = maxLo(firstWeek, firstActivityWeek, lastClosed ? addDaysKey(lastClosed, 7) : null);
+    const ctx = resolveCtx(platform);
+    const closedHere = [];
+
+    let cursor = startKey;
+    let guard = 0;
+    while (cursor < currentWeekStartKey && guard < 60) {
+      const alreadyClosed = (platform.financeWeeks || []).some(w => w.weekStart === cursor);
+      if (!alreadyClosed) {
+        const [y, m, d] = cursor.split('-').map(Number);
+        const weekEnd = getWeekEnd(new Date(y, m - 1, d));
+
+        const bonus = computeAutoAccruedBonusForWeek(platform, weekEnd, ctx)
+          + getAccumulatedBonusThisWeek(platform, weekEnd);
+
+        const entry = closeWeek(platform, bonus, weekEnd, ctx);
+        entry.autoClosed = true;
+        entry.bonusPending = Math.round((Number(entry.bonus) || 0) * 100) > 0;
+        closedHere.push(cursor);
+      }
+      cursor = addDaysKey(cursor, 7);
+      guard++;
+    }
+
+    if (closedHere.length > 0) {
+      touched.push(platform);
+      summary.push({ platformName: platform.name, weeks: closedHere });
+      weeksClosed += closedHere.length;
+    }
+  });
+
+  return { touched, summary, weeksClosed };
+}
+
+// Confirma o bônus REAL de uma semana fechada automaticamente. realBonus
+// null/undefined = manter o valor contabilizado. Valor informado: substitui
+// o bônus e ajusta o retrato do Saldo pela diferença; o Rollover congelado
+// NÃO muda (mesmo comportamento do fechamento de domingo).
+// Retorna a semana, ou null se não existe / não está pendente / valor inválido.
+export function setClosedWeekRealBonus(platform, weekStart, realBonus = null) {
+  const entry = (platform.financeWeeks || []).find(w => w.weekStart === weekStart);
+  if (!entry || entry.bonusPending !== true) return null;
+
+  if (realBonus !== null && realBonus !== undefined) {
+    const value = Number(realBonus);
+    if (!Number.isFinite(value) || value < 0) return null;
+    const oldBonus = Number(entry.bonus) || 0;
+    entry.bonus = value;
+    entry.rbPlusBonus = (Number(entry.resultBetting) || 0) + value;
+    entry.balance = Math.max(0, (Number(entry.balance) || 0) + (value - oldBonus));
+    // Mesma regra do fechamento: a diferença do bônus também entra no
+    // Rollover (1:1) e no retrato dele.
+    const diff = value - oldBonus;
+    if (entry.bonusRollover !== undefined) entry.bonusRollover = (Number(entry.bonusRollover) || 0) + diff;
+    if (entry.rolloverAtClose !== undefined && entry.rolloverAtClose !== null) {
+      // Retrato "como estava no fim daquela semana" (fase vigente e teto de
+      // data daquela semana — ver computeRolloverLive). ctx vazio: com a
+      // semana já fechada, nada de fórmula ao vivo entra no cálculo.
+      entry.rolloverAtClose = computeRolloverLive(platform, new Date(`${entry.weekEnd}T23:59:59`), {});
+    }
+  }
+
+  entry.bonusPending = false;
+  entry.bonusConfirmedAt = new Date().toISOString();
+  return entry;
 }

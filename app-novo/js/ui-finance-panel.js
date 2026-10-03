@@ -75,7 +75,7 @@ import { colorForLevel } from './cycle-logic.js';
 import {
   getWeekStart, getWeekEnd, toLocalDateString, toLocalDateTimeString,
   computeCurrentWeekLive, closeWeek, isCurrentWeekClosed, canCloseCurrentWeek,
-  updateClosedWeek, deleteClosedWeek, addHistoricalWeek,
+  updateClosedWeek, deleteClosedWeek, addHistoricalWeek, setClosedWeekRealBonus,
   computePlatformTotals, computeOverallTotalsPeriod, computeLiveBalance, computeRolloverLive,
   computePhaseHistory, startNewPhase, removePhaseByNumber
 } from './finance-logic.js';
@@ -716,6 +716,14 @@ function buildRow(p) {
     badges.appendChild(doneBadge);
   }
 
+  // Sub-entrega 3: semana fechada automaticamente aguardando o bônus real.
+  if ((p.financeWeeks || []).some(w => w.bonusPending === true)) {
+    const pendingBadge = document.createElement('span');
+    pendingBadge.className = 'vip-unset-badge';
+    pendingBadge.textContent = '⏳ bônus real pendente';
+    badges.appendChild(pendingBadge);
+  }
+
   // Item 22 — setas ▲▼: só existem quando o modo "Reordenar" está ativo
   // E "Padrão" está selecionado (currentMode null) — mesma regra já
   // validada na Edição.
@@ -792,6 +800,88 @@ function buildRow(p) {
   return row;
 }
 
+// ---------- SUB-ENTREGA 3: "BÔNUS REAL DA SEMANA PASSADA" ----------
+// Uma semana fechada automaticamente com bônus > 0 fica com
+// bonusPending:true até o usuário confirmar. O painel NÃO some com o
+// passar dos dias — só ao confirmar (ou ao editar o bônus da semana pelo
+// "Editar"). Campo em branco + Confirmar = manter o bônus contabilizado.
+// Semana automática SEM bônus nunca tem painel (usa "Editar" se precisar).
+function buildPendingBonusPanels(p) {
+  const pending = (p.financeWeeks || [])
+    .filter(w => w.bonusPending === true)
+    .sort((a, b) => a.weekStart.localeCompare(b.weekStart));
+  if (pending.length === 0) return null;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'finance-close-week';
+
+  const label = document.createElement('div');
+  label.className = 'manage-section-label';
+  label.textContent = 'Bônus real da semana passada';
+  wrap.appendChild(label);
+
+  pending.forEach(w => {
+    const range = `${formatDatePt(w.weekStart)} – ${formatDatePt(w.weekEnd)}`;
+
+    const note = document.createElement('p');
+    note.className = 'finance-close-week-note';
+    note.textContent = `Semana ${range} fechada automaticamente. Informe o valor REAL de bônus recebido nela — ou deixe em branco e confirme pra manter o que o sistema já contabilizou (fórmula + avulso). A diferença também entra no Saldo e no Rollover (1:1).`;
+    wrap.appendChild(note);
+
+    const stat = document.createElement('div');
+    stat.className = 'finance-stats-grid';
+    stat.innerHTML = statBox('Bônus Acumulado (fórmula + avulso)', formatCurrency(w.bonus), 'positive');
+    wrap.appendChild(stat);
+
+    const form = document.createElement('div');
+    form.className = 'finance-entry-form';
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '0';
+    input.step = '0.01';
+    input.placeholder = `Bônus real da semana ${range} (opcional)`;
+    input.setAttribute('aria-label', `Bônus real da semana ${range}`);
+    form.appendChild(input);
+    wrap.appendChild(form);
+
+    const actions = document.createElement('div');
+    actions.className = 'reset-modal-buttons';
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = 'btn-confirm';
+    confirmBtn.textContent = '✓ Confirmar bônus da semana';
+    confirmBtn.addEventListener('click', async () => {
+      const raw = input.value.trim();
+      let realBonus = null;
+      if (raw !== '') {
+        realBonus = parseFloat(raw);
+        if (isNaN(realBonus) || realBonus < 0) {
+          await showAppAlert('Digite um valor válido (maior ou igual a zero) ou deixe em branco.');
+          return;
+        }
+      }
+      const ok = await showAppConfirm(realBonus === null
+        ? `Manter o bônus contabilizado de ${formatCurrency(w.bonus)} na semana ${range}?`
+        : `Gravar ${formatCurrency(realBonus)} como bônus real da semana ${range}? (contabilizado pelo sistema: ${formatCurrency(w.bonus)})`);
+      if (!ok) return;
+
+      const updated = setClosedWeekRealBonus(p, w.weekStart, realBonus);
+      if (!updated) {
+        await showAppAlert('Não foi possível confirmar essa semana.');
+        return;
+      }
+      savePlatform(state.currentUid, p);
+      openRowId = p.id;
+      refreshRow(p.id);
+      renderFinanceList();
+    });
+    actions.appendChild(confirmBtn);
+    wrap.appendChild(actions);
+  });
+
+  return wrap;
+}
+
 // ---------- SEÇÃO "SEMANA ATUAL" ----------
 
 function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
@@ -809,6 +899,12 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
   section.appendChild(weekLabel);
 
   const rolloverLive = computeRolloverLive(p, new Date(), ctx);
+  // Bônus já emitido na semana em aberto: fórmula (VIP/Obrigado/Misterioso,
+  // dia a dia até hoje) + avulso lançado. Só exibição — o cálculo é o mesmo
+  // que o Saldo/Rollover ao vivo já usam.
+  const weekBonusSoFar = closed
+    ? 0
+    : computeAutoAccruedBonusForWeek(p, new Date(), ctx) + getAccumulatedBonusThisWeek(p, new Date());
   const statsWrap = document.createElement('div');
   statsWrap.className = 'finance-week-current';
   statsWrap.innerHTML = `
@@ -819,10 +915,14 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
       ${statBox('Apostado', formatCurrency(live.wagered))}
       ${statBox('N° Apostas', String(live.betCount))}
       ${statBox('R.B.', formatCurrency(live.resultBetting), live.resultBetting >= 0 ? 'positive' : 'negative')}
+      ${statBox('Bônus', formatCurrency(weekBonusSoFar), 'positive')}
       ${statBox('Saldo (Balance)', formatCurrency(liveBalance), 'positive')}
       ${statBox('Rollover', formatCurrency(rolloverLive), 'positive')}
     </div>`;
   section.appendChild(statsWrap);
+
+  const pendingBonusPanel = buildPendingBonusPanels(p);
+  if (pendingBonusPanel) section.appendChild(pendingBonusPanel);
 
   if (closed) {
     const doneNote = document.createElement('p');
@@ -975,7 +1075,7 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
 
     const closeNote = document.createElement('p');
     closeNote.className = 'finance-close-week-note';
-    closeNote.textContent = `R.B. da semana já somado automaticamente: ${formatCurrency(live.resultBetting)}. Saldo atual (antes do Bônus final desta semana): ${formatCurrency(liveBalance)}. Informe o valor REAL total de bônus recebido na semana — o Saldo final é recalculado sozinho ao fechar.`;
+    closeNote.textContent = `R.B. da semana já somado automaticamente: ${formatCurrency(live.resultBetting)}. Saldo atual (antes do Bônus final desta semana): ${formatCurrency(liveBalance)}. Informe o valor REAL total de bônus recebido na semana — o Saldo final é recalculado sozinho ao fechar, e a diferença pro que o sistema já contabilizou também entra no Rollover (1:1).`;
     closeSection.appendChild(closeNote);
 
     // Bloco F Item 16.7 — só-leitura: soma do que a fórmula (Bônus 1) já

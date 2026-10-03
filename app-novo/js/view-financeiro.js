@@ -21,6 +21,9 @@ import {
   renderFinanceList, refreshAllRows, resetFinanceListCache,
   setBonusContextResolver
 } from './ui-finance-panel.js';
+import { autoCloseOverdueWeeks } from './finance-logic.js';
+import { savePlatform } from './platforms-store.js';
+import { showAppAlert } from './utils.js';
 import { loadObrigadoValuePerAppearance } from './vip-obrigado-store.js';
 import { loadMisteriosoTemplates } from './vip-misterioso-store.js';
 import { loadPreferences } from './user-preferences-store.js';
@@ -165,10 +168,23 @@ export async function mount(container) {
   function findTemplateForPlatform(platformId) {
     return misteriosoTemplates.find(t => (t.platformIds || []).includes(platformId)) || null;
   }
-  setBonusContextResolver((platform) => ({
+  const resolveCtx = (platform) => ({
     obrigadoValuePerAppearance,
     misteriosoTemplate: findTemplateForPlatform(platform.id)
-  }));
+  });
+  setBonusContextResolver(resolveCtx);
+
+  // SUB-ENTREGA 3 (item 5): segunda chance. Semanas passadas que ficaram
+  // sem fechamento são fechadas aqui, ANTES do primeiro render, com o que
+  // o sistema já contabilizou (ver autoCloseOverdueWeeks em finance-logic).
+  // try/catch: um erro aqui nunca pode impedir o Financeiro de abrir.
+  let autoClose = { touched: [], summary: [], weeksClosed: 0 };
+  try {
+    autoClose = autoCloseOverdueWeeks(state.platforms, resolveCtx, new Date());
+    autoClose.touched.forEach(platform => savePlatform(state.currentUid, platform));
+  } catch (err) {
+    console.error('Erro no fechamento automático de semanas:', err);
+  }
 
   sortMenuCleanup = initFinanceControls();
   initFinanceOverview();
@@ -177,6 +193,15 @@ export async function mount(container) {
 
   renderFinanceList(); // já chama renderFinanceOverview() internamente
   scheduleDailyUpdate();
+
+  if (autoClose.weeksClosed > 0) {
+    const names = autoClose.summary.slice(0, 8).map(item => `${item.platformName} (${item.weeks.length})`).join(', ');
+    const more = autoClose.summary.length > 8 ? ` e mais ${autoClose.summary.length - 8}` : '';
+    await showAppAlert(
+      `Fechei automaticamente ${autoClose.weeksClosed} semana(s) em ${autoClose.summary.length} plataforma(s) que ficaram sem fechamento: ${names}${more}. ` +
+      `O bônus gravado é o que o sistema já contabilizou. Onde houve bônus, aparece o painel "Bônus real" na plataforma pra você confirmar o valor — ou use "Editar" na semana.`
+    );
+  }
 }
 
 export function unmount() {

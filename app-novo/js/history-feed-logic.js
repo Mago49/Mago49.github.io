@@ -147,7 +147,7 @@ export function buildDayFeed(platforms, dayKey, resolveCtx = () => ({}), refDate
       if (!isOnDay(w.closedAt, dayKey)) return;
       events.push({
         ...base, ts: new Date(w.closedAt).getTime(), kind: 'semana', icon: '🔒',
-        label: w.backfilled ? 'Semana antiga adicionada' : 'Semana fechada',
+        label: w.backfilled ? 'Semana antiga adicionada' : (w.autoClosed ? 'Semana fechada (automático)' : 'Semana fechada'),
         value: null,
         detail: `${fmtShort(w.weekStart)} – ${fmtShort(w.weekEnd)} · Bônus ${r2(w.bonus).toFixed(2).replace('.', ',')}`,
         rb: r2(w.resultBetting)
