@@ -1,6 +1,6 @@
 import { startBackgroundAnimation } from './ui-background.js';
 import { initAuth } from './auth-guard.js';
-import { initRouter, stopRouter } from './router.js';
+import { initRouter } from './router.js';
 import { SAFE_MODE } from './dev-flags.js';
 import { state } from './state.js';
 
@@ -15,13 +15,7 @@ startBackgroundAnimation();
 
 initAuth({
   onLogin: () => initRouter(),
-  onLogout: () => {
-    // Desmonta a view atual (timers, FullCalendar, legenda fixa, modais)
-    // ANTES de mexer no hash — senão o hashchange montaria o Início sem
-    // usuário e a legenda do Calendário ficaria por cima do login.
-    stopRouter();
-    window.location.hash = '#/inicio';
-  }
+  onLogout: () => { window.location.hash = '#/inicio'; }
 });
 
 // Mitigação de estado velho: ficou muito tempo em segundo plano -> recarrega
