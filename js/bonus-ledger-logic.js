@@ -31,9 +31,12 @@
 //   ctx.misteriosoTemplate         : template já resolvido pra ESTA
 //                                     plataforma (vip-misterioso-store.js
 //                                     + findTemplateForPlatform), ou null
-// Sem ctx (ou com ctx vazio), Obrigado/Misterioso simplesmente não
+//   ctx.vipTemplate                : template já resolvido pra ESTA
+//                                     plataforma (vip-bonus-template-store.js
+//                                     + resolveVipTemplateForPlatform), ou null
+// Sem ctx (ou com ctx vazio), Obrigado/Misterioso/VipTemplate simplesmente não
 // contribuem em nada — VIP diário/semanal/mensal continuam funcionando
-// normalmente, porque não dependem de ctx (só de platform.group/level).
+// normalmente com os valores padrão (só de platform.group/level).
 
 import { getVipConfigAt, computeEmissionDates, isBetDayEffective } from './cycle-logic.js';
 import { getEffectiveMisteriosoValue } from './misterioso-logic.js';
@@ -91,7 +94,8 @@ function hasBetOnDate(platform, date) {
 // então o feed do Perfil e o Saldo/Rollover ao vivo nunca divergem.
 export function getExpectedBonusBreakdownForDate(platform, date, ctx = {}) {
   const d = startOfDay(date);
-  const { group, cfg } = getVipConfigAt(platform, d);
+  const template = ctx.vipTemplate || null;
+  const { group, cfg } = getVipConfigAt(platform, d, template);
   const out = { vipDaily: 0, vipWeekly: 0, vipMonthly: 0, obrigado: 0, misterioso: 0 };
 
   // Diário — 'sem' recebe todo dia; 'com' só nos dias liberados (manual
