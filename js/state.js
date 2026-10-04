@@ -11,5 +11,6 @@
 export const state = {
   platforms: [],
   currentUid: null,
+  vipBonusTemplates: [],
   calendar: null // instância do FullCalendar, setada em ui-calendar.js
 };
