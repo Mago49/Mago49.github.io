@@ -1,0 +1,62 @@
+/* === CABEÇALHO DE PÁGINA (Páginas 2, 3 e 4) ===
+   Título + frase complementar à esquerda, navegação entre páginas à
+   direita. Fica no fluxo normal do topo da página (não fixo), pra não
+   competir com o conteúdo ao rolar — "borda superior" aqui é o topo da
+   page-shell, não a viewport. */
+
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 1rem 0 1.25rem;
+}
+
+.page-header-text h1 {
+  margin: 0;
+  font-size: clamp(1.5rem, 3vw, 2.1rem);
+  letter-spacing: -0.02em;
+  color: var(--text-dark);
+}
+
+.page-header-text p {
+  margin: 0.4rem 0 0;
+  color: var(--text-soft);
+  font-size: 0.95rem;
+  max-width: 52ch;
+}
+
+.top-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.top-nav .user-label {
+  margin-right: 0.3rem;
+}
+
+.top-nav a,
+.top-nav button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  text-decoration: none;
+  border: none;
+  border-radius: 999px;
+  padding: 0.65rem 1rem;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  background: #6b7280;
+  color: #fff;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+  white-space: nowrap;
+}
+
+.top-nav a.nav-home {
+  background: var(--primary);
+}
