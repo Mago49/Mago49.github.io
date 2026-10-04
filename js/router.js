@@ -5,6 +5,7 @@ import * as viewEdicao from './view-edicao.js';
 import * as viewFinanceiro from './view-financeiro.js';
 import * as viewGraficos from './view-graficos.js';
 import * as viewPerfil from './view-perfil.js';
+import { state } from './state.js';
 
 const appShellEl = document.getElementById('appShell');
 let routerStarted = false;
@@ -28,15 +29,41 @@ function renderPlaceholder(nome) {
     </section>`;
 }
 
-function handleRouteChange() {
-  // Desmonta a view anterior ANTES de montar a nova — essencial pra
-  // views com timers/instâncias próprias (ex: Calendário/FullCalendar,
-  // Edição/modais dinâmicos) não continuarem rodando em segundo plano
-  // depois de sair da rota.
+// Desmonta a view atual — essencial pra views com timers/instâncias
+// próprias (ex: Calendário/FullCalendar, Edição/modais dinâmicos) não
+// continuarem rodando em segundo plano depois de sair da rota. Um erro
+// dentro do unmount() de uma view nunca pode impedir a navegação nem o
+// logout: é só registrado e o router segue.
+function unmountCurrentView() {
   if (currentView && typeof currentView.unmount === 'function') {
-    currentView.unmount();
+    try {
+      currentView.unmount();
+    } catch (err) {
+      console.error('Erro ao desmontar a view:', err);
+    }
   }
   currentView = null;
+}
+
+// Chamada no LOGOUT (ver main.js): desmonta a view atual e esvazia o
+// shell, pra nada da sessão anterior (legenda fixa do Calendário, modais
+// dinâmicos, timers, dados em tela) sobreviver por cima da tela de login.
+export function stopRouter() {
+  unmountCurrentView();
+  appShellEl.innerHTML = '';
+}
+
+function handleRouteChange() {
+  // Sem usuário logado nenhuma view pode montar: state.platforms está
+  // vazio e qualquer tela mostraria (ou tentaria gravar) dados de uma
+  // sessão que já acabou. Mudança de hash durante o logout cai aqui.
+  if (!state.currentUid) {
+    stopRouter();
+    return;
+  }
+
+  // Desmonta a view anterior ANTES de montar a nova.
+  unmountCurrentView();
 
   const hash = window.location.hash || '#/inicio';
 
