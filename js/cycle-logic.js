@@ -4,6 +4,7 @@
 // agora é feita uma única vez e guardada em cache — ver getLevelColors()).
 
 import { state } from './state.js';
+import { getVipTemplateConfigForPlatform } from './vip-bonus-template-logic.js';
 
 export const vipBonusTable = {
   com: {
@@ -55,9 +56,14 @@ export function getLevelAt(platform, refDate = new Date()) {
 }
 
 // Config VIP (valores unitários) + grupo vigentes num dia específico.
-export function getVipConfigAt(platform, refDate = new Date()) {
+// Se houver template associado, ele sobrepõe os valores padrão.
+export function getVipConfigAt(platform, refDate = new Date(), template = null) {
   const { level, group } = getLevelAt(platform, refDate);
-  const raw = vipBonusTable[group]?.[level] || { daily: 0, weekly: 0, monthly: 0 };
+  const templateCfg = template
+    ? getVipTemplateConfigForPlatform(template, group, level)
+    : null;
+
+  const raw = templateCfg || vipBonusTable[group]?.[level] || { daily: 0, weekly: 0, monthly: 0 };
   return {
     level, group,
     cfg: {
@@ -66,6 +72,13 @@ export function getVipConfigAt(platform, refDate = new Date()) {
       monthly: Number(raw.monthly) || 0
     }
   };
+}
+
+// Resolve o template VIP associado a uma plataforma a partir do estado global
+export function resolveVipTemplateForPlatform(platform, templates = state.vipBonusTemplates || []) {
+  if (!platform || !platform.vipBonusTemplateId) return null;
+  if (!Array.isArray(templates)) return null;
+  return templates.find(t => t.id === platform.vipBonusTemplateId) || null;
 }
 
 // Registra a troca de nível/grupo. CHAMAR ANTES de atribuir p.level/p.group.
@@ -296,13 +309,16 @@ export function computeHeroStats(platforms) {
   return { totalPlatforms, totalDeposits, bonusToday, activeCycles, topPlatform, topPlatformTotal, maxLevel };
 }
 
-export function getVipBonus(platform, refDate = new Date()) {
+// === VIP BONUS COM TEMPLATE ===
+export function getVipBonus(platform, refDate = new Date(), template = null) {
   const hoje = new Date(refDate);
   hoje.setHours(23, 59, 59, 999);
 
   const ano = hoje.getFullYear();
   const mes = hoje.getMonth();
   const diasNoMes = new Date(ano, mes + 1, 0).getDate();
+
+  const resolvedTemplate = template || resolveVipTemplateForPlatform(platform, state.vipBonusTemplates || []);
 
   // "Apostei hoje" conta sempre a partir do dia 1 do mês (getMonthStart),
   // independente de Reinício — regra inalterada.
@@ -316,7 +332,7 @@ export function getVipBonus(platform, refDate = new Date()) {
   let weeklyTotal = 0;
   for (let d = 1; d <= diasNoMes; d++) {
     const day = new Date(ano, mes, d);
-    const { group, cfg } = getVipConfigAt(platform, day);
+    const { group, cfg } = getVipConfigAt(platform, day, resolvedTemplate);
     if (group === 'sem') {
       dailyTotal += cfg.daily;
     } else if (group === 'com' && day <= hoje && betKeys.has(toLocalDayKey(day))) {
@@ -326,7 +342,7 @@ export function getVipBonus(platform, refDate = new Date()) {
   }
 
   // Mensal: creditado no dia 1, com o nível vigente no dia 1.
-  const monthlyTotal = getVipConfigAt(platform, new Date(ano, mes, 1)).cfg.monthly;
+  const monthlyTotal = getVipConfigAt(platform, new Date(ano, mes, 1), resolvedTemplate).cfg.monthly;
 
   return {
     daily: dailyTotal,
