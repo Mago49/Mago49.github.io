@@ -255,7 +255,7 @@ export function renderObrigadoPanel() {
         removeBtn.setAttribute('aria-label', `Remover ${p.name} do dia ${day}`);
         removeBtn.addEventListener('click', () => {
           p.obrigadoDays = p.obrigadoDays.filter(d => d !== day);
-          savePlatform(state.currentUid, p);
+          savePlatform(state.currentUid, p, { allowShrink: ['obrigadoDays'] });
           renderObrigadoPanel();
         });
         chip.appendChild(removeBtn);

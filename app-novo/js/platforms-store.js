@@ -2,7 +2,7 @@
 // Único módulo que fala diretamente com o Firestore.
 // Se um dia trocar de banco de dados, é aqui (e só aqui) que mexe.
 
-import { db, collection, doc, getDoc, getDocs, deleteDoc, writeBatch } from './firebase-init.js';
+import { db, collection, doc, getDoc, getDocs, deleteDoc, writeBatch, showSaveFailureToast, showStaleDataBanner } from './firebase-init.js';
 
 // depositLog: histórico PERMANENTE de depósitos, usado só pelo Financeiro
 // (Página 5). Diferente de `deposits` (que Fim/Reinício do ciclo VIP zeram
@@ -33,6 +33,12 @@ export function normalizePlatformData(parsed) {
       // id vem SEMPRE de d.id (injetado em loadPlatformsFromFirestore) —
       // o campo `id` dentro do documento nunca é a fonte de verdade.
       id: p.id,
+      // SUB-ENTREGA 5 — número de revisão do documento. Cada gravação soma
+      // 1; a Regra de Segurança do Firestore só aceita a gravação se este
+      // número for exatamente (revisão do servidor + 1) — assim uma aba ou
+      // aparelho com dado velho NUNCA sobrescreve dado mais novo. Plataformas
+      // antigas (sem o campo) começam em 0.
+      rev: Number.isFinite(Number(p.rev)) ? Number(p.rev) : 0,
       name: p.name || ('P' + (i + 1)),
       lastResetDate: p.lastResetDate || null,
       deposits,
@@ -120,7 +126,9 @@ export async function loadPlatformsFromFirestore(uid) {
       .then(s => (s.exists() ? null : writeSentinelOnly(uid)))
       .catch(err => console.error('Sentinela: verificação/criação falhou (dados carregados normalmente):', err));
     // id SEMPRE de d.id, sobrepondo qualquer `id` salvo dentro do doc.
-    return normalizePlatformData(snap.docs.map(d => ({ ...d.data(), id: d.id }))) || [];
+    const loaded = normalizePlatformData(snap.docs.map(d => ({ ...d.data(), id: d.id }))) || [];
+    registerPlatformBaselines(loaded);
+    return loaded;
   }
 
   const sentinelSnap = await getDoc(sentinelRef);
@@ -137,16 +145,116 @@ export async function loadPlatformsFromFirestore(uid) {
   return [];
 }
 
+// ============================================================
+// SUB-ENTREGA 5 — PROTEÇÃO CONTRA SOBRESCRITA
+// ============================================================
+// Toda gravação de plataforma passa por savePlatform — por isso a proteção
+// mora aqui, num lugar só. Duas travas, contra causas diferentes:
+//
+// A) TRAVA DE ENCOLHIMENTO (cliente): memória incompleta ou vazia nunca
+//    sobrescreve um documento cheio. Guardamos o TAMANHO de cada histórico
+//    no momento em que a plataforma foi carregada (ou gravada pela última
+//    vez); se um histórico vier com MENOS itens, a gravação é recusada —
+//    a menos que a ação seja uma exclusão deliberada, que declara
+//    explicitamente quais campos podem encolher (options.allowShrink).
+//    Esquecer de declarar nunca perde dado: só bloqueia a gravação.
+//
+// B) REVISÃO `rev` (servidor): cada gravação soma 1 em platform.rev e a
+//    Regra de Segurança do Firestore recusa se não for (rev do servidor +
+//    1). Aba/aparelho antigo é recusado em vez de sobrescrever. Sem a
+//    regra publicada, o campo é só guardado (nada quebra).
+const GUARDED_FIELDS = [
+  'depositLog', 'deposits', 'withdrawals', 'betEntries', 'financeWeeks',
+  'otherBonusLog', 'balancePhases', 'betDays', 'misteriosoBonusLog',
+  'obrigadoDays', 'levelHistory'
+];
+
+// id da plataforma -> { campo: quantidade de itens } (carga ou última gravação)
+const platformBaselines = new Map();
+
+// Depois de um conflito recusado pelo servidor, nenhuma gravação segue até
+// recarregar: tudo que viesse depois seria recusado do mesmo jeito.
+let writesLocked = false;
+
+function recordBaseline(platform) {
+  const lengths = {};
+  GUARDED_FIELDS.forEach(f => { lengths[f] = Array.isArray(platform[f]) ? platform[f].length : 0; });
+  platformBaselines.set(platform.id, lengths);
+}
+
+function registerPlatformBaselines(list) {
+  platformBaselines.clear();
+  (list || []).forEach(p => { if (p && p.id) recordBaseline(p); });
+}
+
+function checkPlatformBeforeSave(platform, allowShrink) {
+  const fail = (reason) => ({ ok: false, reason });
+  if (!platform || typeof platform !== 'object') return fail('plataforma inválida');
+  if (typeof platform.id !== 'string' || !platform.id) return fail('plataforma sem id');
+  if (typeof platform.name !== 'string' || !platform.name.trim() || platform.name.length > 40) {
+    return fail('nome da plataforma inválido');
+  }
+
+  const allowed = new Set(Array.isArray(allowShrink) ? allowShrink : []);
+  const base = platformBaselines.get(platform.id);
+  if (base) {
+    for (const f of GUARDED_FIELDS) {
+      const before = base[f] || 0;
+      if (!Array.isArray(platform[f])) {
+        if (before > 0 && !allowed.has(f)) return fail(`o campo "${f}" sumiu (tinha ${before} itens)`);
+        continue;
+      }
+      if (platform[f].length < before && !allowed.has(f)) {
+        return fail(`"${f}" ficaria com ${platform[f].length} item(ns) (tinha ${before})`);
+      }
+    }
+  }
+  return { ok: true };
+}
+
 // Salva UMA única plataforma (não reescreve as outras 32). Usar sempre
 // que a ação do usuário mexeu em só uma plataforma — o que é o caso da
 // grande maioria dos botões do app. Evita que uma aba com dados
 // desatualizados em memória apague alterações feitas por outra aba.
-export function savePlatform(uid, platform) {
-  if (!uid) return;
+//
+// options.allowShrink: lista de campos que ESTA ação pode encolher de
+// propósito (ex: excluir depósito -> ['deposits', 'depositLog']).
+// Retorna true se a gravação foi enviada, false se foi bloqueada.
+export function savePlatform(uid, platform, options = {}) {
+  if (!uid) return false;
+
+  if (writesLocked) {
+    showStaleDataBanner();
+    return false;
+  }
+
+  const check = checkPlatformBeforeSave(platform, options.allowShrink);
+  if (!check.ok) {
+    console.error('Gravação da plataforma BLOQUEADA por segurança:', check.reason, platform && platform.name);
+    showSaveFailureToast(
+      `Gravação bloqueada por segurança (${check.reason}). Nada foi alterado no banco de dados. Recarregue a página e tente de novo.`,
+      true
+    );
+    return false;
+  }
+
+  platform.rev = (Number(platform.rev) || 0) + 1;
+
   const colRef = collection(db, 'users', uid, 'platforms');
   const batch = writeBatch(db);
   batch.set(doc(colRef, platform.id), platform);
-  batch.commit().catch(err => console.error('Erro ao salvar no Firebase:', err));
+  batch.commit().catch(err => {
+    console.error('Erro ao salvar no Firebase:', err);
+    // O servidor recusou (regra de revisão, ou sessão sem permissão): trava
+    // as próximas gravações e avisa de forma que não passe batido.
+    if (err && err.code === 'permission-denied') {
+      writesLocked = true;
+      showStaleDataBanner();
+    }
+  });
+
+  recordBaseline(platform);
+  return true;
 }
 
 export function deletePlatformDoc(uid, id) {

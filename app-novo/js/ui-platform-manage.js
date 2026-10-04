@@ -579,7 +579,7 @@ function buildActionsSection(p) {
     if (!ok) return;
     p.deposits = [];
     p.cycleEnded = true;
-    savePlatform(state.currentUid, p);
+    savePlatform(state.currentUid, p, { allowShrink: ['deposits'] });
     // cycleEnded pode afetar filtros de Ativas/Inativas — atualiza a
     // própria linha (badge "Encerrado") e reconcilia a lista visível.
     refreshRow(p.id);
@@ -1129,7 +1129,7 @@ function showHistoryModal(platform) {
               );
               if (logIndex !== -1) platform.depositLog.splice(logIndex, 1);
             }
-            savePlatform(state.currentUid, platform);
+            savePlatform(state.currentUid, platform, { allowShrink: ['deposits', 'depositLog'] });
             openRowId = platform.id;
             // Não afeta filtro/ordenação — só o conteúdo da linha muda.
             refreshRow(platform.id);
@@ -1261,7 +1261,7 @@ function renderBetList() {
       removeBtn.addEventListener('click', () => {
         currentBetPlatform.betDays = (currentBetPlatform.betDays || [])
           .filter(dd => dd.slice(0, 10) !== dateStr);
-        savePlatform(state.currentUid, currentBetPlatform);
+        savePlatform(state.currentUid, currentBetPlatform, { allowShrink: ['betDays'] });
         renderBetList();
         openRowId = currentBetPlatform.id;
         // Não afeta filtro/ordenação — só o conteúdo da linha muda.
@@ -1511,7 +1511,7 @@ export function initModalListeners() {
       // (getMonthStart), não pelo ciclo.
       currentResetPlatform.deposits = [];
       openRowId = currentResetPlatform.id;
-      savePlatform(state.currentUid, currentResetPlatform);
+      savePlatform(state.currentUid, currentResetPlatform, { allowShrink: ['deposits'] });
       // lastResetDate/cycleEnded podem afetar filtros de Ativas/Inativas e
       // ordenação por dias no ciclo — atualiza a linha e reconcilia a lista.
       refreshRow(currentResetPlatform.id);

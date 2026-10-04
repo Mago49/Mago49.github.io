@@ -17,10 +17,42 @@
 
 import { auth, signOut } from './firebase-init.js';
 import { state } from './state.js';
-import { showAppConfirm, formatCurrency, escapeHtml } from './utils.js';
+import { showAppAlert, showAppConfirm, formatCurrency, escapeHtml } from './utils.js';
 import { loadObrigadoValuePerAppearance } from './vip-obrigado-store.js';
 import { loadMisteriosoTemplates } from './vip-misterioso-store.js';
 import { buildDayFeed, toLocalDayKey, shiftDayKey } from './history-feed-logic.js';
+import { exportFullBackup } from './backup-store.js';
+
+// Último backup gerado NESTE navegador — só uma conveniência de tela
+// (lembrar a rotina semanal). localStorage pode falhar/estar vazio:
+// sempre dentro de try/catch e a tela funciona igual sem ele.
+const LAST_BACKUP_KEY = 'painelUltimoBackup';
+
+function readLastBackupInfo() {
+  try {
+    const raw = localStorage.getItem(LAST_BACKUP_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function writeLastBackupInfo(info) {
+  try {
+    localStorage.setItem(LAST_BACKUP_KEY, JSON.stringify(info));
+  } catch (e) {
+    // sem armazenamento disponível — só não mostra "último backup"
+  }
+}
+
+function describeLastBackup() {
+  const info = readLastBackupInfo();
+  if (!info || !info.exportedAt) return 'Nenhum backup gerado neste aparelho ainda.';
+  const when = new Date(info.exportedAt).toLocaleString('pt-BR', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
+  return `Último backup neste aparelho: ${when}.`;
+}
 
 let dailyTimer = null;
 let mountToken = 0;
@@ -210,6 +242,19 @@ export async function mount(container) {
       <div id="histList" class="hist-list"><div class="finance-empty">Carregando histórico...</div></div>
     </section>
 
+    <section class="card-shell" style="padding:1.1rem; margin-top:1.1rem;" aria-label="Backup dos dados">
+      <div class="section-heading" style="padding:0 0 0.8rem;">
+        <div>
+          <h2>🛡️ Backup dos dados</h2>
+          <p>Baixa um arquivo .json com todas as suas plataformas e configurações, direto no seu aparelho. Nada é enviado a servidor nenhum. Sugestão: fazer toda semana, junto do fechamento de domingo.</p>
+        </div>
+      </div>
+      <div class="reset-modal-buttons" style="justify-content:flex-start; margin-top:0;">
+        <button type="button" id="perfilBackupBtn" class="btn-confirm">⬇️ Exportar backup (JSON)</button>
+      </div>
+      <p id="perfilBackupStatus" class="finance-close-week-note" style="margin-top:0.7rem;"></p>
+    </section>
+
     <section class="card-shell" style="padding:2rem; display:flex; justify-content:center; margin-top:1.1rem;">
       <button type="button" id="perfilLogoutBtn" class="btn-remove-modal" style="padding:0.85rem 1.4rem; border-radius:999px; font-weight:700; font-size:0.95rem;">
         🪪 Sair da conta
@@ -221,6 +266,26 @@ export async function mount(container) {
     const ok = await showAppConfirm('Deseja realmente sair da sua conta? Você vai precisar entrar de novo com sua conta Google.');
     if (!ok) return;
     await signOut(auth);
+  });
+
+  const backupBtn = document.getElementById('perfilBackupBtn');
+  const backupStatusEl = document.getElementById('perfilBackupStatus');
+  backupStatusEl.textContent = describeLastBackup();
+  backupBtn.addEventListener('click', async () => {
+    backupBtn.disabled = true;
+    backupStatusEl.textContent = 'Gerando backup...';
+    try {
+      const result = await exportFullBackup(state.currentUid);
+      writeLastBackupInfo({ exportedAt: result.exportedAt, filename: result.filename });
+      const c = result.counts;
+      backupStatusEl.textContent = `✓ Backup gerado: ${result.filename} — ${c.platforms} plataforma(s), ${c.dailySnapshots} dia(s) de snapshot, ${c.vipHistory} mês(es) de histórico. Confira na pasta Downloads do aparelho.`;
+    } catch (err) {
+      console.error('Erro ao gerar backup:', err);
+      backupStatusEl.textContent = describeLastBackup();
+      await showAppAlert(`Não foi possível gerar o backup: ${err && err.message ? err.message : 'erro desconhecido'}`);
+    } finally {
+      backupBtn.disabled = false;
+    }
   });
 
   initHistoryControls();

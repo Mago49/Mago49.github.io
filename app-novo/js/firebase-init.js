@@ -50,16 +50,16 @@ const SAVE_WARNING_VISIBLE_MS = 8000;
 const SAVE_WARNING_MIN_GAP_MS = 10000;
 let lastSaveWarningAt = 0;
 
-function showSaveFailureToast() {
+export function showSaveFailureToast(message, force = false) {
   try {
     const now = Date.now();
-    if (now - lastSaveWarningAt < SAVE_WARNING_MIN_GAP_MS) return;
+    if (!force && now - lastSaveWarningAt < SAVE_WARNING_MIN_GAP_MS) return;
     if (typeof document === 'undefined' || !document.body) return;
     lastSaveWarningAt = now;
 
     const toast = document.createElement('div');
     toast.setAttribute('role', 'alert');
-    toast.textContent = 'Atenção: a última alteração pode não ter sido salva. Verifique sua conexão e tente novamente; se persistir, recarregue a página.';
+    toast.textContent = message || 'Atenção: a última alteração pode não ter sido salva. Verifique sua conexão e tente novamente; se persistir, recarregue a página.';
     toast.style.cssText = [
       'position:fixed', 'left:50%', 'transform:translateX(-50%)',
       'bottom:calc(1rem + env(safe-area-inset-bottom, 0px))',
@@ -74,6 +74,47 @@ function showSaveFailureToast() {
     setTimeout(() => { toast.remove(); }, SAVE_WARNING_VISIBLE_MS);
   } catch (e) {
     console.error('Falha ao exibir aviso de gravação:', e);
+  }
+}
+
+// Aviso FIXO (não some sozinho) de dados desatualizados — mostrado quando o
+// servidor recusa uma gravação de plataforma (regra de revisão `rev`, ver
+// platforms-store.js: outro aparelho/aba gravou dado mais novo). Só uma
+// vez por carregamento da página; o botão recarrega com dados frescos.
+// Nunca lança: falha ao montar o aviso não pode mascarar o erro original.
+let staleBannerShown = false;
+
+export function showStaleDataBanner() {
+  try {
+    if (staleBannerShown) return;
+    if (typeof document === 'undefined' || !document.body) return;
+    staleBannerShown = true;
+
+    const banner = document.createElement('div');
+    banner.setAttribute('role', 'alert');
+    banner.style.cssText = [
+      'position:fixed', 'left:0', 'right:0', 'top:0',
+      'padding:calc(0.7rem + env(safe-area-inset-top, 0px)) 1rem 0.7rem',
+      'background:#b91c1c', 'color:#fff', 'box-sizing:border-box',
+      'font:600 0.88rem/1.4 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif',
+      'z-index:1001', 'text-align:center',
+      'box-shadow:0 8px 24px rgba(15,23,42,0.3)'
+    ].join(';');
+
+    const text = document.createElement('span');
+    text.textContent = 'Seus dados mudaram em outro aparelho ou aba (ou a gravação foi recusada). Nada foi sobrescrito, mas as últimas alterações desta tela NÃO foram salvas. Recarregue antes de continuar. ';
+    banner.appendChild(text);
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = 'Recarregar agora';
+    btn.style.cssText = 'margin-top:0.4rem; padding:0.5rem 0.9rem; border:none; border-radius:999px; background:#fff; color:#b91c1c; font-weight:800; cursor:pointer;';
+    btn.addEventListener('click', () => window.location.reload());
+    banner.appendChild(btn);
+
+    document.body.appendChild(banner);
+  } catch (e) {
+    console.error('Falha ao exibir aviso de dados desatualizados:', e);
   }
 }
 

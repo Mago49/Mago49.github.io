@@ -1483,7 +1483,7 @@ function buildPhaseCard(phase, platformId) {
       if (!ok) return;
       const removed = removePhaseByNumber(platform, phase.phaseNumber);
       if (!removed) return;
-      savePlatform(state.currentUid, platform);
+      savePlatform(state.currentUid, platform, { allowShrink: ['balancePhases'] });
       clearOverridesForPlatform(phaseExpandedOverrides, platformId);
       openRowId = platformId;
       refreshRow(platformId);
@@ -2052,7 +2052,8 @@ function buildWeekCardReadOnly(p, w, isFirst) {
     const ok = await showAppConfirm(`Excluir a semana de ${formatDatePt(w.weekStart)} – ${formatDatePt(w.weekEnd)} de ${p.name}? Essa ação não pode ser desfeita.`);
     if (!ok) return;
     deleteClosedWeek(p, w.weekStart);
-    savePlatform(state.currentUid, p);
+    // Semana de backfill também remove o depósito/saque sintético dela.
+    savePlatform(state.currentUid, p, { allowShrink: ['financeWeeks', 'depositLog', 'withdrawals'] });
     openRowId = p.id;
     refreshRow(p.id);
     renderFinanceList();
@@ -2338,7 +2339,7 @@ function renderBetHistoryList() {
         if (!ok) return;
         const idx = platform.betEntries.indexOf(entry);
         if (idx !== -1) platform.betEntries.splice(idx, 1);
-        savePlatform(state.currentUid, platform);
+        savePlatform(state.currentUid, platform, { allowShrink: ['betEntries'] });
         renderBetHistoryList();
         refreshRow(platform.id);
         renderFinanceList();
@@ -2479,7 +2480,7 @@ function renderWithdrawalsList() {
         if (!ok) return;
         const idx = platform.withdrawals.indexOf(entry);
         if (idx !== -1) platform.withdrawals.splice(idx, 1);
-        savePlatform(state.currentUid, platform);
+        savePlatform(state.currentUid, platform, { allowShrink: ['withdrawals'] });
         renderWithdrawalsList();
         refreshRow(platform.id);
         renderFinanceList();
