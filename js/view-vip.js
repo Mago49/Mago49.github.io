@@ -24,7 +24,7 @@
 // esses 2 valores já carregados em vez de buscar de novo (ver
 // checkAndCloseMonthlyHistory em vip-history-store.js).
 
-import { renderVipPanel, initVipFilters, initVipTabs, initObrigadoPanel, initMisteriosoPanel, initHistoryTab, initVipBonusTemplatePanel } from './ui-vip-panel.js';
+import { renderVipPanel, initVipFilters, initVipTabs, initObrigadoPanel, initMisteriosoPanel, initHistoryTab } from './ui-vip-panel.js';
 
 let dailyTimer = null;
 
@@ -64,11 +64,9 @@ export async function mount(container) {
           <button type="button" class="vip-filter-btn active" data-group="all">ALL</button>
           <button type="button" class="vip-filter-btn" data-group="com">COM APOSTA</button>
           <button type="button" class="vip-filter-btn" data-group="sem">SEM APOSTA</button>
-          <button type="button" id="vipTemplateBtn" class="bet-manage-btn" aria-label="Gerenciar templates VIP">Templates</button>
         </div>
 
         <div id="vipSummary" class="vip-summary"></div>
-        <div id="vipTemplateManager" class="vip-template-manager app-hidden"></div>
       </div>
 
       <div class="vip-tab-panel app-hidden" data-tab-panel="obrigado">
@@ -134,7 +132,6 @@ export async function mount(container) {
 
   initVipTabs();
   initVipFilters();
-  initVipBonusTemplatePanel();
   renderVipPanel();
   scheduleDailyUpdate();
   await initObrigadoPanel();
