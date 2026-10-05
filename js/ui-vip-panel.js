@@ -18,7 +18,10 @@
 
 import { state } from './state.js';
 import { formatCurrency, escapeHtml, showAppAlert, showAppConfirm } from './utils.js';
-import { getVipBonus, computeEmissionDates } from './cycle-logic.js';
+import { getVipBonus, computeEmissionDates, getCurrentVipTemplateId } from './cycle-logic.js';
+import { DEFAULT_VIP_LEVELS, findVipTemplateById, createVipTemplate, addVipTemplateVersion, VIP_TEMPLATE_NAME_MAX } from './vip-bonus-template-logic.js';
+import { saveVipBonusTemplate, deleteVipBonusTemplate } from './vip-bonus-template-store.js';
+import { parseVipTemplatePaste, formatVipLevelsAsPasteText } from './vip-bonus-template-import.js';
 import { savePlatform } from './platforms-store.js';
 import { loadObrigadoValuePerAppearance, saveObrigadoValuePerAppearance } from './vip-obrigado-store.js';
 import { loadMisteriosoTemplates, saveMisteriosoTemplate, deleteMisteriosoTemplate } from './vip-misterioso-store.js';
@@ -94,6 +97,12 @@ export function renderVipPanel(filterGroup = null, searchTerm = '') {
     // Nome digitado pelo usuário: escapado antes de entrar no innerHTML,
     // pra um "<" ou "&" no código da plataforma não virar HTML sem querer.
     const safeName = escapeHtml(platform.name);
+    // Template de Bônus VIP vigente hoje (vazio = tabela padrão, sem badge).
+    const templateId = getCurrentVipTemplateId(platform);
+    const template = templateId ? findVipTemplateById(state.vipBonusTemplates, templateId) : null;
+    const templateBadge = templateId
+      ? `<span class="vip-badge template">${template ? escapeHtml(template.name) : '⚠️ Template indisponível'}</span>`
+      : '';
 
     return `
       <article class="vip-item">
@@ -102,6 +111,7 @@ export function renderVipPanel(filterGroup = null, searchTerm = '') {
           <div class="vip-badges">
             <span class="vip-badge level">VIP ${platform.level}</span>
             <span class="vip-badge ${groupClass}">${groupLabel}</span>
+            ${templateBadge}
           </div>
         </div>
         <div class="vip-breakdown">
@@ -973,4 +983,302 @@ export async function initHistoryTab() {
     obrigadoValuePerAppearance
   );
   await renderHistoryList();
+}
+
+// ---------- TEMPLATES DO BÔNUS VIP (botão "Templates" da aba VIP) ----------
+// Template = tabela de Bônus Diário (BD) / Semanal (BS) / Mensal (BM) por
+// nível VIP 0 a 5, pra plataformas que pagam valores diferentes do padrão.
+// QUEM USA QUAL TEMPLATE é escolhido na Edição (Dados da plataforma) — aqui
+// só se cria/edita/exclui o template e se VÊ quem o usa.
+//
+// Regras (ver vip-bonus-template-logic.js/-store.js):
+//  - editar valores NUNCA muda o passado: cria uma versão nova a partir de
+//    hoje (ou troca só a versão de hoje, se já houver uma);
+//  - template usado (ou que já foi usado) por alguma plataforma não pode
+//    ser excluído;
+//  - a lista vive em state.vipBonusTemplates (carregada no login) e é
+//    atualizada pelo próprio store a cada gravação.
+//
+// Estado de módulo é resetado a cada mount() (initVipBonusTemplatePanel).
+// Os listeners ficam em elementos do container da view, descartados junto
+// com o DOM na troca de rota — nenhum listener global, sem cleanup.
+
+let vipTemplateManagerOpen = false;
+let vipTemplateFormMode = null;   // null | 'new' | 'edit'
+let vipTemplateEditingId = null;
+
+function getVipTemplates() {
+  return Array.isArray(state.vipBonusTemplates) ? state.vipBonusTemplates : [];
+}
+
+function formatVipTemplateFrom(from) {
+  if (from === '1970-01-01') return 'Desde o início';
+  const [y, m, d] = String(from).split('-');
+  return `Desde ${d}/${m}/${y}`;
+}
+
+// Plataformas que usam o template HOJE (nome em ordem natural).
+function getPlatformsUsingTemplate(templateId) {
+  return state.platforms
+    .filter(p => getCurrentVipTemplateId(p) === templateId)
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { numeric: true }));
+}
+
+// Redesenha a lista da aba VIP mantendo a busca e o filtro ALL/COM/SEM que
+// estão na tela (renderVipPanel() sem argumentos zeraria os dois).
+function refreshVipPanelKeepingFilters() {
+  const searchEl = document.getElementById('vipSearch');
+  const activeBtn = document.querySelector('.vip-filter-btn.active');
+  const group = activeBtn ? activeBtn.dataset.group : 'all';
+  renderVipPanel(group === 'all' ? null : group, searchEl ? searchEl.value : '');
+}
+
+function resetVipTemplateForm() {
+  vipTemplateFormMode = null;
+  vipTemplateEditingId = null;
+}
+
+export function initVipBonusTemplatePanel() {
+  vipTemplateManagerOpen = false;
+  resetVipTemplateForm();
+
+  const btn = document.getElementById('vipTemplateBtn');
+  if (btn) {
+    btn.addEventListener('click', () => {
+      vipTemplateManagerOpen = !vipTemplateManagerOpen;
+      if (!vipTemplateManagerOpen) resetVipTemplateForm();
+      btn.textContent = vipTemplateManagerOpen ? '✓ Fechar templates' : 'Templates';
+      renderVipTemplateManager();
+    });
+  }
+  renderVipTemplateManager();
+}
+
+function renderVipTemplateManager() {
+  const wrap = document.getElementById('vipTemplateManager');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  wrap.classList.toggle('app-hidden', !vipTemplateManagerOpen);
+  if (!vipTemplateManagerOpen) return;
+
+  const intro = document.createElement('p');
+  intro.className = 'finance-close-week-note';
+  intro.textContent = 'Template = tabela de Bônus Diário (BD), Semanal (BS) e Mensal (BM) por nível VIP, pra plataformas que pagam valores diferentes do padrão. Quem usa cada template se escolhe em Edição → Dados da plataforma. Alterar valores vale só a partir de hoje — o passado não muda.';
+  wrap.appendChild(intro);
+
+  const templates = getVipTemplates();
+  const list = document.createElement('div');
+  list.className = 'finance-history';
+
+  if (templates.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'history-empty';
+    empty.textContent = 'Nenhum template criado ainda. Sem template, todas as plataformas usam a tabela padrão.';
+    list.appendChild(empty);
+  } else {
+    templates.forEach(t => {
+      const card = document.createElement('div');
+      card.className = 'finance-week-card';
+
+      const header = document.createElement('div');
+      header.className = 'finance-week-card-header';
+      const title = document.createElement('span');
+      title.textContent = t.name;
+      header.appendChild(title);
+
+      const actions = document.createElement('div');
+      actions.className = 'finance-week-card-actions';
+
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'bet-manage-btn';
+      editBtn.textContent = 'Editar';
+      editBtn.addEventListener('click', () => {
+        vipTemplateFormMode = 'edit';
+        vipTemplateEditingId = t.id;
+        renderVipTemplateManager();
+      });
+      actions.appendChild(editBtn);
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'history-delete-btn';
+      deleteBtn.textContent = 'Excluir';
+      deleteBtn.addEventListener('click', async () => {
+        const ok = await showAppConfirm(`Excluir o template "${t.name}"? Só é possível se nenhuma plataforma o usa nem usou.`);
+        if (!ok) return;
+        const result = deleteVipBonusTemplate(state.currentUid, t.id, state.platforms);
+        if (!result.ok) {
+          await showAppAlert(result.error);
+          return;
+        }
+        if (vipTemplateEditingId === t.id) resetVipTemplateForm();
+        renderVipTemplateManager();
+      });
+      actions.appendChild(deleteBtn);
+
+      header.appendChild(actions);
+      card.appendChild(header);
+
+      const users = getPlatformsUsingTemplate(t.id);
+      const usersLine = document.createElement('p');
+      usersLine.className = 'vip-template-meta';
+      if (users.length === 0) {
+        usersLine.textContent = 'Nenhuma plataforma usa este template hoje.';
+      } else {
+        const names = users.slice(0, 12).map(p => p.name).join(', ');
+        const more = users.length > 12 ? ` (+${users.length - 12})` : '';
+        usersLine.textContent = `Usado por ${users.length} plataforma(s): ${names}${more}`;
+      }
+      card.appendChild(usersLine);
+
+      const versionsLine = document.createElement('p');
+      versionsLine.className = 'vip-template-meta';
+      versionsLine.textContent = `Versões: ${t.versions.map(v => formatVipTemplateFrom(v.from)).join(' · ')}`;
+      card.appendChild(versionsLine);
+
+      list.appendChild(card);
+    });
+  }
+  wrap.appendChild(list);
+
+  if (vipTemplateFormMode === null) {
+    const newBtn = document.createElement('button');
+    newBtn.type = 'button';
+    newBtn.className = 'bet-manage-btn';
+    newBtn.textContent = '+ Novo template';
+    newBtn.addEventListener('click', () => {
+      vipTemplateFormMode = 'new';
+      vipTemplateEditingId = null;
+      renderVipTemplateManager();
+    });
+    wrap.appendChild(newBtn);
+    return;
+  }
+
+  buildVipTemplateForm(wrap);
+}
+
+function buildVipTemplateForm(wrap) {
+  const isEdit = vipTemplateFormMode === 'edit';
+  const editing = isEdit ? findVipTemplateById(getVipTemplates(), vipTemplateEditingId) : null;
+  if (isEdit && !editing) { // template sumiu da lista — volta ao estado neutro
+    resetVipTemplateForm();
+    renderVipTemplateManager();
+    return;
+  }
+
+  const form = document.createElement('div');
+  form.className = 'vip-template-form';
+
+  const heading = document.createElement('span');
+  heading.className = 'finance-week-label';
+  heading.textContent = isEdit ? `Editar: ${editing.name}` : 'Novo template';
+  form.appendChild(heading);
+
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.maxLength = VIP_TEMPLATE_NAME_MAX;
+  nameInput.placeholder = 'Nome do template (ex: Plataforma X)';
+  nameInput.setAttribute('aria-label', 'Nome do template');
+  nameInput.value = isEdit ? editing.name : '';
+  form.appendChild(nameInput);
+
+  const note = document.createElement('p');
+  note.className = 'finance-close-week-note';
+  note.textContent = isEdit
+    ? `Valores novos valem a partir de hoje (${new Date().toLocaleDateString('pt-BR')}). As versões anteriores ficam guardadas e o passado não muda.`
+    : 'Começa com a tabela padrão — edite só as linhas que mudam, ou cole a tabela inteira da planilha.';
+  form.appendChild(note);
+
+  const format = document.createElement('p');
+  format.className = 'finance-close-week-note';
+  format.textContent = 'Formato: 6 linhas (VIP 0 a 5), ex.: Vip 2 BD 0,50 BS 1,00 BM 1,00';
+  form.appendChild(format);
+
+  const latestLevels = isEdit ? editing.versions[editing.versions.length - 1].levels : DEFAULT_VIP_LEVELS;
+  const textarea = document.createElement('textarea');
+  textarea.className = 'finance-spreadsheet-paste';
+  textarea.rows = 8;
+  textarea.setAttribute('aria-label', 'Tabela de níveis do template');
+  textarea.value = formatVipLevelsAsPasteText(latestLevels);
+  form.appendChild(textarea);
+
+  const actions = document.createElement('div');
+  actions.className = 'reset-modal-buttons';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'btn-confirm';
+  saveBtn.textContent = isEdit ? 'Salvar alterações' : 'Criar template';
+  saveBtn.addEventListener('click', async () => {
+    const name = nameInput.value.trim();
+    if (!name) {
+      await showAppAlert('Digite um nome pro template.');
+      return;
+    }
+    const duplicate = getVipTemplates().some(t =>
+      t.id !== vipTemplateEditingId && t.name.trim().toLowerCase() === name.toLowerCase()
+    );
+    if (duplicate) {
+      await showAppAlert('Já existe um template com esse nome.');
+      return;
+    }
+    const parsed = parseVipTemplatePaste(textarea.value);
+    if (!parsed.ok) {
+      await showAppAlert(parsed.error);
+      return;
+    }
+
+    let result;
+    if (!isEdit) {
+      const created = createVipTemplate(name, parsed.levels);
+      if (!created.ok) {
+        await showAppAlert(created.error);
+        return;
+      }
+      result = saveVipBonusTemplate(state.currentUid, created.template);
+    } else {
+      const versioned = addVipTemplateVersion(editing, parsed.levels);
+      if (!versioned.ok) {
+        await showAppAlert(versioned.error);
+        return;
+      }
+      if (!versioned.changed && name === editing.name) {
+        await showAppAlert('Nada mudou — os valores e o nome são os mesmos de antes.');
+        return;
+      }
+      if (versioned.changed) {
+        const using = getPlatformsUsingTemplate(editing.id).length;
+        const ok = await showAppConfirm(
+          `Salvar os novos valores de "${name}" a partir de hoje (${new Date().toLocaleDateString('pt-BR')})? ` +
+          `${using} plataforma(s) usam este template. O que já passou não muda; Saldo e Rollover de hoje em diante já usam os valores novos.`
+        );
+        if (!ok) return;
+      }
+      result = saveVipBonusTemplate(state.currentUid, { ...versioned.template, id: editing.id, name });
+    }
+
+    if (!result.ok) {
+      await showAppAlert(result.error);
+      return;
+    }
+    resetVipTemplateForm();
+    renderVipTemplateManager();
+    refreshVipPanelKeepingFilters();
+  });
+  actions.appendChild(saveBtn);
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'btn-cancel-modal';
+  cancelBtn.textContent = 'Cancelar';
+  cancelBtn.addEventListener('click', () => {
+    resetVipTemplateForm();
+    renderVipTemplateManager();
+  });
+  actions.appendChild(cancelBtn);
+  form.appendChild(actions);
+
+  wrap.appendChild(form);
 }

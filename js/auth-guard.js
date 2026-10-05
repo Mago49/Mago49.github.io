@@ -20,11 +20,13 @@
 //    de qualquer ação subsequente salvar esse vazio por cima de dados reais.
 
 import {
-  auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged, authReady
+  auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged, authReady, showSaveFailureToast
 } from './firebase-init.js';
 import { state } from './state.js';
 import { showAppAlert } from './utils.js';
 import { loadPlatformsFromFirestore } from './platforms-store.js';
+import { loadVipBonusTemplates } from './vip-bonus-template-store.js';
+import { collectReferencedTemplateIds } from './vip-bonus-template-logic.js';
 
 /**
  * @param {Object} options
@@ -120,11 +122,41 @@ export function initAuth({ onLogin, onLogout }) {
           return;
         }
 
+        // Templates do Bônus VIP — carregados UMA vez, antes do app abrir,
+        // porque cycle-logic.js lê state.vipBonusTemplates de forma
+        // síncrona em todo cálculo de bônus (aba VIP, Saldo/Rollover,
+        // Histórico, Gráficos). Se a leitura falhar e alguma plataforma
+        // depende de template, NÃO abrimos o app: todo bônus voltaria pra
+        // tabela padrão em silêncio e o Saldo/Rollover ficariam errados.
+        // Sem nenhuma plataforma usando template, uma falha aqui não
+        // impede o uso (só é logada).
+        const referencedTemplateIds = collectReferencedTemplateIds(state.platforms);
+        try {
+          const { templates } = await loadVipBonusTemplates(state.currentUid);
+          state.vipBonusTemplates = templates;
+          const loadedIds = new Set(templates.map(t => t.id));
+          const missing = [...referencedTemplateIds].filter(id => !loadedIds.has(id));
+          if (missing.length > 0) {
+            console.error('Templates VIP citados por plataformas mas ausentes/inválidos:', missing);
+            showSaveFailureToast('Atenção: algum template de Bônus VIP usado por uma plataforma não foi encontrado — ela está usando a tabela padrão. Não altere dados dessas plataformas até resolver.', true);
+          }
+        } catch (err) {
+          state.vipBonusTemplates = [];
+          if (referencedTemplateIds.size > 0) {
+            console.error('Erro ao carregar templates do Bônus VIP:', err);
+            await showAppAlert('Não foi possível carregar os templates de Bônus VIP (algumas plataformas dependem deles). Nada foi apagado. Verifique sua internet e recarregue a página antes de continuar.');
+            showLoading();
+            return;
+          }
+          console.error('Templates do Bônus VIP indisponíveis (nenhuma plataforma depende deles, seguindo sem):', err);
+        }
+
         showApp();
         if (typeof onLogin === 'function') onLogin(user);
       } else {
         state.currentUid = null;
         state.platforms = [];
+        state.vipBonusTemplates = [];
         if (userLabelEl) userLabelEl.textContent = '';
         showLoginScreen();
         if (typeof onLogout === 'function') onLogout();

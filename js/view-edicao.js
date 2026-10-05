@@ -248,6 +248,11 @@ export async function mount(container) {
                 <option value="com">Com aposta</option>
                 <option value="sem">Sem aposta</option>
               </select>
+
+              <label for="platformManageAddTemplate">Template VIP</label>
+              <select id="platformManageAddTemplate">
+                <option value="">Padrão</option>
+              </select>
             </div>
             <div class="reset-modal-buttons">
               <button class="btn-confirm" id="platformManageAddSaveBtn" type="button">Salvar</button>

@@ -99,7 +99,7 @@
 
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
-import { getMonthStart, getCurrentCycleDay, getTotalDepositsSinceCycle, getDaysSinceLastDeposit, colorForLevel, getEffectiveBetDayKeys, recordLevelChange } from './cycle-logic.js';
+import { getMonthStart, getCurrentCycleDay, getTotalDepositsSinceCycle, getDaysSinceLastDeposit, colorForLevel, getEffectiveBetDayKeys, recordLevelChange, getCurrentVipTemplateId } from './cycle-logic.js';
 import { savePlatform, deletePlatformDoc } from './platforms-store.js';
 import { filterAndSortForManage } from './platform-sort.js';
 import { initSortMenu } from './ui-sort.js';
@@ -872,12 +872,42 @@ function buildDataSection(p) {
     });
   groupSelect.value = p.group || '';
 
+  // Template VIP (valores de Bônus Diário/Semanal/Mensal por nível). "Padrão"
+  // = tabela padrão do sistema. A troca vale a partir de hoje (vigência no
+  // levelHistory) — nunca reescreve o passado. Se o template atual da
+  // plataforma não está carregado, ele aparece como opção de aviso pra que
+  // "Salvar" não o solte sem querer.
+  const templateLabel = document.createElement('label');
+  templateLabel.textContent = 'Template VIP';
+  const templateSelect = document.createElement('select');
+  const defaultTemplateOpt = document.createElement('option');
+  defaultTemplateOpt.value = '';
+  defaultTemplateOpt.textContent = 'Padrão';
+  templateSelect.appendChild(defaultTemplateOpt);
+  const knownTemplates = Array.isArray(state.vipBonusTemplates) ? state.vipBonusTemplates : [];
+  knownTemplates.forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t.id;
+    opt.textContent = t.name;
+    templateSelect.appendChild(opt);
+  });
+  const currentTemplateId = getCurrentVipTemplateId(p);
+  if (currentTemplateId && !knownTemplates.some(t => t.id === currentTemplateId)) {
+    const missingOpt = document.createElement('option');
+    missingOpt.value = currentTemplateId;
+    missingOpt.textContent = '⚠️ Template indisponível';
+    templateSelect.appendChild(missingOpt);
+  }
+  templateSelect.value = currentTemplateId || '';
+
   fields.appendChild(nameLabel);
   fields.appendChild(nameInput);
   fields.appendChild(levelLabel);
   fields.appendChild(levelSelect);
   fields.appendChild(groupLabel);
   fields.appendChild(groupSelect);
+  fields.appendChild(templateLabel);
+  fields.appendChild(templateSelect);
   section.appendChild(fields);
 
   // === BLOCO C — Gerador de Códigos (Item 11f + 11h/11i) ===
@@ -915,7 +945,8 @@ function buildDataSection(p) {
     const newGroup = groupSelect.value === '' ? null : groupSelect.value;
     // A0: registra a vigência ANTES de sobrescrever (lê o valor antigo).
     // Vale a partir de hoje 00:00; o passado não é reescrito.
-    recordLevelChange(p, newLevel, newGroup, new Date());
+    const newTemplateId = templateSelect.value === '' ? null : templateSelect.value;
+    recordLevelChange(p, newLevel, newGroup, new Date(), newTemplateId);
     p.level = newLevel;
     p.group = newGroup;
 
@@ -965,10 +996,23 @@ function initAddRow() {
   addRow.querySelector('.platform-manage-row-header')
     .addEventListener('click', () => addRow.classList.toggle('open'));
 
+  // Opções do select "Template VIP" da linha de nova plataforma (textContent,
+  // nunca innerHTML: o nome do template é texto do usuário).
+  const addTemplateSelect = document.getElementById('platformManageAddTemplate');
+  if (addTemplateSelect) {
+    (Array.isArray(state.vipBonusTemplates) ? state.vipBonusTemplates : []).forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.name;
+      addTemplateSelect.appendChild(opt);
+    });
+  }
+
   document.getElementById('platformManageAddSaveBtn').addEventListener('click', async () => {
     const nameInput = document.getElementById('platformManageAddName');
     const levelSelect = document.getElementById('platformManageAddLevel');
     const groupSelect = document.getElementById('platformManageAddGroup');
+    const templateSelect = document.getElementById('platformManageAddTemplate');
 
     const name = nameInput.value.trim().toUpperCase();
     if (!name) {
@@ -1003,12 +1047,24 @@ function initAddRow() {
       codigoDeposito: { fixo: '', baseDate: null, variavelInicio: 0, valorMinimo: 0 },
       codigoAposta: { fixo: '', baseDate: null, variavelInicio: 0, valorMinimo: 0 }
     };
+    // Template VIP escolhido na criação: plataforma nova não tem passado,
+    // então a entrada-base (1970) já nasce com o template.
+    const chosenTemplateId = templateSelect && templateSelect.value ? templateSelect.value : null;
+    if (chosenTemplateId) {
+      newPlatform.levelHistory = [{
+        date: '1970-01-01',
+        level: newPlatform.level,
+        group: newPlatform.group,
+        vipTemplateId: chosenTemplateId
+      }];
+    }
     state.platforms.push(newPlatform);
 
     savePlatform(state.currentUid, newPlatform);
     nameInput.value = '';
     levelSelect.value = '';
     groupSelect.value = '';
+    if (templateSelect) templateSelect.value = '';
     addRow.classList.remove('open');
 
     // Plataforma nova: não existe linha pra reaproveitar, reconcileList

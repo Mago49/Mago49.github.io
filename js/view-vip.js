@@ -4,6 +4,14 @@
 // Bônus Misterioso (com Bloco E — colar planilha + exclusividade de
 // template) e Histórico Mensal (Bloco A, novo).
 //
+// TEMPLATES DE BÔNUS VIP (botão "Templates" na barra de filtros da aba VIP):
+// o painel (#vipTemplateManager) fica logo ABAIXO da barra de filtros, antes
+// da lista de plataformas — a lista pode passar de 1000px, e um painel
+// abaixo dela abriria fora da tela no celular. Os templates já estão em
+// state.vipBonusTemplates desde o login (auth-guard.js), então
+// initVipBonusTemplatePanel() é síncrona. Quem escolhe o template de cada
+// plataforma é a Edição (Dados), não esta tela.
+//
 // CUIDADO, exclusivo da SPA (Bloco K, item K2): dailyTimer precisa de
 // clearTimeout() no unmount() — sem isso, cada visita a esta rota
 // empilharia um novo setTimeout, duplicando renderVipPanel() a cada
@@ -24,7 +32,7 @@
 // esses 2 valores já carregados em vez de buscar de novo (ver
 // checkAndCloseMonthlyHistory em vip-history-store.js).
 
-import { renderVipPanel, initVipFilters, initVipTabs, initObrigadoPanel, initMisteriosoPanel, initHistoryTab } from './ui-vip-panel.js';
+import { renderVipPanel, initVipFilters, initVipTabs, initObrigadoPanel, initMisteriosoPanel, initHistoryTab, initVipBonusTemplatePanel } from './ui-vip-panel.js';
 
 let dailyTimer = null;
 
@@ -64,7 +72,10 @@ export async function mount(container) {
           <button type="button" class="vip-filter-btn active" data-group="all">ALL</button>
           <button type="button" class="vip-filter-btn" data-group="com">COM APOSTA</button>
           <button type="button" class="vip-filter-btn" data-group="sem">SEM APOSTA</button>
+          <button type="button" id="vipTemplateBtn" class="bet-manage-btn" aria-label="Gerenciar templates VIP">Templates</button>
         </div>
+
+        <div id="vipTemplateManager" class="vip-template-manager app-hidden"></div>
 
         <div id="vipSummary" class="vip-summary"></div>
       </div>
@@ -132,6 +143,7 @@ export async function mount(container) {
 
   initVipTabs();
   initVipFilters();
+  initVipBonusTemplatePanel();
   renderVipPanel();
   scheduleDailyUpdate();
   await initObrigadoPanel();

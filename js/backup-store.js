@@ -4,7 +4,8 @@
 // envia nada a nenhum servidor — o arquivo é montado no próprio navegador.
 //
 // Conteúdo:
-//   collections: platforms, vipHistory, dailySnapshots, misteriosoTemplates
+//   collections: platforms, vipHistory, dailySnapshots, misteriosoTemplates,
+//                vipBonusTemplates
 //                (cada documento como { id, data })
 //   meta:        initialized, cardCustomization, obrigadoConfig, preferences
 //                (null quando o documento ainda não existe)
@@ -22,7 +23,7 @@ import { db, collection, doc, getDoc, getDocs } from './firebase-init.js';
 export const BACKUP_FORMAT = 'painel-tigrinho-backup';
 export const BACKUP_VERSION = 1;
 
-const COLLECTIONS = ['platforms', 'vipHistory', 'dailySnapshots', 'misteriosoTemplates'];
+const COLLECTIONS = ['platforms', 'vipHistory', 'dailySnapshots', 'misteriosoTemplates', 'vipBonusTemplates'];
 const META_DOCS = ['initialized', 'cardCustomization', 'obrigadoConfig', 'preferences'];
 
 function pad(n) {

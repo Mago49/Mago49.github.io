@@ -4,25 +4,15 @@
 // agora é feita uma única vez e guardada em cache — ver getLevelColors()).
 
 import { state } from './state.js';
-import { getVipTemplateConfigForPlatform } from './vip-bonus-template-logic.js';
+import { DEFAULT_VIP_LEVELS, findVipTemplateById, getVipTemplateLevelValues } from './vip-bonus-template-logic.js';
 
+// Tabela padrão (plataforma SEM template). A fonte única dos valores é
+// DEFAULT_VIP_LEVELS (vip-bonus-template-logic.js); com/sem seguem iguais
+// entre si, como sempre foram. Plataforma com template usa a tabela do
+// template — ver getVipConfigAt.
 export const vipBonusTable = {
-  com: {
-    0: { daily: 0, weekly: 0, monthly: 0 },
-    1: { daily: 0, weekly: 0, monthly: 1 },
-    2: { daily: 0.5, weekly: 1, monthly: 1 },
-    3: { daily: 0.6, weekly: 2, monthly: 3 },
-    4: { daily: 0.8, weekly: 3, monthly: 5 },
-    5: { daily: 1, weekly: 5, monthly: 8 }
-  },
-  sem: {
-    0: { daily: 0, weekly: 0, monthly: 0 },
-    1: { daily: 0, weekly: 0, monthly: 1 },
-    2: { daily: 0.5, weekly: 1, monthly: 1 },
-    3: { daily: 0.6, weekly: 2, monthly: 3 },
-    4: { daily: 0.8, weekly: 3, monthly: 5 },
-    5: { daily: 1, weekly: 5, monthly: 8 }
-  }
+  com: DEFAULT_VIP_LEVELS,
+  sem: DEFAULT_VIP_LEVELS
 };
 
 // === ITEM 15b — MÍNIMO DE APOSTA POR NÍVEL (só grupo 'com') ===
@@ -39,31 +29,46 @@ function toLocalDayKey(dateInput) {
 }
 
 // === A0 — NÍVEL/GRUPO COM VIGÊNCIA ===
-// levelHistory: [{ date:'AAAA-MM-DD', level, group }], em ordem crescente.
+// levelHistory: [{ date:'AAAA-MM-DD', level, group, vipTemplateId? }], em ordem
+// crescente. vipTemplateId (opcional) = template de Bônus VIP vigente (null/
+// ausente = tabela padrão) — mesma vigência por dia de nível/grupo.
 // Cada entrada vale a partir das 00:00 do dia dela. Sem histórico, vale
 // p.level/p.group (plataformas antigas nada reescrevem).
 export function getLevelAt(platform, refDate = new Date()) {
   const hist = platform.levelHistory;
   if (!Array.isArray(hist) || hist.length === 0) {
-    return { level: platform.level ?? null, group: platform.group ?? null };
+    return { level: platform.level ?? null, group: platform.group ?? null, vipTemplateId: null };
   }
   const key = toLocalDayKey(refDate);
   let found = hist[0];
   for (const entry of hist) {
     if (entry.date <= key) found = entry; else break;
   }
-  return { level: found.level ?? null, group: found.group ?? null };
+  return { level: found.level ?? null, group: found.group ?? null, vipTemplateId: found.vipTemplateId ?? null };
 }
 
-// Config VIP (valores unitários) + grupo vigentes num dia específico.
-// Se houver template associado, ele sobrepõe os valores padrão.
-export function getVipConfigAt(platform, refDate = new Date(), template = null) {
-  const { level, group } = getLevelAt(platform, refDate);
-  const templateCfg = template
-    ? getVipTemplateConfigForPlatform(template, group, level)
-    : null;
+const warnedMissingVipTemplates = new Set();
 
-  const raw = templateCfg || vipBonusTable[group]?.[level] || { daily: 0, weekly: 0, monthly: 0 };
+// Config VIP (valores unitários) + grupo vigentes num dia específico.
+export function getVipConfigAt(platform, refDate = new Date()) {
+  const { level, group, vipTemplateId } = getLevelAt(platform, refDate);
+
+  // Template VIP: só vale com grupo (com/sem) E nível definidos — plataforma
+  // "não configurada" nunca recebe bônus, com ou sem template. A versão do
+  // template é a vigente NAQUELE dia (nunca retroage). Todo cálculo do
+  // sistema (aba VIP, Saldo/Rollover, Histórico, Gráficos) passa por aqui,
+  // então todos enxergam o mesmo valor.
+  let raw = null;
+  if (vipTemplateId && (group === 'com' || group === 'sem') && level !== null && level !== undefined) {
+    const template = findVipTemplateById(state.vipBonusTemplates, vipTemplateId);
+    if (template) {
+      raw = getVipTemplateLevelValues(template, level, toLocalDayKey(refDate));
+    } else if (!warnedMissingVipTemplates.has(vipTemplateId)) {
+      warnedMissingVipTemplates.add(vipTemplateId);
+      console.error(`Template VIP "${vipTemplateId}" não encontrado — usando a tabela padrão pra ${platform.name}.`);
+    }
+  }
+  if (!raw) raw = vipBonusTable[group]?.[level] || { daily: 0, weekly: 0, monthly: 0 };
   return {
     level, group,
     cfg: {
@@ -74,32 +79,36 @@ export function getVipConfigAt(platform, refDate = new Date(), template = null) 
   };
 }
 
-// Resolve o template VIP associado a uma plataforma a partir do estado global
-export function resolveVipTemplateForPlatform(platform, templates = state.vipBonusTemplates || []) {
-  if (!platform || !platform.vipBonusTemplateId) return null;
-  if (!Array.isArray(templates)) return null;
-  return templates.find(t => t.id === platform.vipBonusTemplateId) || null;
+// Template VIP vigente HOJE (última entrada do histórico) — null = padrão.
+export function getCurrentVipTemplateId(platform) {
+  const hist = platform.levelHistory;
+  if (!Array.isArray(hist) || hist.length === 0) return null;
+  return hist[hist.length - 1].vipTemplateId ?? null;
 }
 
-// Registra a troca de nível/grupo. CHAMAR ANTES de atribuir p.level/p.group.
-// Devolve true se houve mudança. Primeira mudança empilha antes a entrada-base
-// (valor antigo, data 1970) pra não perder o passado. Duas trocas no mesmo
-// dia substituem a entrada do dia.
-export function recordLevelChange(platform, newLevel, newGroup, refDate = new Date()) {
+// Registra a troca de nível/grupo/template. CHAMAR ANTES de atribuir p.level/
+// p.group. Devolve true se houve mudança. Primeira mudança empilha antes a
+// entrada-base (valor antigo, data 1970) pra não perder o passado. Duas
+// trocas no mesmo dia substituem a entrada do dia.
+// newTemplateId: id do template VIP, null = padrão, undefined (omitido) =
+// mantém o template atual — assim trocar só nível/grupo nunca solta o template.
+export function recordLevelChange(platform, newLevel, newGroup, refDate = new Date(), newTemplateId = undefined) {
   const oldLevel = platform.level ?? null;
   const oldGroup = platform.group ?? null;
+  const oldTemplate = getCurrentVipTemplateId(platform);
   const nl = newLevel ?? null;
   const ng = newGroup ?? null;
-  if (oldLevel === nl && oldGroup === ng) return false;
+  const nt = newTemplateId === undefined ? oldTemplate : (newTemplateId || null);
+  if (oldLevel === nl && oldGroup === ng && oldTemplate === nt) return false;
 
   if (!Array.isArray(platform.levelHistory)) platform.levelHistory = [];
   const hist = platform.levelHistory;
-  if (hist.length === 0) hist.push({ date: '1970-01-01', level: oldLevel, group: oldGroup });
+  if (hist.length === 0) hist.push({ date: '1970-01-01', level: oldLevel, group: oldGroup, vipTemplateId: oldTemplate });
 
   const key = toLocalDayKey(refDate);
   const last = hist[hist.length - 1];
-  if (last.date === key) { last.level = nl; last.group = ng; }
-  else hist.push({ date: key, level: nl, group: ng });
+  if (last.date === key) { last.level = nl; last.group = ng; last.vipTemplateId = nt; }
+  else hist.push({ date: key, level: nl, group: ng, vipTemplateId: nt });
   return true;
 }
 
@@ -309,16 +318,13 @@ export function computeHeroStats(platforms) {
   return { totalPlatforms, totalDeposits, bonusToday, activeCycles, topPlatform, topPlatformTotal, maxLevel };
 }
 
-// === VIP BONUS COM TEMPLATE ===
-export function getVipBonus(platform, refDate = new Date(), template = null) {
+export function getVipBonus(platform, refDate = new Date()) {
   const hoje = new Date(refDate);
   hoje.setHours(23, 59, 59, 999);
 
   const ano = hoje.getFullYear();
   const mes = hoje.getMonth();
   const diasNoMes = new Date(ano, mes + 1, 0).getDate();
-
-  const resolvedTemplate = template || resolveVipTemplateForPlatform(platform, state.vipBonusTemplates || []);
 
   // "Apostei hoje" conta sempre a partir do dia 1 do mês (getMonthStart),
   // independente de Reinício — regra inalterada.
@@ -332,7 +338,7 @@ export function getVipBonus(platform, refDate = new Date(), template = null) {
   let weeklyTotal = 0;
   for (let d = 1; d <= diasNoMes; d++) {
     const day = new Date(ano, mes, d);
-    const { group, cfg } = getVipConfigAt(platform, day, resolvedTemplate);
+    const { group, cfg } = getVipConfigAt(platform, day);
     if (group === 'sem') {
       dailyTotal += cfg.daily;
     } else if (group === 'com' && day <= hoje && betKeys.has(toLocalDayKey(day))) {
@@ -342,7 +348,7 @@ export function getVipBonus(platform, refDate = new Date(), template = null) {
   }
 
   // Mensal: creditado no dia 1, com o nível vigente no dia 1.
-  const monthlyTotal = getVipConfigAt(platform, new Date(ano, mes, 1), resolvedTemplate).cfg.monthly;
+  const monthlyTotal = getVipConfigAt(platform, new Date(ano, mes, 1)).cfg.monthly;
 
   return {
     daily: dailyTotal,

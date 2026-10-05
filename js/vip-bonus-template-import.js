@@ -1,30 +1,32 @@
-// === IMPORTADOR DE TEMPLATES DO BÔNUS VIP ===
-// Parser puro: lê um texto colado e transforma em template válido do VIP.
-// Baseado no mesmo padrão do Bônus Misterioso, mas com uma estrutura um
-// pouco diferente: 12 linhas (6 níveis x 2 grupos), cada linha com
-// "grupo nível daily weekly monthly" ou separação por tab/space/vírgula.
+// === IMPORTADOR DE TEMPLATE DO BÔNUS VIP ===
+// Parser puro: sem DOM, sem Firestore. Aceita o texto no formato da
+// planilha do usuário, 6 linhas (VIP 0 a 5), uma por nível:
 //
-// Exemplo de entrada esperado:
-// com 0 0 0 0
-// com 1 0 0 1
-// com 2 0.5 1 1
-// ...
-// sem 5 1 5 8
+//   Vip 0 BD 0,00 BS 0,00 BM 0,00
+//   Vip 2 BD 0,50 BS 1,00 BM 1,00
+//
+// Também aceita, por tolerância de colagem: sem a palavra "Vip", sem os
+// rótulos BD/BS/BM (nesse caso a ordem é BD, BS, BM), rótulos em qualquer
+// ordem, separação por espaço/tab/";".
+//
+// NUNCA usa vírgula como separador de campo — no formato pt-BR ela é o
+// separador DECIMAL ("0,50"). Mesmo cuidado já tomado em
+// misterioso-template-import.js.
+//
+// Nada é preenchido com padrão em silêncio: faltou nível, nível repetido,
+// linha ilegível ou valor negativo => erro com mensagem específica.
 
-import {
-  VIP_BONUS_LEVELS,
-  DEFAULT_VIP_TEMPLATE,
-  normalizeVipTemplate,
-  isVipTemplateValid
-} from './vip-bonus-template-logic.js';
+import { VIP_BONUS_LEVELS, validateVipLevels } from './vip-bonus-template-logic.js';
+
+const LABEL_TO_FIELD = { bd: 'daily', bs: 'weekly', bm: 'monthly' };
 
 function parseLocaleNumber(value) {
   if (value === null || value === undefined) return NaN;
   let text = String(value).trim();
   if (!text) return NaN;
-
   text = text.replace(/R\$/gi, '').replace(/\s/g, '');
-
+  // Formato brasileiro (1.234,56) vs internacional (1,234.56) — mesma
+  // regra de finance-spreadsheet-import.js/misterioso-template-import.js.
   if (text.includes(',') && text.includes('.')) {
     if (text.lastIndexOf(',') > text.lastIndexOf('.')) {
       text = text.replace(/\./g, '').replace(',', '.');
@@ -34,108 +36,102 @@ function parseLocaleNumber(value) {
   } else if (text.includes(',')) {
     text = text.replace(',', '.');
   }
-
   if (!/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(text)) return NaN;
   return Number(text);
 }
 
+// -> { level, daily, weekly, monthly } ou null se a linha for ilegível.
 function parseLine(line) {
-  const cleaned = String(line ?? '').trim();
-  if (!cleaned) return null;
+  const tokens = String(line ?? '').trim().split(/[\s;]+/).filter(Boolean);
+  if (tokens.length === 0) return null;
 
-  const parts = cleaned
-    .replace(/\t+/g, ' ')
-    .split(/\s+|,|;/)
-    .map(part => part.trim())
-    .filter(Boolean);
+  const first = tokens[0].toLowerCase();
+  if (first === 'vip') {
+    tokens.shift();
+  } else {
+    const glued = /^vip(\d+)$/.exec(first); // "Vip3"
+    if (glued) tokens[0] = glued[1];
+  }
+  if (tokens.length === 0 || !/^\d+$/.test(tokens[0])) return null;
 
-  if (parts.length < 4) return null;
-
-  const group = String(parts[0]).toLowerCase();
-  const level = Number(parts[1]);
-  const daily = parseLocaleNumber(parts[2]);
-  const weekly = parseLocaleNumber(parts[3]);
-  const monthly = parseLocaleNumber(parts[4] ?? parts[3]);
-
-  if (!['com', 'sem'].includes(group)) return null;
+  const level = Number(tokens.shift());
   if (!VIP_BONUS_LEVELS.includes(level)) return null;
-  if (![daily, weekly, monthly].every(value => Number.isFinite(value))) return null;
 
-  return {
-    group,
-    level,
-    daily,
-    weekly,
-    monthly
-  };
+  const raw = {};
+  if (tokens.length === 3) {
+    raw.daily = tokens[0];
+    raw.weekly = tokens[1];
+    raw.monthly = tokens[2];
+  } else if (tokens.length === 6) {
+    for (let i = 0; i < 6; i += 2) {
+      const field = LABEL_TO_FIELD[tokens[i].toLowerCase()];
+      if (!field || field in raw) return null;
+      raw[field] = tokens[i + 1];
+    }
+  } else {
+    return null;
+  }
+
+  const daily = parseLocaleNumber(raw.daily);
+  const weekly = parseLocaleNumber(raw.weekly);
+  const monthly = parseLocaleNumber(raw.monthly);
+  if (![daily, weekly, monthly].every(Number.isFinite)) return null;
+
+  return { level, daily, weekly, monthly };
 }
 
+/**
+ * Retorna { ok:true, levels } (levels = { 0:{daily,weekly,monthly}, ... 5 })
+ * ou { ok:false, error } — nunca lança exceção.
+ */
 export function parseVipTemplatePaste(text) {
-  const rawLines = String(text ?? '')
+  const lines = String(text ?? '')
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n')
     .split('\n')
     .map(line => line.trim())
     .filter(line => line !== '');
 
-  if (rawLines.length !== 12) {
-    return { ok: false, error: 'Reinsira os dados.' };
+  if (lines.length !== VIP_BONUS_LEVELS.length) {
+    return { ok: false, error: `Esperado ${VIP_BONUS_LEVELS.length} linhas (VIP 0 a 5), recebi ${lines.length}.` };
   }
 
-  const template = {
-    name: 'Template importado',
-    com: {},
-    sem: {}
-  };
-
-  for (const line of rawLines) {
-    const parsed = parseLine(line);
+  const levels = {};
+  for (let i = 0; i < lines.length; i++) {
+    const parsed = parseLine(lines[i]);
     if (!parsed) {
-      return { ok: false, error: 'Reinsira os dados.' };
+      return { ok: false, error: `Linha ${i + 1} não reconhecida. Formato: Vip 2 BD 0,50 BS 1,00 BM 1,00` };
     }
-
-    if (!template[parsed.group]) template[parsed.group] = {};
-    template[parsed.group][parsed.level] = {
-      daily: parsed.daily,
-      weekly: parsed.weekly,
-      monthly: parsed.monthly
-    };
+    if (levels[parsed.level]) {
+      return { ok: false, error: `VIP ${parsed.level} aparece repetido.` };
+    }
+    levels[parsed.level] = { daily: parsed.daily, weekly: parsed.weekly, monthly: parsed.monthly };
   }
 
-  const normalized = normalizeVipTemplate(template);
-  if (!isVipTemplateValid(normalized)) {
-    return { ok: false, error: 'Reinsira os dados.' };
-  }
-
-  return { ok: true, template: normalized };
+  const check = validateVipLevels(levels); // pega faltantes e negativos
+  if (!check.ok) return { ok: false, error: check.error };
+  return { ok: true, levels };
 }
 
-export function buildVipTemplateFromRows(rows) {
-  const text = Array.isArray(rows) ? rows.join('\n') : String(rows ?? '');
-  return parseVipTemplatePaste(text);
+function fmt(value) {
+  return Number(value).toFixed(2).replace('.', ',');
+}
+
+// Texto no mesmo formato aceito acima — usado pra pré-preencher a edição
+// de um template e como exemplo na tela.
+export function formatVipLevelsAsPasteText(levels) {
+  return VIP_BONUS_LEVELS
+    .map(l => `Vip ${l} BD ${fmt(levels[l].daily)} BS ${fmt(levels[l].weekly)} BM ${fmt(levels[l].monthly)}`)
+    .join('\n');
 }
 
 export function getVipTemplateImportExample() {
   return [
-    'com 0 0 0 0',
-    'com 1 0 0 1',
-    'com 2 0.5 1 1',
-    'com 3 0.6 2 3',
-    'com 4 0.8 3 5',
-    'com 5 1 5 8',
-    'sem 0 0 0 0',
-    'sem 1 0 0 1',
-    'sem 2 0.5 1 1',
-    'sem 3 0.6 2 3',
-    'sem 4 0.8 3 5',
-    'sem 5 1 5 8'
+    'Vip 0 BD 0,00 BS 0,00 BM 0,00',
+    'Vip 1 BD 0,00 BS 0,00 BM 0,00',
+    'Vip 2 BD 0,50 BS 1,00 BM 1,00',
+    'Vip 3 BD 0,60 BS 2,00 BM 3,00',
+    'Vip 4 BD 0,80 BS 3,00 BM 5,00',
+    'Vip 5 BD 1,00 BS 5,00 BM 8,00'
   ].join('\n');
-}
-
-export function buildEmptyVipTemplate(name = 'Template') {
-  return normalizeVipTemplate({
-    name,
-    com: { ...DEFAULT_VIP_TEMPLATE.com },
-    sem: { ...DEFAULT_VIP_TEMPLATE.sem }
-  });
 }
