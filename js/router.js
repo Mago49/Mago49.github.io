@@ -10,6 +10,15 @@ import * as viewPerfil from './view-perfil.js';
 // nunca entra em innerHTML. Rota desconhecida e placeholder agora são
 // escritos com textContent (antes um link como #/<img onerror=...> rodava
 // código na página).
+//
+// (Correção pós-publicação) stopRouter: o main.js publicado no site importa
+// `stopRouter` deste arquivo — a versão da Sub-entrega D foi montada a
+// partir de um router.js mais antigo, sem essa função, e o app inteiro
+// parava de carregar ("does not provide an export named 'stopRouter'").
+// stopRouter() desmonta a view atual (timers, modais e listeners de cada
+// view saem pelo próprio unmount()), desliga o listener de hashchange e
+// limpa a área das telas. initRouter() pode ser chamado de novo depois
+// (ex.: novo login) e religa tudo do zero. Não grava nada.
 
 const appShellEl = document.getElementById('appShell');
 let routerStarted = false;
@@ -65,10 +74,30 @@ function handleRouteChange() {
   }
 }
 
+function onHashChange() {
+  handleRouteChange();
+}
+
 export function initRouter() {
   if (routerStarted) { handleRouteChange(); return; }
   routerStarted = true;
-  window.addEventListener('hashchange', handleRouteChange);
+  window.addEventListener('hashchange', onHashChange);
   if (!window.location.hash) window.location.hash = '#/inicio';
   else handleRouteChange();
+}
+
+export function stopRouter() {
+  if (currentView && typeof currentView.unmount === 'function') {
+    try {
+      currentView.unmount();
+    } catch (err) {
+      console.error('Erro ao desmontar a tela atual:', err);
+    }
+  }
+  currentView = null;
+  if (routerStarted) {
+    window.removeEventListener('hashchange', onHashChange);
+    routerStarted = false;
+  }
+  if (appShellEl) appShellEl.innerHTML = '';
 }
