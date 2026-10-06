@@ -26,6 +26,7 @@ import { filterCalendarByPlatform, showAllBonusCalendar } from './ui-calendar.js
 import { initSortMenu } from './ui-sort.js';
 import { getCachedCardCustomization } from './card-customization-store.js';
 import { darkenColor } from './color-palette.js';
+import { escapeHtml } from './utils.js';
 
 let currentFilter = '';
 let currentSortMode = null;
@@ -104,7 +105,7 @@ export function renderPlatformCards(filter = currentFilter, sortMode = currentSo
     card.type = 'button';
     card.className = 'pcard' + (selectedId === p.id ? ' selected' : '');
     card.dataset.id = p.id;
-    card.innerHTML = `<span class="name">${p.name}</span>${cycleDayBadge(p)}`;
+    card.innerHTML = `<span class="name">${escapeHtml(p.name)}</span>${cycleDayBadge(p)}`;
     card.addEventListener('click', () => {
       selectedId = p.id;
       filterCalendarByPlatform(p.id);
