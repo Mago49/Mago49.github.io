@@ -334,26 +334,47 @@ export function getVipBonus(platform, refDate = new Date()) {
   // Sem aposta: diário todo dia do mês (projeção, como sempre).
   // Com aposta: diário só nos dias liberados, até hoje.
   // Semanal: nas segundas, com o nível da segunda.
+  //
+  // SUB-ENTREGA 6.2 — byGroup: os mesmos valores, separados pelo grupo
+  // (com/sem) que valia em CADA dia. Quem troca de "com aposta" pra "sem
+  // aposta" no meio do mês tem os dias antes da troca contados em "com" e
+  // os dias depois em "sem" (o Histórico Mensal usava só o grupo ATUAL e
+  // jogava o mês inteiro num lado só). A soma de byGroup.com + byGroup.sem
+  // é sempre igual a daily/weekly/monthly — nenhum valor existente muda.
   let dailyTotal = 0;
   let weeklyTotal = 0;
+  const byGroup = {
+    com: { daily: 0, weekly: 0, monthly: 0 },
+    sem: { daily: 0, weekly: 0, monthly: 0 }
+  };
   for (let d = 1; d <= diasNoMes; d++) {
     const day = new Date(ano, mes, d);
     const { group, cfg } = getVipConfigAt(platform, day);
     if (group === 'sem') {
       dailyTotal += cfg.daily;
+      byGroup.sem.daily += cfg.daily;
     } else if (group === 'com' && day <= hoje && betKeys.has(toLocalDayKey(day))) {
       dailyTotal += cfg.daily;
+      byGroup.com.daily += cfg.daily;
     }
-    if (day.getDay() === 1) weeklyTotal += cfg.weekly;
+    if (day.getDay() === 1) {
+      weeklyTotal += cfg.weekly;
+      if (group === 'com' || group === 'sem') byGroup[group].weekly += cfg.weekly;
+    }
   }
 
   // Mensal: creditado no dia 1, com o nível vigente no dia 1.
-  const monthlyTotal = getVipConfigAt(platform, new Date(ano, mes, 1)).cfg.monthly;
+  const monthStartCfg = getVipConfigAt(platform, new Date(ano, mes, 1));
+  const monthlyTotal = monthStartCfg.cfg.monthly;
+  if (monthStartCfg.group === 'com' || monthStartCfg.group === 'sem') {
+    byGroup[monthStartCfg.group].monthly += monthlyTotal;
+  }
 
   return {
     daily: dailyTotal,
     weekly: weeklyTotal,
     monthly: monthlyTotal,
-    total: dailyTotal + weeklyTotal + monthlyTotal
+    total: dailyTotal + weeklyTotal + monthlyTotal,
+    byGroup
   };
 }
