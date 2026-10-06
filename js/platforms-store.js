@@ -163,6 +163,25 @@ export async function loadPlatformsFromFirestore(uid) {
 //    Regra de Segurança do Firestore recusa se não for (rev do servidor +
 //    1). Aba/aparelho antigo é recusado em vez de sobrescrever. Sem a
 //    regra publicada, o campo é só guardado (nada quebra).
+//
+// (Sub-entrega C) `rev` NUNCA FICA À FRENTE DO SERVIDOR POR ENGANO:
+// antes, o `rev` em memória subia antes do envio e não voltava se a
+// gravação falhasse por outro motivo que não conflito (documento grande
+// demais, dado recusado pelo SDK, cota etc.). A memória ficava em
+// servidor+2 na próxima gravação, a regra recusava como se fosse conflito
+// e o app TRAVAVA (banner vermelho) sem ter havido conflito nenhum.
+// Agora:
+//   - `batch.set` dentro de try/catch: dado recusado na montagem (ex.:
+//     campo `undefined`) devolve o `rev` ao valor anterior, avisa e não
+//     grava nada — antes estourava erro no clique depois do `rev` subir;
+//   - commit recusado por permission-denied (conflito/sessão): continua
+//     travando e mostrando o banner, como sempre;
+//   - commit falhou por QUALQUER outro motivo: o `rev` volta pro valor
+//     anterior — mas só se nenhuma gravação desta plataforma foi enviada
+//     depois desta (se foi, ela carrega o `rev` seguinte e o servidor
+//     decide). A alteração continua na tela e vai junto na próxima
+//     gravação bem-sucedida (o documento é gravado inteiro). O aviso
+//     genérico de firebase-init.js (showSaveFailureToast) já aparece.
 const GUARDED_FIELDS = [
   'depositLog', 'deposits', 'withdrawals', 'betEntries', 'financeWeeks',
   'otherBonusLog', 'balancePhases', 'betDays', 'misteriosoBonusLog',
@@ -238,11 +257,26 @@ export function savePlatform(uid, platform, options = {}) {
     return false;
   }
 
-  platform.rev = (Number(platform.rev) || 0) + 1;
+  const previousRev = Number(platform.rev) || 0;
+  const sentRev = previousRev + 1;
+  platform.rev = sentRev;
 
   const colRef = collection(db, 'users', uid, 'platforms');
   const batch = writeBatch(db);
-  batch.set(doc(colRef, platform.id), platform);
+  try {
+    batch.set(doc(colRef, platform.id), platform);
+  } catch (err) {
+    // (Sub-entrega C) Dado recusado pelo SDK antes de sair do aparelho —
+    // nada foi enviado: `rev` volta e a gravação é recusada com aviso.
+    platform.rev = previousRev;
+    console.error('Gravação da plataforma recusada pelo banco (dado inválido) — nada foi enviado:', err, platform.name);
+    showSaveFailureToast(
+      'Não foi possível salvar: um dado desta plataforma foi recusado pelo banco. Nada foi alterado no banco de dados. Recarregue a página e tente de novo.',
+      true
+    );
+    return false;
+  }
+
   batch.commit().catch(err => {
     console.error('Erro ao salvar no Firebase:', err);
     // O servidor recusou (regra de revisão, ou sessão sem permissão): trava
@@ -250,6 +284,13 @@ export function savePlatform(uid, platform, options = {}) {
     if (err && err.code === 'permission-denied') {
       writesLocked = true;
       showStaleDataBanner();
+      return;
+    }
+    // (Sub-entrega C) Outra falha: o servidor continua no `rev` anterior.
+    // Volta a memória — só se nenhuma gravação mais nova desta plataforma
+    // já saiu (nesse caso ela já carrega o `rev` seguinte).
+    if (platform.rev === sentRev) {
+      platform.rev = previousRev;
     }
   });
 
@@ -257,8 +298,24 @@ export function savePlatform(uid, platform, options = {}) {
   return true;
 }
 
+// (Sub-entrega D) Devolve Promise<{ok:true} | {ok:false, error}> e nunca
+// lança. Antes a tela tirava a plataforma da lista sem esperar: se a
+// exclusão falhasse, ela sumia da tela mas continuava no banco e voltava
+// no próximo login. Agora quem chama só tira da memória quando o banco
+// confirma. Bloqueada (como savePlatform) depois de um conflito recusado.
 export function deletePlatformDoc(uid, id) {
-  if (!uid) return;
-  deleteDoc(doc(db, 'users', uid, 'platforms', id))
-    .catch(err => console.error('Erro ao remover no Firebase:', err));
+  if (!uid || !id) return Promise.resolve({ ok: false, error: 'Plataforma inválida.' });
+  if (writesLocked) {
+    showStaleDataBanner();
+    return Promise.resolve({ ok: false, error: 'Seus dados mudaram em outro aparelho ou aba. Recarregue a página antes de remover.' });
+  }
+  return deleteDoc(doc(db, 'users', uid, 'platforms', id))
+    .then(() => {
+      platformBaselines.delete(id);
+      return { ok: true };
+    })
+    .catch(err => {
+      console.error('Erro ao remover no Firebase:', err);
+      return { ok: false, error: 'Não foi possível remover a plataforma no banco de dados. Nada foi apagado — verifique a internet e tente de novo.' };
+    });
 }

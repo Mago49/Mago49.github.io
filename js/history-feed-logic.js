@@ -15,8 +15,15 @@
 // nível/grupo são versionados (levelHistory), mas Obrigado (valor por
 // aparição) e Misterioso (template/depósitos do ciclo) usam a
 // configuração de hoje. Congelar o dia é a sub-entrega B.
+//
+// (Sub-entrega G) "Bônus avulso" mostra o valor EFETIVO de cada
+// lançamento (getEffectiveOtherBonusEntries) — o mesmo que entra no Saldo,
+// sem repetir o VIP diário liberado depois do lançamento. Lançamento que
+// ficou totalmente coberto pela fórmula some do feed (valor 0). Semana
+// fechada mostra também a diferença informada no fechamento
+// (bonusAdjustment), quando existir.
 
-import { getExpectedBonusBreakdownForDate } from './bonus-ledger-logic.js';
+import { getExpectedBonusBreakdownForDate, getEffectiveOtherBonusEntries } from './bonus-ledger-logic.js';
 import { getLevelAt, BET_MINIMUM_BY_LEVEL } from './cycle-logic.js';
 
 // Cópia intencional do algoritmo de toLocalDateString (finance-logic.js).
@@ -49,6 +56,10 @@ function formulaTs(dayKey) {
 
 function r2(value) {
   return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function money(value) {
+  return r2(value).toFixed(2).replace('.', ',');
 }
 
 // Horário em que o diário "com aposta" foi liberado naquele dia: o mais
@@ -111,6 +122,7 @@ export function buildDayFeed(platforms, dayKey, resolveCtx = () => ({}), refDate
 
   (platforms || []).forEach(p => {
     const base = { platformId: p.id, platformName: p.name };
+    const ctx = resolveCtx(p) || {};
 
     (p.depositLog || []).forEach(e => {
       if (!isOnDay(e.date, dayKey)) return;
@@ -132,24 +144,34 @@ export function buildDayFeed(platforms, dayKey, resolveCtx = () => ({}), refDate
       });
     });
 
-    (p.otherBonusLog || []).forEach(e => {
-      if (!isOnDay(e.date, dayKey)) return;
-      const v = r2(e.rawValue);
+    // (Sub-entrega G) avulso EFETIVO por lançamento.
+    getEffectiveOtherBonusEntries(p, e => isOnDay(e.date, dayKey), ctx).forEach(item => {
+      const v = r2(item.raw);
       if (v === 0) return;
+      const e = item.entry;
       const scale = Number(e.scale) || 1;
+      const parts = [];
+      if (scale !== 1) parts.push(`Rollover ${scale}x`);
+      if (typeof e.claimedTotal === 'number' && Number.isFinite(e.claimedTotal)) {
+        parts.push(`Total informado ${money(e.claimedTotal)}`);
+      }
       events.push({
         ...base, ts: new Date(e.date).getTime(), kind: 'bonus-avulso', icon: '🎁', label: 'Bônus avulso',
-        value: v, detail: scale !== 1 ? `Rollover ${scale}x` : ''
+        value: v, detail: parts.join(' · ')
       });
     });
 
     (p.financeWeeks || []).forEach(w => {
       if (!isOnDay(w.closedAt, dayKey)) return;
+      const adj = Number(w.bonusAdjustment);
+      const adjText = (Number.isFinite(adj) && r2(adj) !== 0)
+        ? ` · Diferença ${r2(adj) > 0 ? '+' : ''}${money(adj)}`
+        : '';
       events.push({
         ...base, ts: new Date(w.closedAt).getTime(), kind: 'semana', icon: '🔒',
         label: w.backfilled ? 'Semana antiga adicionada' : (w.autoClosed ? 'Semana fechada (automático)' : 'Semana fechada'),
         value: null,
-        detail: `${fmtShort(w.weekStart)} – ${fmtShort(w.weekEnd)} · Bônus ${r2(w.bonus).toFixed(2).replace('.', ',')}`,
+        detail: `${fmtShort(w.weekStart)} – ${fmtShort(w.weekEnd)} · Bônus ${money(w.bonus)}${adjText}`,
         rb: r2(w.resultBetting)
       });
     });
@@ -159,14 +181,14 @@ export function buildDayFeed(platforms, dayKey, resolveCtx = () => ({}), refDate
       events.push({
         ...base, ts: new Date(ph.createdAt).getTime(), kind: 'fase', icon: '🔀',
         label: 'Nova fase', value: null,
-        detail: `Início em ${fmtShort(ph.date)} · Saldo inicial ${r2(ph.initialBalance).toFixed(2).replace('.', ',')} · Rollover inicial ${r2(ph.initialRollover).toFixed(2).replace('.', ',')}`
+        detail: `Início em ${fmtShort(ph.date)} · Saldo inicial ${money(ph.initialBalance)} · Rollover inicial ${money(ph.initialRollover)}`
       });
     });
 
     // Bônus de fórmula — mesma fonte do Saldo/Rollover ao vivo.
     if (!isFuture) {
       const dayDate = new Date(`${dayKey}T00:00:00`);
-      const b = getExpectedBonusBreakdownForDate(p, dayDate, resolveCtx(p));
+      const b = getExpectedBonusBreakdownForDate(p, dayDate, ctx);
       const t0 = formulaTs(dayKey);
       if (r2(b.vipDaily) > 0) {
         const ts = getLevelAt(p, dayDate).group === 'com' ? getDailyUnlockTs(p, dayKey) : t0;

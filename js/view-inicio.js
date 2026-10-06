@@ -28,18 +28,49 @@
 // banner aparece um instante depois — mesmo padrão já usado em
 // view-calendario-new.js com loadCardCustomization()/
 // loadFullCalendarScript()).
+//
+// === (Sub-entrega H) ===
+// a) VIRADA DO DIA: com o Início aberto depois da meia-noite, o resumo do
+//    topo ("Com bônus hoje" etc.), os "Códigos" e o "Depósitos - Hoje"
+//    continuavam mostrando o dia anterior. Agora um timer (mesmo padrão
+//    das outras views, 00:00:05) só recalcula a tela pro dia atual —
+//    nenhuma gravação. Limpo no unmount().
+// b) mountToken: se o usuário sair do Início enquanto o banner ainda
+//    carrega, o cleanup do banner que chegar atrasado é executado na hora
+//    (antes ficava pendurado sem ninguém pra limpar).
 
 import { state } from './state.js';
 import { computeHeroStats } from './cycle-logic.js';
 import { renderHeroSummary } from './ui-hero.js';
-import { initCodigoPanel, initDepositsTodayPanel } from './ui-codigo.js';
+import { initCodigoPanel, initDepositsTodayPanel, refreshCodigoPanels } from './ui-codigo.js';
 import { initAnnouncementBanner } from './ui-announcement.js';
 
 let depositsTodayCleanup = null;
 let codigoCleanup = null;
 let announcementCleanup = null;
+let dailyTimer = null;
+let mountToken = 0;
+
+// (Sub-entrega H) Só recalcula a tela pro dia atual — nada é gravado.
+function refreshForNewDay() {
+  renderHeroSummary(computeHeroStats(state.platforms));
+  refreshCodigoPanels();
+}
+
+function scheduleDailyUpdate() {
+  if (dailyTimer) clearTimeout(dailyTimer);
+  const now = new Date();
+  const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
+  dailyTimer = setTimeout(() => {
+    dailyTimer = null;
+    refreshForNewDay();
+    scheduleDailyUpdate();
+  }, nextMidnight - now);
+}
 
 export async function mount(container) {
+  const token = ++mountToken;
+
   container.innerHTML = `
     <div id="announcementMount"></div>
     <section class="hero card-shell hub-hero" aria-label="Resumo da página">
@@ -87,10 +118,20 @@ export async function mount(container) {
 
   depositsTodayCleanup = initDepositsTodayPanel(document.getElementById('depositsTodayMount'));
   codigoCleanup = initCodigoPanel(document.getElementById('codigoMount'));
-  announcementCleanup = await initAnnouncementBanner(document.getElementById('announcementMount'));
+  scheduleDailyUpdate();
+
+  const cleanup = await initAnnouncementBanner(document.getElementById('announcementMount'));
+  if (token !== mountToken) {
+    // Saiu do Início enquanto o banner carregava — limpa na hora.
+    if (typeof cleanup === 'function') cleanup();
+    return;
+  }
+  announcementCleanup = cleanup;
 }
 
 export function unmount() {
+  mountToken++; // invalida um mount() ainda esperando o banner
+  if (dailyTimer) { clearTimeout(dailyTimer); dailyTimer = null; }
   if (depositsTodayCleanup) { depositsTodayCleanup(); depositsTodayCleanup = null; }
   if (codigoCleanup) { codigoCleanup(); codigoCleanup = null; }
   if (announcementCleanup) { announcementCleanup(); announcementCleanup = null; }

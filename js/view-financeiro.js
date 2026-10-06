@@ -14,6 +14,24 @@
 //         document.click do dropdown "Ordenar" se acumula a cada visita.
 //   K12 — nenhuma referência de DOM fica `const` no topo do arquivo de
 //         UI (ui-finance-panel.js já corrigido nesta sub-entrega).
+//
+// === (Sub-entrega E) ===
+// a) CONTEXTO DE BÔNUS ESTRITO: Obrigado/Misterioso agora vêm de
+//    loadBonusContextStrict (bonus-context-store.js). Antes vinham dos
+//    loaders tolerantes, que em falha de leitura devolvem 0,30 / lista
+//    vazia em silêncio — e esta tela GRAVA valores permanentes calculados
+//    com eles: fechamento automático de semanas, fechamento de domingo
+//    (Rollover do fechamento), "Inserir bônus hoje" (avulso = digitado −
+//    esperado) e o snapshot diário. Se a leitura falhar, o Financeiro NÃO
+//    abre (mesma política dos templates VIP no login): mostra o motivo e
+//    "Tentar de novo". Nada é gravado nesse caminho.
+// b) mountToken (mesmo padrão de view-vip.js/view-edicao.js): se o usuário
+//    sair da rota durante os awaits, o mount desiste em silêncio — antes
+//    ligava listeners nos modais já removidos (erro) e deixava o listener
+//    global do "Ordenar" sem cleanup.
+// c) removeModals() também no INÍCIO do mount (idempotente): o "Tentar de
+//    novo" remonta a tela sem passar pelo unmount, e não pode duplicar os
+//    modais no document.body.
 
 import { state } from './state.js';
 import {
@@ -24,13 +42,13 @@ import {
 import { autoCloseOverdueWeeks } from './finance-logic.js';
 import { savePlatform } from './platforms-store.js';
 import { showAppAlert } from './utils.js';
-import { loadObrigadoValuePerAppearance } from './vip-obrigado-store.js';
-import { loadMisteriosoTemplates } from './vip-misterioso-store.js';
+import { loadBonusContextStrict } from './bonus-context-store.js';
 import { loadPreferences } from './user-preferences-store.js';
 
 let dailyTimer = null;
 let sortMenuCleanup = null;
 let modalsContainerEl = null;
+let mountToken = 0;
 
 function scheduleDailyUpdate() {
   if (dailyTimer) clearTimeout(dailyTimer);
@@ -80,7 +98,54 @@ function removeModals() {
   }
 }
 
+// (Sub-entrega E) Tela de bloqueio quando o contexto de bônus não pôde ser
+// confirmado. Texto fixo (nada do usuário entra em innerHTML).
+function renderContextFailure(container) {
+  container.innerHTML = `
+    <div class="page-header">
+      <div class="page-header-text">
+        <span class="hero-badge">💰 Financeiro</span>
+        <h1>Financeiro</h1>
+      </div>
+    </div>
+    <section class="card-shell" style="padding:1.25rem;">
+      <p class="finance-close-week-note" id="financeContextFailureText"></p>
+      <div class="reset-modal-buttons" style="justify-content:flex-start; margin-top:0.9rem;">
+        <button type="button" class="btn-confirm" id="financeContextRetryBtn">Tentar de novo</button>
+      </div>
+    </section>
+  `;
+  const textEl = container.querySelector('#financeContextFailureText');
+  if (textEl) {
+    textEl.textContent = 'Não foi possível carregar as configurações de bônus (valor do Obrigado e templates do Misterioso). ' +
+      'Pra não calcular nem gravar Saldo, Rollover e bônus errados, o Financeiro não foi aberto. Nada foi alterado. ' +
+      'Verifique a internet e tente de novo.';
+  }
+  const retryBtn = container.querySelector('#financeContextRetryBtn');
+  if (retryBtn) {
+    retryBtn.addEventListener('click', () => {
+      retryBtn.disabled = true;
+      retryBtn.textContent = 'Carregando...';
+      mount(container);
+    });
+  }
+}
+
 export async function mount(container) {
+  const token = ++mountToken;
+  const isStale = () => token !== mountToken;
+
+  // (Sub-entrega E) Remontagem pelo "Tentar de novo" não passa pelo unmount.
+  if (sortMenuCleanup) {
+    sortMenuCleanup();
+    sortMenuCleanup = null;
+  }
+  if (dailyTimer) {
+    clearTimeout(dailyTimer);
+    dailyTimer = null;
+  }
+  removeModals();
+
   container.innerHTML = `
     <div class="page-header">
       <div class="page-header-text">
@@ -155,23 +220,26 @@ export async function mount(container) {
   // primeiro renderFinanceList(), senão a lista abriria na ordem
   // arbitrária de chegada do Firestore por um instante.
   await loadPreferences(state.currentUid);
+  if (isStale()) return;
 
-  // Etapa 7, sub-entrega 3: Obrigado/Misterioso passam a alimentar
-  // Saldo/Rollover ao vivo (via bonus-ledger-logic.js) — carregados UMA
-  // vez aqui, ANTES do primeiro render, mesmo padrão já usado por
-  // loadCardCustomization() em view-calendario.js. `misteriosoTemplate`
-  // é POR PLATAFORMA (cada uma pode ter um template diferente ou
-  // nenhum) — findTemplateForPlatform reaproveita a mesma lógica já
-  // usada em ui-vip-panel.js.
-  const obrigadoValuePerAppearance = await loadObrigadoValuePerAppearance(state.currentUid);
-  const misteriosoTemplates = await loadMisteriosoTemplates(state.currentUid);
-  function findTemplateForPlatform(platformId) {
-    return misteriosoTemplates.find(t => (t.platformIds || []).includes(platformId)) || null;
+  // Etapa 7, sub-entrega 3: Obrigado/Misterioso alimentam Saldo/Rollover ao
+  // vivo (via bonus-ledger-logic.js) — carregados UMA vez aqui, ANTES do
+  // primeiro render. (Sub-entrega E) Leitura ESTRITA: sem confirmação dos
+  // dois, a tela não abre (ver nota no topo).
+  let bonusContext;
+  try {
+    bonusContext = await loadBonusContextStrict(state.currentUid);
+  } catch (err) {
+    console.error('Financeiro: contexto de bônus não confirmado — tela não aberta, nada gravado:', err);
+    if (isStale()) return;
+    setBonusContextResolver(null);
+    removeModals();
+    renderContextFailure(container);
+    return;
   }
-  const resolveCtx = (platform) => ({
-    obrigadoValuePerAppearance,
-    misteriosoTemplate: findTemplateForPlatform(platform.id)
-  });
+  if (isStale()) return;
+
+  const resolveCtx = bonusContext.resolveCtx;
   setBonusContextResolver(resolveCtx);
 
   // SUB-ENTREGA 3 (item 5): segunda chance. Semanas passadas que ficaram
@@ -205,6 +273,8 @@ export async function mount(container) {
 }
 
 export function unmount() {
+  mountToken++; // (Sub-entrega E) invalida qualquer mount() ainda esperando um await
+
   if (dailyTimer) {
     clearTimeout(dailyTimer);
     dailyTimer = null;

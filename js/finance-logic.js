@@ -72,8 +72,35 @@
 // MUDANÇA nesta etapa — continua inserindo só os 6 campos brutos de
 // sempre, sem Rollover Inicial nem bonusRollover. Ele não abre fase
 // nenhuma, só insere uma semana fechada dentro da fase já aberta.
+//
+// === (Sub-entrega G) ===
+// a) AVULSO EFETIVO: todo lugar que somava otherBonusLog[].rawValue /
+//    rolloverValue agora usa o avulso EFETIVO de bonus-ledger-logic.js
+//    (sumEffectiveOtherBonus / getEffectiveOtherBonusEntries) — fim da
+//    dupla contagem quando o VIP diário é liberado depois de um lançamento
+//    de "Inserir bônus hoje". Lançamentos antigos continuam somando igual.
+// b) DIFERENÇA DO FECHAMENTO: closeWeek grava `bonusAdjustment` = bônus
+//    real − (fórmula + avulso efetivo). setClosedWeekRealBonus e
+//    updateClosedWeek mantêm esse campo em dia quando o bônus muda (só em
+//    semanas que já têm o campo, ou fechadas automaticamente — nessas ele
+//    nasce 0). A semântica de edição NÃO mudou: Saldo/Rollover continuam
+//    se comportando exatamente como antes; o campo é só informativo (usado
+//    pelos Gráficos para contar a diferença como Avulso).
+// c) CENTAVOS: somas e valores gravados passam a ser arredondados em
+//    centavos (ex.: R.B. da semana com 11 casas decimais). Arredondar uma
+//    soma de valores em centavos nunca muda o valor real — só remove o
+//    resíduo de ponto flutuante.
 
-import { computeAutoAccruedBonusForWeek, getAccumulatedBonusThisWeek, getExpectedBonusForDate } from './bonus-ledger-logic.js';
+import {
+  computeAutoAccruedBonusForWeek, getAccumulatedBonusThisWeek, getExpectedBonusForDate,
+  sumEffectiveOtherBonus, getEffectiveOtherBonusEntries
+} from './bonus-ledger-logic.js';
+
+// (Sub-entrega G) arredonda em centavos.
+export function roundMoney(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+const r2 = roundMoney;
 
 // Função auxiliar para formatar a data como YYYY-MM-DD mantendo o fuso horário local
 export function toLocalDateString(date) {
@@ -114,13 +141,22 @@ export function getWeekEnd(weekStart) {
   return d;
 }
 
+// (Sub-entrega G) resultado arredondado em centavos.
 function sumInRange(events, weekStart, weekEnd, key) {
-  return (events || [])
+  return r2((events || [])
     .filter(e => {
       const d = new Date(e.date);
       return d >= weekStart && d <= weekEnd;
     })
-    .reduce((sum, e) => sum + (Number(e[key]) || 0), 0);
+    .reduce((sum, e) => sum + (Number(e[key]) || 0), 0));
+}
+
+// (Sub-entrega G) arredonda todos os campos numéricos de um objeto de totais.
+function roundTotals(totals) {
+  Object.keys(totals).forEach(k => {
+    if (typeof totals[k] === 'number') totals[k] = r2(totals[k]);
+  });
+  return totals;
 }
 
 // Totais AO VIVO da semana em aberto — recalculados toda vez que a tela é
@@ -144,7 +180,7 @@ export function computeCurrentWeekLive(platform, refDate = new Date()) {
     weekEnd,
     deposit,
     withdrawal,
-    difference: withdrawal - deposit,
+    difference: r2(withdrawal - deposit),
     wagered,
     betCount,
     resultBetting
@@ -230,8 +266,8 @@ export function startNewPhase(platform, date = new Date(), initialBalance = 0, i
     return { ok: false, reason: 'duplicate' };
   }
 
-  const safeInitialBalance = Math.max(0, Number(initialBalance) || 0);
-  const safeInitialRollover = Math.max(0, Number(initialRollover) || 0);
+  const safeInitialBalance = r2(Math.max(0, Number(initialBalance) || 0));
+  const safeInitialRollover = r2(Math.max(0, Number(initialRollover) || 0));
   const entry = {
     date: chosenDate.toISOString(),
     createdAt: new Date().toISOString(),
@@ -271,7 +307,7 @@ export function removeLastPhase(platform) {
 //         + (R.B. da fase atual)
 //         + (Bônus 1 — fórmula, semanas fechadas via financeWeeks[].bonus
 //            + semana aberta via computeAutoAccruedBonusForWeek, AO VIVO)
-//         + (Bônus 2 — avulso via otherBonusLog, semana aberta,
+//         + (Bônus 2 — avulso EFETIVO via otherBonusLog, semana aberta,
 //            1:1 no Saldo — a escala do botão R só afeta o Rollover)
 //
 // `ctx` (opcional): { obrigadoValuePerAppearance, misteriosoTemplate } —
@@ -322,17 +358,21 @@ export function computeLiveBalance(platform, refDate = new Date(), ctx = {}) {
   // construção — não precisa de filtro isInCurrentPhase aqui.
   const autoAccruedThisWeek = weekAlreadyClosed ? 0 : computeAutoAccruedBonusForWeek(platform, refDate, ctx);
 
-  // Bônus 2 (avulso, "Inserir bônus hoje") — ao vivo, só enquanto a
-  // semana ainda está aberta, sempre 1:1 no Saldo (a escala do botão R
+  // Bônus 2 (avulso EFETIVO, "Inserir bônus hoje") — ao vivo, só enquanto
+  // a semana ainda está aberta, sempre 1:1 no Saldo (a escala do botão R
   // nunca afeta o Saldo).
-  const currentWeekOtherBonus = (platform.otherBonusLog || []).filter(e => isInCurrentPhase(e.date));
-  const currentWeekOtherBonusRaw = weekAlreadyClosed ? 0 : sumInRange(currentWeekOtherBonus, weekStart, weekEnd, 'rawValue');
+  const currentWeekOtherBonusRaw = weekAlreadyClosed
+    ? 0
+    : sumEffectiveOtherBonus(platform, e => {
+      const d = new Date(e.date);
+      return isInCurrentPhase(e.date) && d >= weekStart && d <= weekEnd;
+    }, ctx).raw;
 
   const balance = initialBalance + depositTotal - withdrawalTotal
     + closedResultBetting + currentWeekResultBetting
     + bonusTotal + autoAccruedThisWeek + currentWeekOtherBonusRaw;
 
-  return Math.max(0, balance);
+  return r2(Math.max(0, balance));
 }
 
 // ============================================================
@@ -358,7 +398,7 @@ export function computeLiveBalance(platform, refDate = new Date(), ctx = {}) {
 //    horário; senão (semana editada ou backfill) entram em bloco no FIM da
 //    semana, depois dos depósitos dela (piso aplicado no fim da semana).
 // Semana ABERTA: tudo por horário; bônus de fórmula entra no início de
-// cada dia.
+// cada dia; avulso EFETIVO (Sub-entrega G) no horário de cada lançamento.
 // Com dados que nunca passam do Rollover disponível, o resultado é
 // IDÊNTICO ao da fórmula antiga.
 function simulateRollover(platform, { initialRollover = 0, windowStart = null, windowEnd = null, refDate = new Date(), includeOpenWeek = true, ctx = {} } = {}) {
@@ -421,9 +461,10 @@ function simulateRollover(platform, { initialRollover = 0, windowStart = null, w
       const v = Number(e.wagered) || 0;
       if (v) events.push({ t: new Date(e.date).getTime(), p: 2, v: -v });
     });
-    (platform.otherBonusLog || []).filter(inOpenWeek).forEach(e => {
-      const v = Number(e.rolloverValue) || 0;
-      if (v) events.push({ t: new Date(e.date).getTime(), p: 1, v });
+    // (Sub-entrega G) avulso EFETIVO, cada lançamento no seu horário.
+    getEffectiveOtherBonusEntries(platform, inOpenWeek, ctx).forEach(item => {
+      const v = Number(item.rollover) || 0;
+      if (v) events.push({ t: new Date(item.entry.date).getTime(), p: 1, v });
     });
 
     const today = new Date(refDate);
@@ -440,7 +481,7 @@ function simulateRollover(platform, { initialRollover = 0, windowStart = null, w
   events.sort((a, b) => (a.t - b.t) || (a.p - b.p));
   let rollover = Math.max(0, Number(initialRollover) || 0);
   events.forEach(e => { rollover = Math.max(0, rollover + e.v); });
-  return rollover;
+  return r2(rollover);
 }
 
 // ROLLOVER (novo, Bloco P) AO VIVO — nunca armazenado por semana, sempre
@@ -449,7 +490,7 @@ function simulateRollover(platform, { initialRollover = 0, windowStart = null, w
 //            + Depósitos da fase atual (1:1)
 //            + Bônus 1 (fórmula, 1:1 — semanas fechadas via
 //              financeWeeks[].bonusRollover + semana aberta AO VIVO)
-//            + Bônus 2 (avulso, semana aberta, JÁ escalado —
+//            + Bônus 2 (avulso EFETIVO, semana aberta, JÁ escalado —
 //              rolloverValue de otherBonusLog, semanas fechadas via
 //              financeWeeks[].bonusRollover)
 //            − Apostado da fase atual (fechadas + semana aberta)
@@ -532,9 +573,13 @@ export function computePhaseHistory(platform, refDate = new Date(), ctx = {}) {
       wagered += sumInRange(currentWeekBets, weekStart, weekEnd, 'wagered');
       betCount += sumInRange(currentWeekBets, weekStart, weekEnd, 'betCount');
 
-      const currentWeekOtherBonus = (platform.otherBonusLog || []).filter(e => inRange(e.date));
-      bonus += sumInRange(currentWeekOtherBonus, weekStart, weekEnd, 'rawValue');
-      bonusRollover += sumInRange(currentWeekOtherBonus, weekStart, weekEnd, 'rolloverValue');
+      // (Sub-entrega G) avulso EFETIVO da semana aberta.
+      const otherEff = sumEffectiveOtherBonus(platform, e => {
+        const d = new Date(e.date);
+        return inRange(e.date) && d >= weekStart && d <= weekEnd;
+      }, ctx);
+      bonus += otherEff.raw;
+      bonusRollover += otherEff.rollover;
 
       // Bônus 1 (fórmula), ao vivo — mesma fonte usada em
       // computeLiveBalance/computeRolloverLive, 1:1 nos dois.
@@ -548,18 +593,18 @@ export function computePhaseHistory(platform, refDate = new Date(), ctx = {}) {
       startDate: start,
       endDate: end,
       isCurrent,
-      initialBalance,
-      initialRollover,
-      deposit,
-      withdrawal,
-      difference: withdrawal - deposit,
-      wagered,
-      betCount,
-      bonus,
-      bonusRollover,
-      resultBetting,
-      rbPlusBonus: resultBetting + bonus,
-      balance: Math.max(0, initialBalance + deposit - withdrawal + resultBetting + bonus),
+      initialBalance: r2(initialBalance),
+      initialRollover: r2(initialRollover),
+      deposit: r2(deposit),
+      withdrawal: r2(withdrawal),
+      difference: r2(withdrawal - deposit),
+      wagered: r2(wagered),
+      betCount: r2(betCount),
+      bonus: r2(bonus),
+      bonusRollover: r2(bonusRollover),
+      resultBetting: r2(resultBetting),
+      rbPlusBonus: r2(resultBetting + bonus),
+      balance: r2(Math.max(0, initialBalance + deposit - withdrawal + resultBetting + bonus)),
       rollover: simulateRollover(platform, {
         initialRollover,
         windowStart: startDate,
@@ -593,7 +638,7 @@ export function computePhaseHistory(platform, refDate = new Date(), ctx = {}) {
 // substituição, não uma soma.
 export function closeWeek(platform, bonus, refDate = new Date(), ctx = {}) {
   const live = computeCurrentWeekLive(platform, refDate);
-  const bonusNum = Number(bonus) || 0;
+  const bonusNum = r2(Number(bonus) || 0);
 
   // Retrato do Rollover no exato momento do fechamento — precisa ser
   // calculado ANTES de empurrar `entry` pra financeWeeks (senão
@@ -609,18 +654,19 @@ export function closeWeek(platform, bonus, refDate = new Date(), ctx = {}) {
   const autoAccruedThisWeek = computeAutoAccruedBonusForWeek(platform, refDate, ctx);
 
   // O que foi lançado manualmente via "Inserir bônus hoje" (Bônus 2)
-  // durante esta semana — rawValue pro Saldo, rolloverValue pro Rollover.
-  const weekOtherBonus = (platform.otherBonusLog || []).filter(e => {
+  // durante esta semana — avulso EFETIVO (Sub-entrega G): raw pro Saldo,
+  // rollover pro Rollover.
+  const otherEff = sumEffectiveOtherBonus(platform, e => {
     const d = new Date(e.date);
     return d >= live.weekStart && d <= live.weekEnd;
-  });
-  const otherBonusRawThisWeek = weekOtherBonus.reduce((s, e) => s + (Number(e.rawValue) || 0), 0);
-  const otherBonusRolloverThisWeek = weekOtherBonus.reduce((s, e) => s + (Number(e.rolloverValue) || 0), 0);
+  }, ctx);
+  const otherBonusRawThisWeek = otherEff.raw;
+  const otherBonusRolloverThisWeek = otherEff.rollover;
 
   // Saldo ao vivo de AGORA (já inclui a contribuição desta semana) menos
   // essa mesma contribuição, mais o valor REAL digitado agora.
   const liveBalanceNow = computeLiveBalance(platform, refDate, ctx);
-  const balanceAtClose = Math.max(0, liveBalanceNow - autoAccruedThisWeek - otherBonusRawThisWeek + bonusNum);
+  const balanceAtClose = r2(Math.max(0, liveBalanceNow - autoAccruedThisWeek - otherBonusRawThisWeek + bonusNum));
 
   // bonusRollover: Bônus 1 (fórmula, sempre 1:1) + Bônus 2 (avulso, já
   // escalado pelo botão R de cada lançamento) — CONGELADO aqui pra
@@ -634,8 +680,8 @@ export function closeWeek(platform, bonus, refDate = new Date(), ctx = {}) {
   // descontadas (o Rollover subtrai todo o apostado da fase), e o que
   // sobrar segue pra semana seguinte porque o Rollover é acumulado por
   // fase (initialRollover + depósitos + bonusRollover - apostado).
-  const bonusDiff = bonusNum - autoAccruedThisWeek - otherBonusRawThisWeek;
-  const bonusRollover = autoAccruedThisWeek + otherBonusRolloverThisWeek + bonusDiff;
+  const bonusDiff = r2(bonusNum - autoAccruedThisWeek - otherBonusRawThisWeek);
+  const bonusRollover = r2(autoAccruedThisWeek + otherBonusRolloverThisWeek + bonusDiff);
 
   const entry = {
     weekStart: toLocalDateString(live.weekStart),
@@ -647,8 +693,12 @@ export function closeWeek(platform, bonus, refDate = new Date(), ctx = {}) {
     betCount: live.betCount,
     bonus: bonusNum,
     bonusRollover,
+    // (Sub-entrega G) diferença informada no fechamento: bônus real −
+    // (fórmula + avulso efetivo). Só informativo (Gráficos contam como
+    // Avulso); Saldo/Rollover já incorporam essa diferença acima.
+    bonusAdjustment: bonusDiff,
     resultBetting: live.resultBetting,
-    rbPlusBonus: live.resultBetting + bonusNum,
+    rbPlusBonus: r2(live.resultBetting + bonusNum),
     balance: balanceAtClose,
     rolloverAtClose: 0, // recalculado logo após gravar a semana (abaixo)
     closedAt: new Date().toISOString()
@@ -663,6 +713,21 @@ export function closeWeek(platform, bonus, refDate = new Date(), ctx = {}) {
   return entry;
 }
 
+// (Sub-entrega G) Mantém `bonusAdjustment` em dia quando o bônus de uma
+// semana fechada muda. Só em semanas que já têm o campo, ou que foram
+// fechadas automaticamente (nelas a diferença nasce 0 por construção).
+// Semanas fechadas à mão antes desta sub-entrega ficam sem o campo (não
+// dá pra reconstituir o contabilizado daquele domingo).
+function bumpBonusAdjustment(entry, diff) {
+  if (!diff) return;
+  if (entry.backfilled) return;
+  if (entry.bonusAdjustment !== undefined && entry.bonusAdjustment !== null) {
+    entry.bonusAdjustment = r2((Number(entry.bonusAdjustment) || 0) + diff);
+  } else if (entry.autoClosed === true) {
+    entry.bonusAdjustment = r2(diff);
+  }
+}
+
 // EDITA uma semana JÁ FECHADA. Os 6 campos brutos (deposit, withdrawal,
 // wagered, betCount, bonus, resultBetting) podem ser corrigidos à mão —
 // SEM MUDANÇA nesta etapa. `bonusRollover`, assim como `balance`, NÃO é
@@ -672,45 +737,48 @@ export function closeWeek(platform, bonus, refDate = new Date(), ctx = {}) {
 // como reconstituir a escala certa de cada lançamento a partir só do
 // número final. Pra corrigir uma semana com bonusRollover errado, o
 // caminho é excluir e fechar de novo (ver deleteClosedWeek).
+// (Sub-entrega G) valores arredondados em centavos; bonusAdjustment
+// acompanha a mudança do bônus. Semântica de edição inalterada.
 export function updateClosedWeek(platform, weekStart, updatedFields) {
   const entry = (platform.financeWeeks || []).find(w => w.weekStart === weekStart);
   if (!entry) return null;
 
-  const deposit = Number(updatedFields.deposit) || 0;
-  const withdrawal = Number(updatedFields.withdrawal) || 0;
-  const wagered = Number(updatedFields.wagered) || 0;
-  const betCount = Number(updatedFields.betCount) || 0;
-  const bonus = Number(updatedFields.bonus) || 0;
-  const resultBetting = Number(updatedFields.resultBetting) || 0;
+  const deposit = r2(Number(updatedFields.deposit) || 0);
+  const withdrawal = r2(Number(updatedFields.withdrawal) || 0);
+  const wagered = r2(Number(updatedFields.wagered) || 0);
+  const betCount = Math.round(Number(updatedFields.betCount) || 0);
+  const bonus = r2(Number(updatedFields.bonus) || 0);
+  const resultBetting = r2(Number(updatedFields.resultBetting) || 0);
 
   // Editar o BÔNUS de uma semana fechada automaticamente resolve o
   // "Bônus real pendente" (o usuário já informou o valor).
-  const oldBonusValue = Number(entry.bonus) || 0;
+  const oldBonusValue = r2(Number(entry.bonus) || 0);
   // Semana fechada pela regra nova (tem bonusRollover) e que NÃO é
   // backfill: corrigir o bônus move o Rollover pela mesma diferença,
   // igual ao fechamento. Backfill nunca soma bônus no Rollover (decisão
   // do usuário: só depósitos). rolloverAtClose é retrato fixo, não muda.
   if (!entry.backfilled && entry.bonusRollover !== undefined && bonus !== oldBonusValue) {
-    entry.bonusRollover = (Number(entry.bonusRollover) || 0) + (bonus - oldBonusValue);
+    entry.bonusRollover = r2((Number(entry.bonusRollover) || 0) + (bonus - oldBonusValue));
   }
-  if (entry.bonusPending === true && bonus !== (Number(entry.bonus) || 0)) {
+  if (bonus !== oldBonusValue) bumpBonusAdjustment(entry, r2(bonus - oldBonusValue));
+  if (entry.bonusPending === true && bonus !== oldBonusValue) {
     entry.bonusPending = false;
     entry.bonusConfirmedAt = new Date().toISOString();
   }
 
   entry.deposit = deposit;
   entry.withdrawal = withdrawal;
-  entry.difference = withdrawal - deposit;
+  entry.difference = r2(withdrawal - deposit);
   entry.wagered = wagered;
   entry.betCount = betCount;
   entry.bonus = bonus;
   entry.resultBetting = resultBetting;
-  entry.rbPlusBonus = resultBetting + bonus;
+  entry.rbPlusBonus = r2(resultBetting + bonus);
   // Saldo só é editável em semana de BACKFILL (valor digitado pelo
   // usuário, sem como recalcular). Em semana fechada normal continua fixo
   // (retrato calculado no fechamento — ver nota acima da função).
   if (entry.backfilled && updatedFields.balance !== undefined) {
-    entry.balance = Math.max(0, Number(updatedFields.balance) || 0);
+    entry.balance = r2(Math.max(0, Number(updatedFields.balance) || 0));
   }
   entry.editedAt = new Date().toISOString();
 
@@ -752,7 +820,8 @@ export function deleteClosedWeek(platform, weekStart) {
 // Insere uma semana ANTIGA já fechada direto no histórico — SEM MUDANÇA
 // nesta etapa (backfill continua exatamente como no Sistema 1, sem
 // Rollover Inicial nem bonusRollover: ele não abre fase, só insere uma
-// semana fechada dentro da fase já aberta).
+// semana fechada dentro da fase já aberta). (Sub-entrega G) valores
+// arredondados em centavos.
 export function addHistoricalWeek(platform, dateInWeek, fields, refDate = new Date()) {
   const weekStart = getWeekStart(new Date(dateInWeek));
   const weekEnd = getWeekEnd(weekStart);
@@ -768,29 +837,29 @@ export function addHistoricalWeek(platform, dateInWeek, fields, refDate = new Da
     return { ok: false, reason: 'duplicate' };
   }
 
-  const deposit = Number(fields.deposit) || 0;
-  const withdrawal = Number(fields.withdrawal) || 0;
-  const wagered = Number(fields.wagered) || 0;
-  const betCount = Number(fields.betCount) || 0;
-  const bonus = Number(fields.bonus) || 0;
-  const resultBetting = Number(fields.resultBetting) || 0;
+  const deposit = r2(Number(fields.deposit) || 0);
+  const withdrawal = r2(Number(fields.withdrawal) || 0);
+  const wagered = r2(Number(fields.wagered) || 0);
+  const betCount = Math.round(Number(fields.betCount) || 0);
+  const bonus = r2(Number(fields.bonus) || 0);
+  const resultBetting = r2(Number(fields.resultBetting) || 0);
   // Saldo final da semana, digitado pelo usuário (vem da planilha dele).
   // É só um RETRATO (exibição no card + gráfico de Saldo Global): o Saldo
   // ao vivo NUNCA lê este campo — é sempre calculado pelos movimentos +
   // Saldo Inicial da fase. Ausente/inválido = 0 (comportamento anterior).
-  const balance = Math.max(0, Number(fields.balance) || 0);
+  const balance = r2(Math.max(0, Number(fields.balance) || 0));
 
   const entry = {
     weekStart: weekStartStr,
     weekEnd: toLocalDateString(weekEnd),
     deposit,
     withdrawal,
-    difference: withdrawal - deposit,
+    difference: r2(withdrawal - deposit),
     wagered,
     betCount,
     bonus,
     resultBetting,
-    rbPlusBonus: resultBetting + bonus,
+    rbPlusBonus: r2(resultBetting + bonus),
     balance,
     closedAt: new Date().toISOString(),
     backfilled: true
@@ -822,20 +891,20 @@ export function addHistoricalWeek(platform, dateInWeek, fields, refDate = new Da
 // anteriores.
 export function computePlatformTotals(platform, ctx = {}, refDate = new Date()) {
   const totals = (platform.financeWeeks || []).reduce((acc, w) => {
-    acc.deposit += w.deposit;
-    acc.withdrawal += w.withdrawal;
-    acc.difference += w.difference;
-    acc.wagered += w.wagered;
-    acc.betCount += w.betCount;
-    acc.bonus += w.bonus;
-    acc.resultBetting += w.resultBetting;
-    acc.rbPlusBonus += w.rbPlusBonus;
+    acc.deposit += Number(w.deposit) || 0;
+    acc.withdrawal += Number(w.withdrawal) || 0;
+    acc.difference += Number(w.difference) || 0;
+    acc.wagered += Number(w.wagered) || 0;
+    acc.betCount += Number(w.betCount) || 0;
+    acc.bonus += Number(w.bonus) || 0;
+    acc.resultBetting += Number(w.resultBetting) || 0;
+    acc.rbPlusBonus += Number(w.rbPlusBonus) || 0;
     return acc;
   }, { deposit: 0, withdrawal: 0, difference: 0, wagered: 0, betCount: 0, bonus: 0, resultBetting: 0, rbPlusBonus: 0 });
 
   totals.balance = computeLiveBalance(platform, refDate, ctx);
   totals.rollover = computeRolloverLive(platform, refDate, ctx);
-  return totals;
+  return roundTotals(totals);
 }
 
 // Soma as semanas fechadas de TODAS as plataformas — usado no "Painel
@@ -861,6 +930,17 @@ export function computePlatformTotals(platform, ctx = {}, refDate = new Date()) 
 export function computeOverallTotals(platforms, from = null, to = null, resolveCtx = () => ({}), refDate = new Date(), phaseFilter = null) {
   const totals = { deposit: 0, withdrawal: 0, difference: 0, wagered: 0, betCount: 0, bonus: 0, resultBetting: 0, rbPlusBonus: 0, balance: 0, rollover: 0 };
 
+  const addWeek = (w) => {
+    totals.deposit += Number(w.deposit) || 0;
+    totals.withdrawal += Number(w.withdrawal) || 0;
+    totals.difference += Number(w.difference) || 0;
+    totals.wagered += Number(w.wagered) || 0;
+    totals.betCount += Number(w.betCount) || 0;
+    totals.bonus += Number(w.bonus) || 0;
+    totals.resultBetting += Number(w.resultBetting) || 0;
+    totals.rbPlusBonus += Number(w.rbPlusBonus) || 0;
+  };
+
   (platforms || []).forEach(platform => {
     const ctx = resolveCtx(platform);
 
@@ -878,14 +958,7 @@ export function computeOverallTotals(platforms, from = null, to = null, resolveC
         if (phaseEnd && !(weekEndDate <= phaseEnd)) return;
         if (from && w.weekStart < from) return;
         if (to && w.weekStart > to) return;
-        totals.deposit += w.deposit;
-        totals.withdrawal += w.withdrawal;
-        totals.difference += w.difference;
-        totals.wagered += w.wagered;
-        totals.betCount += w.betCount;
-        totals.bonus += w.bonus;
-        totals.resultBetting += w.resultBetting;
-        totals.rbPlusBonus += w.rbPlusBonus;
+        addWeek(w);
       });
 
       totals.balance += phase.balance;
@@ -896,27 +969,20 @@ export function computeOverallTotals(platforms, from = null, to = null, resolveC
     (platform.financeWeeks || []).forEach(w => {
       if (from && w.weekStart < from) return;
       if (to && w.weekStart > to) return;
-      totals.deposit += w.deposit;
-      totals.withdrawal += w.withdrawal;
-      totals.difference += w.difference;
-      totals.wagered += w.wagered;
-      totals.betCount += w.betCount;
-      totals.bonus += w.bonus;
-      totals.resultBetting += w.resultBetting;
-      totals.rbPlusBonus += w.rbPlusBonus;
+      addWeek(w);
     });
 
     totals.balance += computeLiveBalance(platform, refDate, ctx);
     totals.rollover += computeRolloverLive(platform, refDate, ctx);
   });
 
-  return totals;
+  return roundTotals(totals);
 }
 
 // Soma só o Rollover de todas as plataformas — sem filtro de data, igual
 // ao Saldo (P2.4). Mesmo `resolveCtx` opcional do computeOverallTotals.
 export function computeOverallRollover(platforms, refDate = new Date(), resolveCtx = () => ({})) {
-  return (platforms || []).reduce((sum, p) => sum + computeRolloverLive(p, refDate, resolveCtx(p)), 0);
+  return r2((platforms || []).reduce((sum, p) => sum + computeRolloverLive(p, refDate, resolveCtx(p)), 0));
 }
 
 // Painel Geral AO VIVO (padrão): computeOverallTotals (semanas fechadas,
@@ -943,7 +1009,7 @@ export function computeOverallTotalsLive(platforms, from = null, to = null, reso
 
     const live = computeCurrentWeekLive(platform, refDate);
     const bonusThisWeek = computeAutoAccruedBonusForWeek(platform, refDate, ctx)
-      + getAccumulatedBonusThisWeek(platform, refDate);
+      + getAccumulatedBonusThisWeek(platform, refDate, ctx);
 
     totals.deposit += live.deposit;
     totals.withdrawal += live.withdrawal;
@@ -955,7 +1021,7 @@ export function computeOverallTotalsLive(platforms, from = null, to = null, reso
     totals.rbPlusBonus += live.resultBetting + bonusThisWeek;
   });
 
-  return totals;
+  return roundTotals(totals);
 }
 
 // Painel Geral, modo "Ao Vivo": SÓ a semana atual em andamento, somada
@@ -997,7 +1063,7 @@ export function computeOverallCurrentWeekOnly(platforms, from = null, to = null,
 
     const live = computeCurrentWeekLive(platform, refDate);
     const bonusThisWeek = computeAutoAccruedBonusForWeek(platform, refDate, ctx)
-      + getAccumulatedBonusThisWeek(platform, refDate);
+      + getAccumulatedBonusThisWeek(platform, refDate, ctx);
 
     totals.deposit += live.deposit;
     totals.withdrawal += live.withdrawal;
@@ -1009,7 +1075,7 @@ export function computeOverallCurrentWeekOnly(platforms, from = null, to = null,
     totals.rbPlusBonus += live.resultBetting + bonusThisWeek;
   });
 
-  return totals;
+  return roundTotals(totals);
 }
 
 // ============================================================
@@ -1079,8 +1145,8 @@ function sumPlatformDays(platform, loKey, hiKey, ctx) {
     res.betCount += Number(e.betCount) || 0;
     res.resultBetting += Number(e.resultBetting) || 0;
   });
-  // Bônus avulso (quando existe, entra) + fórmula de cada dia.
-  (platform.otherBonusLog || []).filter(inRange).forEach(e => { res.bonus += Number(e.rawValue) || 0; });
+  // Bônus avulso EFETIVO (Sub-entrega G) + fórmula de cada dia.
+  res.bonus += sumEffectiveOtherBonus(platform, inRange, ctx).raw;
 
   let key = loKey;
   let guard = 0;
@@ -1090,7 +1156,7 @@ function sumPlatformDays(platform, loKey, hiKey, ctx) {
     key = addDaysKey(key, 1);
     guard++;
   }
-  return res;
+  return roundTotals(res);
 }
 
 export function computeOverallTotalsPeriod(platforms, from = null, to = null, resolveCtx = () => ({}), refDate = new Date(), phaseFilter = null, mode = 'total') {
@@ -1145,12 +1211,12 @@ export function computeOverallTotalsPeriod(platforms, from = null, to = null, re
 
         const covered = (!from || from <= w.weekStart) && (!to || to >= w.weekEnd);
         if (covered) {
-          totals.deposit += w.deposit;
-          totals.withdrawal += w.withdrawal;
-          totals.wagered += w.wagered;
-          totals.betCount += w.betCount;
-          totals.bonus += w.bonus;
-          totals.resultBetting += w.resultBetting;
+          totals.deposit += Number(w.deposit) || 0;
+          totals.withdrawal += Number(w.withdrawal) || 0;
+          totals.wagered += Number(w.wagered) || 0;
+          totals.betCount += Number(w.betCount) || 0;
+          totals.bonus += Number(w.bonus) || 0;
+          totals.resultBetting += Number(w.resultBetting) || 0;
           return;
         }
 
@@ -1198,6 +1264,7 @@ export function computeOverallTotalsPeriod(platforms, from = null, to = null, re
 
   totals.difference = totals.withdrawal - totals.deposit;
   totals.rbPlusBonus = totals.resultBetting + totals.bonus;
+  roundTotals(totals);
 
   return { totals, estimatedWeeks, excludedBackfill, unclosedPastWeeks };
 }
@@ -1223,9 +1290,10 @@ export function computeOverallTotalsPeriod(platforms, from = null, to = null, re
 //    23:59:59.999): fase vigente naquela data + teto de data. Nada de
 //    segunda em diante retroage — o bônus de segunda (semanal, mensal,
 //    Obrigado, Misterioso) pertence SEMPRE à semana nova.
-//  - Bônus gravado = o que o sistema já contabilizou (fórmula + avulso).
-//    A semana fica com autoClosed:true e, se esse bônus for > 0,
+//  - Bônus gravado = o que o sistema já contabilizou (fórmula + avulso
+//    efetivo). A semana fica com autoClosed:true e, se esse bônus for > 0,
 //    bonusPending:true (painel "Bônus real" até o usuário confirmar).
+//    bonusAdjustment nasce 0 (bônus = contabilizado).
 //  - Não grava no Firestore: devolve as plataformas alteradas pra view
 //    salvar com savePlatform (mesmo caminho de sempre).
 export const AUTO_CLOSE_FIRST_WEEK = '2026-09-21';
@@ -1256,8 +1324,8 @@ export function autoCloseOverdueWeeks(platforms, resolveCtx = () => ({}), refDat
         const [y, m, d] = cursor.split('-').map(Number);
         const weekEnd = getWeekEnd(new Date(y, m - 1, d));
 
-        const bonus = computeAutoAccruedBonusForWeek(platform, weekEnd, ctx)
-          + getAccumulatedBonusThisWeek(platform, weekEnd);
+        const bonus = r2(computeAutoAccruedBonusForWeek(platform, weekEnd, ctx)
+          + getAccumulatedBonusThisWeek(platform, weekEnd, ctx));
 
         const entry = closeWeek(platform, bonus, weekEnd, ctx);
         entry.autoClosed = true;
@@ -1280,24 +1348,26 @@ export function autoCloseOverdueWeeks(platforms, resolveCtx = () => ({}), refDat
 
 // Confirma o bônus REAL de uma semana fechada automaticamente. realBonus
 // null/undefined = manter o valor contabilizado. Valor informado: substitui
-// o bônus e ajusta o retrato do Saldo pela diferença; o Rollover congelado
-// NÃO muda (mesmo comportamento do fechamento de domingo).
+// o bônus e ajusta o retrato do Saldo pela diferença; a diferença também
+// entra no Rollover congelado (1:1), mesma regra do fechamento de domingo.
+// (Sub-entrega G) bonusAdjustment acompanha a diferença.
 // Retorna a semana, ou null se não existe / não está pendente / valor inválido.
 export function setClosedWeekRealBonus(platform, weekStart, realBonus = null) {
   const entry = (platform.financeWeeks || []).find(w => w.weekStart === weekStart);
   if (!entry || entry.bonusPending !== true) return null;
 
   if (realBonus !== null && realBonus !== undefined) {
-    const value = Number(realBonus);
-    if (!Number.isFinite(value) || value < 0) return null;
-    const oldBonus = Number(entry.bonus) || 0;
+    const value = r2(Number(realBonus));
+    if (!Number.isFinite(Number(realBonus)) || value < 0) return null;
+    const oldBonus = r2(Number(entry.bonus) || 0);
+    const diff = r2(value - oldBonus);
     entry.bonus = value;
-    entry.rbPlusBonus = (Number(entry.resultBetting) || 0) + value;
-    entry.balance = Math.max(0, (Number(entry.balance) || 0) + (value - oldBonus));
+    entry.rbPlusBonus = r2((Number(entry.resultBetting) || 0) + value);
+    entry.balance = r2(Math.max(0, (Number(entry.balance) || 0) + diff));
     // Mesma regra do fechamento: a diferença do bônus também entra no
     // Rollover (1:1) e no retrato dele.
-    const diff = value - oldBonus;
-    if (entry.bonusRollover !== undefined) entry.bonusRollover = (Number(entry.bonusRollover) || 0) + diff;
+    if (entry.bonusRollover !== undefined) entry.bonusRollover = r2((Number(entry.bonusRollover) || 0) + diff);
+    bumpBonusAdjustment(entry, diff);
     if (entry.rolloverAtClose !== undefined && entry.rolloverAtClose !== null) {
       // Retrato "como estava no fim daquela semana" (fase vigente e teto de
       // data daquela semana — ver computeRolloverLive). ctx vazio: com a

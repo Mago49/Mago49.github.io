@@ -17,10 +17,10 @@
 //      (finance-logic.js) — o bônus deixa de ser só "visual" na aba VIP
 //      e passa a ser valor real, todo dia, sem precisar de nenhum clique.
 //   2) Como base de subtração no botão "Inserir bônus hoje": o valor que
-//      a pessoa digita pode já incluir a parte formulaica do dia — o
-//      sistema subtrai o que já é automático e grava só a diferença
-//      (positiva ou negativa) em otherBonusLog, pra nunca contar 2x,
-//      não importa a ordem entre "Apostei hoje" e "Inserir bônus hoje".
+//      a pessoa digita é o TOTAL recebido no dia e pode já incluir a parte
+//      da fórmula — o sistema grava em otherBonusLog só a diferença
+//      POSITIVA (valor zero ou menor que o já contabilizado é recusado
+//      pela tela), pra nunca contar 2x. Ver "AVULSO EFETIVO" abaixo.
 //   3) Recalculado dentro de closeWeek() (finance-logic.js) no domingo,
 //      pra descontar do Saldo ao vivo o que a fórmula já tinha somado
 //      sozinha durante a semana, antes de somar o valor real digitado.
@@ -34,6 +34,26 @@
 // Sem ctx (ou com ctx vazio), Obrigado/Misterioso simplesmente não
 // contribuem em nada — VIP diário/semanal/mensal continuam funcionando
 // normalmente, porque não dependem de ctx (só de platform.group/level).
+//
+// === (Sub-entrega G) AVULSO EFETIVO — fim da dupla contagem ===
+// PROBLEMA: o avulso gravado era "total digitado − fórmula NAQUELE
+// momento". Se a fórmula do dia subisse DEPOIS do lançamento (caso típico:
+// a aposta que atinge o mínimo do nível é registrada depois, liberando o
+// VIP diário automaticamente), o diário entrava 2x: uma vez dentro do
+// avulso (o usuário já tinha incluído no total) e outra pela fórmula.
+// CORREÇÃO: cada lançamento novo guarda também `claimedTotal` (o TOTAL do
+// dia que o usuário informou) e `formulaAtLog` (a fórmula naquele
+// instante). O avulso EFETIVO de um dia passa a ser:
+//   - dia com lançamento novo: max(0, maior claimedTotal − fórmula ATUAL)
+//     => total do dia = max(fórmula atual, total informado). A liberação
+//        automática do diário CONTINUA funcionando: sem lançamento no dia
+//        ela soma normalmente; com lançamento, ela só soma o que passar do
+//        total já informado (nunca 2x).
+//   - dia só com lançamentos antigos (sem claimedTotal): Σ rawValue, igual
+//     a antes — nada é reinterpretado retroativamente.
+// O Rollover do avulso acompanha na mesma proporção (preserva a escala do
+// botão R de cada lançamento). Nada é regravado no Firestore: o efetivo é
+// sempre recalculado na leitura.
 
 import { getVipConfigAt, computeEmissionDates, isBetDayEffective } from './cycle-logic.js';
 import { getEffectiveMisteriosoValue } from './misterioso-logic.js';
@@ -42,6 +62,10 @@ function startOfDay(date) {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
   return d;
+}
+
+function r2(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
 }
 
 // Cópia intencional do algoritmo de getWeekStart (finance-logic.js) — ver
@@ -71,6 +95,15 @@ function toLocalDateKey(date) {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${dd}`;
+}
+
+function dayKeyToDate(dayKey) {
+  const [y, m, d] = dayKey.split('-').map(Number);
+  return new Date(y, m - 1, d, 0, 0, 0, 0);
+}
+
+function isValidEntryDate(e) {
+  return !!e && !!e.date && !isNaN(new Date(e.date).getTime());
 }
 
 // "Apostei hoje" já registrado pra uma data específica — usado só pro
@@ -145,27 +178,125 @@ export function getExpectedBonusToday(platform, refDate = new Date(), ctx = {}) 
   return getExpectedBonusForDate(platform, refDate, ctx);
 }
 
-// Soma tudo que JÁ FOI LANÇADO em otherBonusLog no dia de refDate — usado
-// pra permitir mais de um clique em "Inserir bônus hoje" no mesmo dia sem
-// duplicar: cada novo clique subtrai também o que entradas anteriores do
-// MESMO dia já registraram.
-export function getAlreadyLoggedToday(platform, refDate = new Date()) {
-  const key = toLocalDateKey(refDate);
-  return (platform.otherBonusLog || [])
-    .filter(e => e.date && toLocalDateKey(e.date) === key)
-    .reduce((sum, e) => sum + (Number(e.rawValue) || 0), 0);
+// ============================================================
+// (Sub-entrega G) AVULSO EFETIVO — ver nota no topo do arquivo
+// ============================================================
+
+function hasClaim(e) {
+  return !!e && typeof e.claimedTotal === 'number' && Number.isFinite(e.claimedTotal);
+}
+
+// Avulso efetivo de UM dia (todas as entradas daquele dia local).
+// Retorna:
+//   raw       — o que entra no Saldo (1:1), em centavos
+//   rollover  — o que entra no Rollover (escala do botão R preservada)
+//   ratio     — fator aplicado a cada entrada (1 em dia só com entradas antigas)
+//   claimed   — maior total informado no dia (null se só entradas antigas)
+//   formula   — fórmula ATUAL do dia (null se só entradas antigas)
+//   formulaAtLog — fórmula no momento do último lançamento novo (ou null)
+//   entries   — entradas do dia
+export function getEffectiveOtherBonusForDay(platform, date, ctx = {}) {
+  const key = toLocalDateKey(date);
+  const entries = (platform.otherBonusLog || []).filter(e => isValidEntryDate(e) && toLocalDateKey(e.date) === key);
+  const rawSum = entries.reduce((s, e) => s + (Number(e.rawValue) || 0), 0);
+  const rolloverSum = entries.reduce((s, e) => s + (Number(e.rolloverValue) || 0), 0);
+
+  const base = { dayKey: key, entries, rawSum: r2(rawSum), rolloverSum: r2(rolloverSum) };
+
+  if (entries.length === 0) {
+    return { ...base, raw: 0, rollover: 0, ratio: 1, claimed: null, formula: null, formulaAtLog: null };
+  }
+
+  const claims = entries.filter(hasClaim);
+  if (claims.length === 0) {
+    // Só lançamentos antigos: comportamento de sempre (Σ rawValue).
+    return { ...base, raw: r2(rawSum), rollover: r2(rolloverSum), ratio: 1, claimed: null, formula: null, formulaAtLog: null };
+  }
+
+  const claimed = claims.reduce((max, e) => Math.max(max, e.claimedTotal), -Infinity);
+  const latestClaim = [...claims].sort((a, b) => new Date(a.date) - new Date(b.date))[claims.length - 1];
+  const formula = getExpectedBonusForDate(platform, dayKeyToDate(key), ctx);
+  const raw = r2(Math.max(0, claimed - formula));
+  const ratio = rawSum > 0 ? raw / rawSum : 0;
+  const rollover = rawSum > 0 ? r2(rolloverSum * ratio) : raw;
+
+  return {
+    ...base,
+    raw,
+    rollover,
+    ratio,
+    claimed: r2(claimed),
+    formula: r2(formula),
+    formulaAtLog: (typeof latestClaim.formulaAtLog === 'number' && Number.isFinite(latestClaim.formulaAtLog))
+      ? r2(latestClaim.formulaAtLog)
+      : null
+  };
+}
+
+// Soma do avulso efetivo de todos os DIAS que tenham ao menos uma entrada
+// aceita por `entryFilter`. O efetivo de cada dia é calculado com todas as
+// entradas daquele dia (fases e semanas sempre viram à meia-noite, então
+// um filtro por período nunca corta um dia ao meio).
+export function sumEffectiveOtherBonus(platform, entryFilter = () => true, ctx = {}) {
+  const dayKeys = new Set();
+  (platform.otherBonusLog || []).forEach(e => {
+    if (isValidEntryDate(e) && entryFilter(e)) dayKeys.add(toLocalDateKey(e.date));
+  });
+  let raw = 0;
+  let rollover = 0;
+  dayKeys.forEach(key => {
+    const day = getEffectiveOtherBonusForDay(platform, dayKeyToDate(key), ctx);
+    raw += day.raw;
+    rollover += day.rollover;
+  });
+  return { raw: r2(raw), rollover: r2(rollover) };
+}
+
+// Mesma coisa, mas POR ENTRADA (cada uma com o fator do seu dia) — usado
+// onde o horário de cada lançamento importa (simulação sequencial do
+// Rollover, feed do Perfil).
+export function getEffectiveOtherBonusEntries(platform, entryFilter = () => true, ctx = {}) {
+  const dayCache = new Map();
+  const result = [];
+  (platform.otherBonusLog || []).forEach(e => {
+    if (!isValidEntryDate(e) || !entryFilter(e)) return;
+    const key = toLocalDateKey(e.date);
+    if (!dayCache.has(key)) dayCache.set(key, getEffectiveOtherBonusForDay(platform, dayKeyToDate(key), ctx));
+    const day = dayCache.get(key);
+    let raw;
+    let rollover;
+    if (day.rawSum > 0) {
+      raw = (Number(e.rawValue) || 0) * day.ratio;
+      rollover = (Number(e.rolloverValue) || 0) * day.ratio;
+    } else {
+      // Caso degenerado (entradas sem rawValue): o efetivo do dia vai
+      // inteiro pro último lançamento do dia.
+      const last = [...day.entries].sort((a, b) => new Date(a.date) - new Date(b.date))[day.entries.length - 1];
+      raw = e === last ? day.raw : 0;
+      rollover = e === last ? day.rollover : 0;
+    }
+    result.push({ entry: e, raw, rollover, day });
+  });
+  return result;
+}
+
+// Avulso EFETIVO já contabilizado no dia de refDate (nome mantido por
+// compatibilidade). Antes era Σ rawValue; agora segue a regra do avulso
+// efetivo — passe o ctx pra Obrigado/Misterioso entrarem na fórmula.
+export function getAlreadyLoggedToday(platform, refDate = new Date(), ctx = {}) {
+  return getEffectiveOtherBonusForDay(platform, refDate, ctx).raw;
 }
 
 // Diferença a ser gravada em otherBonusLog quando o usuário confirma
-// "Inserir bônus hoje" com `valorDigitado` (o total que ele diz ter
+// "Inserir bônus hoje" com `valorDigitado` (o TOTAL que ele diz ter
 // recebido HOJE). NUNCA grava sozinha — só calcula; quem chama decide o
 // `scale` (botão R) e monta a entrada final (ver ui-finance-panel.js).
-// Recalculada do zero a cada chamada — nunca depende de um valor
-// anterior "congelado", por isso a ordem entre "Apostei hoje" e
-// "Inserir bônus hoje" nunca gera diferença errada, em nenhum sentido.
+//   diferença = total digitado − (fórmula atual + avulso efetivo de hoje)
+//             = total digitado − max(fórmula atual, total já informado)
+// Recalculada do zero a cada chamada.
 export function computeBonusDiffToday(platform, valorDigitado, refDate = new Date(), ctx = {}) {
   const expected = getExpectedBonusToday(platform, refDate, ctx);
-  const alreadyLogged = getAlreadyLoggedToday(platform, refDate);
+  const alreadyLogged = getAlreadyLoggedToday(platform, refDate, ctx);
   return (Number(valorDigitado) || 0) - expected - alreadyLogged;
 }
 
@@ -188,36 +319,26 @@ export function computeAutoAccruedBonusForWeek(platform, refDate = new Date(), c
     total += getExpectedBonusForDate(platform, cursor, ctx);
     cursor.setDate(cursor.getDate() + 1);
   }
-  return total;
+  return r2(total);
 }
 
-// Soma de otherBonusLog (rawValue, sem escala — o que entra no Saldo) da
-// semana em aberto. Usado pelo novo campo só-leitura "Bônus Acumulado"
-// no domingo: somado com computeAutoAccruedBonusForWeek, mostra pro
-// usuário quanto o sistema JÁ sabe que foi recebido nessa semana, antes
-// dele digitar o valor real final.
-export function getAccumulatedBonusThisWeek(platform, refDate = new Date()) {
+function inWeekOf(refDate) {
   const weekStart = getWeekStartLocal(refDate);
   const weekEnd = getWeekEndLocal(weekStart);
-  return (platform.otherBonusLog || [])
-    .filter(e => {
-      const d = new Date(e.date);
-      return d >= weekStart && d <= weekEnd;
-    })
-    .reduce((sum, e) => sum + (Number(e.rawValue) || 0), 0);
+  return (e) => {
+    const d = new Date(e.date);
+    return d >= weekStart && d <= weekEnd;
+  };
 }
 
-// Mesma soma acima, mas em rolloverValue (já escalado pelo botão R de
-// cada lançamento) — usado ao vivo por computeRolloverLive e congelado
-// dentro de closeWeek() junto com o acúmulo automático (que entra 1:1,
-// "Bônus 1", sempre).
-export function getAccumulatedRolloverThisWeek(platform, refDate = new Date()) {
-  const weekStart = getWeekStartLocal(refDate);
-  const weekEnd = getWeekEndLocal(weekStart);
-  return (platform.otherBonusLog || [])
-    .filter(e => {
-      const d = new Date(e.date);
-      return d >= weekStart && d <= weekEnd;
-    })
-    .reduce((sum, e) => sum + (Number(e.rolloverValue) || 0), 0);
+// Avulso EFETIVO (Saldo, 1:1) da semana de refDate. Somado com
+// computeAutoAccruedBonusForWeek, mostra quanto o sistema JÁ sabe que foi
+// recebido nessa semana (campo "Bônus Acumulado"), sem dupla contagem.
+export function getAccumulatedBonusThisWeek(platform, refDate = new Date(), ctx = {}) {
+  return sumEffectiveOtherBonus(platform, inWeekOf(refDate), ctx).raw;
+}
+
+// Mesma soma acima, mas do Rollover (escala do botão R preservada).
+export function getAccumulatedRolloverThisWeek(platform, refDate = new Date(), ctx = {}) {
+  return sumEffectiveOtherBonus(platform, inWeekOf(refDate), ctx).rollover;
 }

@@ -23,9 +23,24 @@
 // remover uma linha de "Selecionados") só acontecem em eventos que já
 // tiram o campo do foco (clique de botão, ou 'change' no blur do campo
 // de emoji), nunca a cada tecla digitada.
+//
+// === (Sub-entrega H) ===
+// a) Leitura não confirmada (isCardCustomizationLoaded() === false): o
+//    painel mostra um aviso, o "Salvar" fica DESABILITADO e há um botão
+//    "Tentar de novo" (relê e remonta o painel). Antes, salvar nesse
+//    estado apagava toda a personalização já gravada.
+// b) "Salvar" espera o commit: botão desabilitado durante a gravação,
+//    mensagem de sucesso ou de falha logo abaixo dos botões. Em falha,
+//    nada muda na tela nem no cache — o rascunho continua lá pra tentar
+//    de novo. onSaved só é chamado depois da confirmação.
+// c) Ao salvar, entradas de plataformas que não existem mais são
+//    descartadas (lista de ids válidos repassada ao store).
 
 import { state } from './state.js';
-import { getCachedCardCustomization, saveCardCustomization } from './card-customization-store.js';
+import {
+  getCachedCardCustomization, saveCardCustomization,
+  loadCardCustomization, isCardCustomizationLoaded
+} from './card-customization-store.js';
 import { CARD_COLOR_PALETTE } from './color-palette.js';
 
 // --- Dropdown de paleta: só uma instância aberta por vez em toda a página ---
@@ -176,7 +191,7 @@ function buildColorSelectedRow(p, entry, context) {
 
 function renderColorSelectedList(context) {
   context.selectedColorListEl.innerHTML = '';
-  const ids = Object.keys(context.draftColors);
+  const ids = Object.keys(context.draftColors).filter(id => context.platformById.has(id));
 
   if (ids.length === 0) {
     const empty = document.createElement('div');
@@ -188,7 +203,6 @@ function renderColorSelectedList(context) {
 
   ids.forEach(id => {
     const p = context.platformById.get(id);
-    if (!p) return; // plataforma removida do sistema — entrada órfã ignorada na exibição
     context.selectedColorListEl.appendChild(buildColorSelectedRow(p, context.draftColors[id], context));
   });
 }
@@ -281,10 +295,11 @@ function buildMarkerSelectedRow(p, context) {
 
 function renderMarkerSelectedList(context) {
   context.selectedMarkerListEl.innerHTML = '';
-   // (6.3) marcador vazio/só espaço (campo apagado mas ainda sem blur) não
+  // (6.3) marcador vazio/só espaço (campo apagado mas ainda sem blur) não
   // aparece em "Selecionados" e não conta como marcador.
-    const ids = Object.keys(context.draftMarkers)
-    .filter(id => String(context.draftMarkers[id] ?? '').trim() !== ''); 
+  const ids = Object.keys(context.draftMarkers)
+    .filter(id => context.platformById.has(id))
+    .filter(id => String(context.draftMarkers[id] ?? '').trim() !== '');
 
   if (ids.length === 0) {
     const empty = document.createElement('div');
@@ -296,7 +311,6 @@ function renderMarkerSelectedList(context) {
 
   ids.forEach(id => {
     const p = context.platformById.get(id);
-    if (!p) return;
     context.selectedMarkerListEl.appendChild(buildMarkerSelectedRow(p, context));
   });
 }
@@ -306,13 +320,18 @@ function renderMarkerSelectedList(context) {
 /**
  * @param {HTMLElement} mountEl elemento onde o painel será inserido
  * @param {() => void} onSaved chamado depois de "Salvar" persistir com
- *        sucesso — quem monta a view usa isso pra atualizar o grid de
- *        cards com a personalização nova (ver view-calendario.js).
+ *        sucesso (e depois de "Tentar de novo" reler com sucesso) — quem
+ *        monta a view usa isso pra atualizar o grid de cards (ver
+ *        view-calendario.js).
+ * @param {{expanded?: boolean}} [options] (Sub-entrega H) abrir já expandido
+ *        (usado ao remontar depois de "Tentar de novo").
  * @returns {() => void} cleanup — remove o listener global do dropdown de
  *        cor. Chamar no unmount() da view.
  */
-export function initCardCustomizationPanel(mountEl, onSaved) {
+export function initCardCustomizationPanel(mountEl, onSaved, options = {}) {
+  closeOpenColorDropdown();
   const saved = getCachedCardCustomization();
+  const loaded = isCardCustomizationLoaded();
 
   const context = {
     // Cópia profunda/isolada — nenhuma edição aqui reflete no cache até
@@ -340,12 +359,24 @@ export function initCardCustomizationPanel(mountEl, onSaved) {
   header.appendChild(titleWrap);
 
   const chevron = document.createElement('span');
-  chevron.className = 'card-custom-chevron';
+  chevron.className = 'card-custom-chevron' + (options.expanded ? ' open' : '');
   chevron.textContent = '▾';
   header.appendChild(chevron);
 
   const body = document.createElement('div');
-  body.className = 'card-custom-body app-hidden';
+  body.className = 'card-custom-body' + (options.expanded ? '' : ' app-hidden');
+
+  // Mensagem de status do "Salvar" (sucesso/falha) — criada antes de
+  // discardDraftAndCollapse, que a limpa.
+  const statusEl = document.createElement('div');
+  statusEl.className = 'card-custom-empty';
+  statusEl.style.display = 'none';
+
+  function setStatus(text, isError = false) {
+    statusEl.textContent = text || '';
+    statusEl.style.display = text ? '' : 'none';
+    statusEl.style.color = isError ? '#b91c1c' : '#166534';
+  }
 
   function discardDraftAndCollapse() {
     closeOpenColorDropdown();
@@ -361,6 +392,7 @@ export function initCardCustomizationPanel(mountEl, onSaved) {
     });
     renderColorSelectedList(context);
     renderMarkerSelectedList(context);
+    setStatus('');
 
     chevron.classList.remove('open');
     body.classList.add('app-hidden');
@@ -379,6 +411,42 @@ export function initCardCustomizationPanel(mountEl, onSaved) {
   });
 
   section.appendChild(header);
+
+  // --- (Sub-entrega H) Aviso de leitura não confirmada ---
+  if (!loaded) {
+    const warn = document.createElement('div');
+    warn.className = 'card-custom-block';
+    const warnText = document.createElement('div');
+    warnText.className = 'card-custom-empty';
+    warnText.style.color = '#b91c1c';
+    warnText.textContent = '⚠ Não foi possível carregar a personalização salva. Salvar está bloqueado pra não apagar o que já existe — tente de novo quando a internet voltar.';
+    warn.appendChild(warnText);
+
+    const retryWrap = document.createElement('div');
+    retryWrap.className = 'reset-modal-buttons';
+    const retryBtn = document.createElement('button');
+    retryBtn.type = 'button';
+    retryBtn.className = 'btn-confirm';
+    retryBtn.textContent = 'Tentar de novo';
+    retryBtn.addEventListener('click', async () => {
+      retryBtn.disabled = true;
+      retryBtn.textContent = 'Carregando...';
+      await loadCardCustomization(state.currentUid);
+      if (!mountEl.isConnected) return; // saiu da rota durante a leitura
+      if (isCardCustomizationLoaded()) {
+        initCardCustomizationPanel(mountEl, onSaved, { expanded: true });
+        if (typeof onSaved === 'function') onSaved();
+      } else {
+        retryBtn.disabled = false;
+        retryBtn.textContent = 'Tentar de novo';
+      }
+    });
+    retryWrap.appendChild(retryBtn);
+    warn.appendChild(retryWrap);
+
+    body.appendChild(warn);
+    body.appendChild(dividerEl());
+  }
 
   // --- Bloco Colorir Card ---
   const colorBlock = document.createElement('div');
@@ -442,8 +510,13 @@ export function initCardCustomizationPanel(mountEl, onSaved) {
   saveBtn.type = 'button';
   saveBtn.className = 'btn-confirm';
   saveBtn.textContent = 'Salvar';
-  saveBtn.addEventListener('click', () => {
-        // (6.3) limpa marcadores vazios/com espaços antes de gravar — senão
+  saveBtn.disabled = !loaded;
+  saveBtn.addEventListener('click', async () => {
+    if (!isCardCustomizationLoaded()) {
+      setStatus('Personalização ainda não carregada — use "Tentar de novo" acima.', true);
+      return;
+    }
+    // (6.3) limpa marcadores vazios/com espaços antes de gravar — senão
     // um "" ou " " ia pro Firestore e o card ganhava um marcador invisível.
     const cleanMarkers = {};
     Object.keys(context.draftMarkers).forEach(id => {
@@ -456,12 +529,34 @@ export function initCardCustomizationPanel(mountEl, onSaved) {
     });
     renderMarkerSelectedList(context);
 
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Salvando...';
+    setStatus('');
+
     // "Salvar" só salva — painel continua aberto, não recolhe.
-    saveCardCustomization(state.currentUid, {
+    const validIds = new Set(state.platforms.map(p => p.id));
+    const result = await saveCardCustomization(state.currentUid, {
       colors: context.draftColors,
       markers: context.draftMarkers
-    });
-    if (typeof onSaved === 'function') onSaved();
+    }, validIds);
+
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Salvar';
+    if (!mountEl.isConnected) return; // saiu da rota durante a gravação
+
+    if (result.ok) {
+      // Rascunho passa a ser exatamente o que foi gravado (já limpo).
+      context.draftColors = JSON.parse(JSON.stringify(result.saved.colors));
+      context.draftMarkers = { ...result.saved.markers };
+      renderColorSelectedList(context);
+      renderMarkerSelectedList(context);
+      setStatus('Personalização salva.');
+      if (typeof onSaved === 'function') onSaved();
+    } else if (result.reason === 'not-loaded') {
+      setStatus('Personalização ainda não carregada — use "Tentar de novo" acima.', true);
+    } else {
+      setStatus('Não foi possível salvar — nada foi alterado. Confira a internet e tente de novo.', true);
+    }
   });
 
   const closeBtn = document.createElement('button');
@@ -473,6 +568,7 @@ export function initCardCustomizationPanel(mountEl, onSaved) {
   actions.appendChild(saveBtn);
   actions.appendChild(closeBtn);
   body.appendChild(actions);
+  body.appendChild(statusEl);
 
   section.appendChild(body);
   mountEl.appendChild(section);

@@ -17,6 +17,26 @@
 //
 // Lógica de negócio não é duplicada: só chama funções já existentes de
 // finance-logic.js / bonus-ledger-logic.js / cycle-logic.js.
+//
+// === (Sub-entrega E) ===
+// a) TRAVA DE CONTEXTO: Saldo, Rollover e bônus de fórmula dependem do
+//    contexto de bônus (valor do Obrigado + template do Misterioso). Sem
+//    ele carregado e confirmado, o snapshot sairia com valores errados.
+//    Agora só grava se resolveCtx devolver um valor do Obrigado numérico
+//    válido — o resolvedor padrão de ui-finance-panel.js ({}) e o de uma
+//    leitura que falhou nunca passam. (As telas também só agendam o
+//    snapshot quando a leitura estrita deu certo — ver view-financeiro.js
+//    e view-graficos.js; esta trava é a segunda barreira.)
+// b) FALHA DE GRAVAÇÃO: a deduplicação ("nada mudou desde a última
+//    gravação") marcava o conteúdo como gravado ANTES do commit — se ele
+//    falhasse, o mesmo snapshot nunca era tentado de novo na sessão. Agora
+//    a marca é desfeita quando o commit falha.
+//
+// === (Sub-entrega G) ===
+// bonusManual passa a ser o avulso EFETIVO do dia (getAlreadyLoggedToday
+// agora recebe o ctx — ver "AVULSO EFETIVO" em bonus-ledger-logic.js):
+// sem dupla contagem quando o VIP diário é liberado depois de um
+// lançamento de "Inserir bônus hoje".
 
 import { db, doc, writeBatch } from './firebase-init.js';
 import {
@@ -44,6 +64,17 @@ function getSnapshotRef(uid, dayKey) {
   return doc(db, 'users', uid, 'dailySnapshots', dayKey);
 }
 
+// (Sub-entrega E) true só se o contexto de bônus foi carregado de verdade.
+function hasConfirmedBonusContext(platforms, resolveCtx) {
+  if (typeof resolveCtx !== 'function') return false;
+  try {
+    const ctx = resolveCtx(platforms[0]) || {};
+    return typeof ctx.obrigadoValuePerAppearance === 'number' && Number.isFinite(ctx.obrigadoValuePerAppearance);
+  } catch (err) {
+    return false;
+  }
+}
+
 // Função pura — monta { [platformId]: {...} } pro dia de refDate.
 export function buildDailySnapshot(platforms, resolveCtx = () => ({}), refDate = new Date()) {
   const dayKey = toLocalDateString(refDate);
@@ -59,7 +90,7 @@ export function buildDailySnapshot(platforms, resolveCtx = () => ({}), refDate =
       betCount: r2(sumForDay(p.betEntries, dayKey, 'betCount')),
       resultBetting: r2(sumForDay(p.betEntries, dayKey, 'resultBetting')),
       bonusFormula: r2(getExpectedBonusToday(p, refDate, ctx)),
-      bonusManual: r2(getAlreadyLoggedToday(p, refDate)),
+      bonusManual: r2(getAlreadyLoggedToday(p, refDate, ctx)),
       balance: r2(computeLiveBalance(p, refDate, ctx)),
       rollover: r2(computeRolloverLive(p, refDate, ctx)),
       phase: (p.balancePhases || []).length + 1,
@@ -76,6 +107,10 @@ export function buildDailySnapshot(platforms, resolveCtx = () => ({}), refDate =
 export function saveDailySnapshotNow(uid, platforms, resolveCtx = () => ({})) {
   if (!uid) return;
   if (!Array.isArray(platforms) || platforms.length === 0) return;
+  if (!hasConfirmedBonusContext(platforms, resolveCtx)) {
+    console.warn('Snapshot diário não gravado: contexto de bônus (Obrigado/Misterioso) não confirmado.');
+    return;
+  }
 
   const now = new Date();
   const dayKey = toLocalDateString(now);
@@ -92,7 +127,11 @@ export function saveDailySnapshotNow(uid, platforms, resolveCtx = () => ({})) {
     { date: dayKey, updatedAt: now.toISOString(), platforms: platformsData },
     { merge: true }
   );
-  batch.commit().catch(err => console.error('Erro ao salvar snapshot diário:', err));
+  batch.commit().catch(err => {
+    console.error('Erro ao salvar snapshot diário:', err);
+    // (Sub-entrega E) Não gravou: libera a próxima tentativa com o mesmo conteúdo.
+    if (lastPayloadKey === payloadKey) lastPayloadKey = null;
+  });
 }
 
 // Debounce — chamado a cada renderização da tela; só grava depois de

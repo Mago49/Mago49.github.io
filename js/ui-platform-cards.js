@@ -19,6 +19,17 @@
 // PURAMENTE ESTÉTICO — nenhuma relação com colorForLevel()/LEVEL_INFO
 // (cycle-logic.js) nem com a lógica de ordenação (platform-sort.js), que
 // seguem exatamente como estavam.
+//
+// === (Sub-entrega H) ===
+// a) Card colorido SELECIONADO: a borda da cor personalizada (inline)
+//    cobria a borda de seleção (.pcard.selected, var(--accent)) e a
+//    seleção ficava quase invisível. Agora, selecionado, o card mantém a
+//    borda de seleção.
+// b) reapplyCalendarFilter(): reaplica no calendário o filtro da
+//    plataforma selecionada depois que os eventos são recriados (virada
+//    do dia — updateCalendarEvents recria tudo visível). Se a plataforma
+//    selecionada não existe mais, volta pra ALL.
+
 import { state } from './state.js';
 import { getCurrentCycleDay } from './cycle-logic.js';
 import { sortPlatforms } from './platform-sort.js';
@@ -47,14 +58,15 @@ function cycleDayBadge(platform) {
 // construído, se a plataforma tiver personalização salva. Não faz nada
 // (mantém o visual padrão) quando não há customização pra essa
 // plataforma.
-function applyCardCustomization(card, platform) {
+function applyCardCustomization(card, platform, isSelected) {
   const customization = getCachedCardCustomization();
   const colorEntry = customization.colors ? customization.colors[platform.id] : null;
   const marker = customization.markers ? customization.markers[platform.id] : null;
 
   if (colorEntry && colorEntry.hex) {
     card.style.background = colorEntry.hex;
-    card.style.borderColor = darkenColor(colorEntry.hex);
+    // (Sub-entrega H) selecionado: mantém a borda de seleção do CSS.
+    if (!isSelected) card.style.borderColor = darkenColor(colorEntry.hex);
     const nameEl = card.querySelector('.name');
     if (nameEl) nameEl.style.color = '#000';
   }
@@ -101,9 +113,10 @@ export function renderPlatformCards(filter = currentFilter, sortMode = currentSo
   }
 
   list.forEach(p => {
+    const isSelected = selectedId === p.id;
     const card = document.createElement('button');
     card.type = 'button';
-    card.className = 'pcard' + (selectedId === p.id ? ' selected' : '');
+    card.className = 'pcard' + (isSelected ? ' selected' : '');
     card.dataset.id = p.id;
     card.innerHTML = `<span class="name">${escapeHtml(p.name)}</span>${cycleDayBadge(p)}`;
     card.addEventListener('click', () => {
@@ -111,9 +124,23 @@ export function renderPlatformCards(filter = currentFilter, sortMode = currentSo
       filterCalendarByPlatform(p.id);
       renderPlatformCards();
     });
-    applyCardCustomization(card, p);
+    applyCardCustomization(card, p, isSelected);
     gridEl.appendChild(card);
   });
+}
+
+// (Sub-entrega H) Reaplica o filtro atual no calendário — chamado por
+// view-calendario.js logo depois de updateCalendarEvents().
+export function reapplyCalendarFilter() {
+  if (!state.calendar) return;
+  if (selectedId === null) return; // ALL: eventos já nascem visíveis
+  const stillExists = state.platforms.some(p => p.id === selectedId);
+  if (stillExists) {
+    filterCalendarByPlatform(selectedId);
+  } else {
+    selectedId = null;
+    showAllBonusCalendar();
+  }
 }
 
 // Liga busca + dropdown "Ordenar". Retorna uma função de cleanup —

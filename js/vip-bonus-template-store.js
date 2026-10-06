@@ -30,14 +30,35 @@
 // desfazer. A reversão só acontece se a lista ainda tem EXATAMENTE o que
 // esta gravação colocou — se o usuário já salvou outra versão do mesmo
 // template nesse meio tempo, a mais nova é preservada.
+//
+// (Sub-entrega A) DUAS MUDANÇAS, ambas contra template "órfão" (citado
+// por plataforma mas ausente do banco):
+//  1) deleteVipBonusTemplate agora é ASSÍNCRONA e, antes de excluir,
+//     RELÊ as plataformas direto do Firestore. Antes só conferia
+//     state.platforms desta aba — uma aba/aparelho com dados velhos
+//     (que não viu a plataforma passar a usar o template) conseguia
+//     excluí-lo. Se a releitura falhar, a exclusão é recusada.
+//  2) restoreMissingVipBonusTemplate (nova): recria um template ausente
+//     com o MESMO id e a tabela padrão desde 1970. É exatamente o que o
+//     cálculo já usa hoje pra um id ausente (getVipConfigAt cai em
+//     DEFAULT_VIP_LEVELS), então NENHUM valor muda — só o problema some.
+//     Travas: o id precisa estar citado por alguma plataforma; não pode
+//     estar carregado; e o documento precisa NÃO existir no banco
+//     (confirmado por getDoc logo antes). Documento existente — válido ou
+//     inválido — NUNCA é sobrescrito. Aqui a memória só muda DEPOIS do
+//     commit confirmar (não é otimista), pra não mostrar como resolvido
+//     algo que não chegou ao banco.
 
-import { db, collection, doc, getDocs, deleteDoc, writeBatch } from './firebase-init.js';
+import { db, collection, doc, getDoc, getDocs, deleteDoc, writeBatch } from './firebase-init.js';
 import { state } from './state.js';
 import { showAppAlert } from './utils.js';
 import {
   validateVipTemplate, cleanVipLevels, isVipTemplateUpdateSafe,
-  isVipTemplateInUse, findVipTemplateById
+  isVipTemplateInUse, findVipTemplateById, collectReferencedTemplateIds,
+  DEFAULT_VIP_LEVELS, VIP_TEMPLATE_FIRST_FROM, VIP_TEMPLATE_NAME_MAX
 } from './vip-bonus-template-logic.js';
+
+const IN_USE_ERROR = 'Este template é usado (ou já foi usado) por alguma plataforma. Excluir alteraria o passado dela — troque a plataforma pra outro template antes, e este fica guardado.';
 
 function getTemplatesCollection(uid) {
   return collection(db, 'users', uid, 'vipBonusTemplates');
@@ -46,6 +67,21 @@ function getTemplatesCollection(uid) {
 function ensureStateList() {
   if (!Array.isArray(state.vipBonusTemplates)) state.vipBonusTemplates = [];
   return state.vipBonusTemplates;
+}
+
+// id de documento aceitável (sem "/", não vazio, tamanho razoável).
+function isSafeDocId(id) {
+  return typeof id === 'string' && id.length > 0 && id.length <= 100 && !id.includes('/') && id !== '.' && id !== '..';
+}
+
+// Tira o id de state.vipTemplateIssues (as duas listas) depois de resolvido.
+function clearTemplateIssue(templateId) {
+  const issues = state.vipTemplateIssues;
+  if (!issues || typeof issues !== 'object') return;
+  state.vipTemplateIssues = {
+    missing: (Array.isArray(issues.missing) ? issues.missing : []).filter(id => id !== templateId),
+    invalid: (Array.isArray(issues.invalid) ? issues.invalid : []).filter(id => id !== templateId)
+  };
 }
 
 /**
@@ -141,19 +177,40 @@ export function saveVipBonusTemplate(uid, template, options = {}) {
 }
 
 /**
- * Exclui um template — só se nenhuma plataforma o usa nem usou.
+ * (Sub-entrega A) Exclui um template — só se nenhuma plataforma o usa nem
+ * usou, conferido em DOIS lugares: na memória desta aba e, logo antes de
+ * excluir, numa releitura das plataformas direto do Firestore (pega o caso
+ * de outra aba/aparelho ter passado a usar o template). Releitura que
+ * falha = exclusão recusada (nunca exclui sem confirmar).
  * Se a exclusão falhar no banco, o template volta pra lista (mesma posição)
  * e o usuário é avisado.
  * @param {{onFailure?: () => void}} [options]
- * @returns {{ok:true} | {ok:false, error:string}}
+ * @returns {Promise<{ok:true} | {ok:false, error:string}>}
  */
-export function deleteVipBonusTemplate(uid, templateId, platforms = state.platforms, options = {}) {
+export async function deleteVipBonusTemplate(uid, templateId, platforms = state.platforms, options = {}) {
   if (!uid || !templateId) return { ok: false, error: 'Template inválido.' };
 
   if (isVipTemplateInUse(platforms, templateId)) {
+    return { ok: false, error: IN_USE_ERROR };
+  }
+
+  // Releitura fresca das plataformas (somente leitura — nada é gravado).
+  let freshPlatforms;
+  try {
+    const snap = await getDocs(collection(db, 'users', uid, 'platforms'));
+    freshPlatforms = snap.docs.map(d => d.data());
+  } catch (err) {
+    console.error('Exclusão de template: releitura das plataformas falhou — exclusão cancelada:', err);
+    return { ok: false, error: 'Não foi possível confirmar no banco que nenhuma plataforma usa este template. Nada foi excluído. Verifique a internet e tente de novo.' };
+  }
+
+  // A conta pode ter mudado/saído enquanto a leitura acontecia.
+  if (state.currentUid !== uid) return { ok: false, error: 'A sessão mudou — nada foi excluído.' };
+
+  if (isVipTemplateInUse(freshPlatforms, templateId)) {
     return {
       ok: false,
-      error: 'Este template é usado (ou já foi usado) por alguma plataforma. Excluir alteraria o passado dela — troque a plataforma pra outro template antes, e este fica guardado.'
+      error: IN_USE_ERROR + ' (Uma plataforma passou a usá-lo em outro aparelho/aba — recarregue a página pra ver.)'
     };
   }
 
@@ -181,4 +238,96 @@ export function deleteVipBonusTemplate(uid, templateId, platforms = state.platfo
     });
 
   return { ok: true };
+}
+
+// Nome livre e único pro template restaurado (máx. VIP_TEMPLATE_NAME_MAX).
+function buildRestoredName(templateId, list) {
+  const taken = new Set(list.map(t => String(t.name || '').trim().toLowerCase()));
+  const suffix = templateId.slice(-6);
+  const base = `Recuperado ${suffix}`.slice(0, VIP_TEMPLATE_NAME_MAX);
+  if (!taken.has(base.toLowerCase())) return base;
+  for (let n = 2; n < 100; n++) {
+    const candidate = `${base.slice(0, VIP_TEMPLATE_NAME_MAX - 4)} (${n})`;
+    if (!taken.has(candidate.toLowerCase())) return candidate;
+  }
+  return `Recuperado ${Date.now()}`.slice(0, VIP_TEMPLATE_NAME_MAX);
+}
+
+/**
+ * (Sub-entrega A) Restaura um template AUSENTE do banco, com o mesmo id e a
+ * tabela padrão desde 1970 — os mesmos valores que o cálculo já usa pra esse
+ * id hoje, então nenhum valor muda. Ver nota no topo pras travas.
+ * @param {string} uid
+ * @param {string} templateId
+ * @param {Array} [platforms]
+ * @returns {Promise<{ok:true, id:string, name:string} | {ok:false, error:string}>}
+ */
+export async function restoreMissingVipBonusTemplate(uid, templateId, platforms = state.platforms) {
+  if (!uid) return { ok: false, error: 'Nenhum usuário logado.' };
+  if (!isSafeDocId(templateId)) return { ok: false, error: 'Id de template inválido.' };
+
+  if (!collectReferencedTemplateIds(platforms).has(templateId)) {
+    return { ok: false, error: 'Nenhuma plataforma cita este template — nada a restaurar.' };
+  }
+  if (findVipTemplateById(ensureStateList(), templateId)) {
+    clearTemplateIssue(templateId);
+    return { ok: false, error: 'Este template já está carregado — nada a restaurar.' };
+  }
+
+  const ref = doc(getTemplatesCollection(uid), templateId);
+
+  // Confirma no banco que o documento NÃO existe. Existe (válido ou não)
+  // -> nunca sobrescreve.
+  let existing;
+  try {
+    existing = await getDoc(ref);
+  } catch (err) {
+    console.error('Restaurar template: leitura de confirmação falhou:', err);
+    return { ok: false, error: 'Não foi possível confirmar no banco que o template está ausente. Nada foi gravado. Verifique a internet e tente de novo.' };
+  }
+  if (state.currentUid !== uid) return { ok: false, error: 'A sessão mudou — nada foi gravado.' };
+
+  if (existing.exists()) {
+    const data = existing.data() || {};
+    const check = validateVipTemplate({ id: templateId, name: data.name, versions: data.versions });
+    return {
+      ok: false,
+      error: check.ok
+        ? 'Este template existe no banco (provavelmente criado em outro aparelho/aba). Recarregue a página pra carregá-lo. Nada foi gravado.'
+        : `Este template existe no banco mas está com dados inválidos (${check.error}). Ele NÃO foi sobrescrito — precisa de correção manual.`
+    };
+  }
+
+  const list = ensureStateList();
+  const template = {
+    id: templateId,
+    name: buildRestoredName(templateId, list),
+    versions: [{ from: VIP_TEMPLATE_FIRST_FROM, levels: cleanVipLevels(DEFAULT_VIP_LEVELS) }]
+  };
+  const check = validateVipTemplate(template);
+  if (!check.ok) return { ok: false, error: check.error };
+
+  const batch = writeBatch(db);
+  batch.set(ref, {
+    name: template.name,
+    versions: template.versions,
+    updatedAt: new Date().toISOString(),
+    restoredAt: new Date().toISOString()
+  });
+
+  try {
+    await batch.commit();
+  } catch (err) {
+    console.error('Erro ao restaurar template do Bônus VIP:', err);
+    return { ok: false, error: 'Não foi possível gravar o template restaurado no banco de dados. Nada mudou. Verifique a internet e tente de novo.' };
+  }
+
+  if (state.currentUid !== uid) return { ok: false, error: 'A sessão mudou durante a gravação — recarregue a página.' };
+
+  // Só agora (commit confirmado) a memória muda.
+  const current = ensureStateList();
+  if (!findVipTemplateById(current, templateId)) current.push(template);
+  clearTemplateIssue(templateId);
+
+  return { ok: true, id: templateId, name: template.name };
 }

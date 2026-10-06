@@ -5,11 +5,15 @@ import * as viewEdicao from './view-edicao.js';
 import * as viewFinanceiro from './view-financeiro.js';
 import * as viewGraficos from './view-graficos.js';
 import * as viewPerfil from './view-perfil.js';
-import { state } from './state.js';
+
+// (Sub-entrega D) O hash da URL é texto que qualquer link pode montar —
+// nunca entra em innerHTML. Rota desconhecida e placeholder agora são
+// escritos com textContent (antes um link como #/<img onerror=...> rodava
+// código na página).
 
 const appShellEl = document.getElementById('appShell');
 let routerStarted = false;
-let currentView = null; 
+let currentView = null;
 
 const routes = {
   '#/inicio': viewInicio,
@@ -24,51 +28,31 @@ const routes = {
 function renderPlaceholder(nome) {
   appShellEl.innerHTML = `
     <section class="card-shell" style="padding:2rem; text-align:center;">
-      <h1>Você está na tela: ${nome}</h1>
+      <h1></h1>
       <p>Esta view ainda não foi migrada — placeholder temporário.</p>
     </section>`;
+  appShellEl.querySelector('h1').textContent = `Você está na tela: ${nome}`;
 }
 
-// Desmonta a view atual — essencial pra views com timers/instâncias
-// próprias (ex: Calendário/FullCalendar, Edição/modais dinâmicos) não
-// continuarem rodando em segundo plano depois de sair da rota. Um erro
-// dentro do unmount() de uma view nunca pode impedir a navegação nem o
-// logout: é só registrado e o router segue.
-function unmountCurrentView() {
-  if (currentView && typeof currentView.unmount === 'function') {
-    try {
-      currentView.unmount();
-    } catch (err) {
-      console.error('Erro ao desmontar a view:', err);
-    }
-  }
-  currentView = null;
-}
-
-// Chamada no LOGOUT (ver main.js): desmonta a view atual e esvazia o
-// shell, pra nada da sessão anterior (legenda fixa do Calendário, modais
-// dinâmicos, timers, dados em tela) sobreviver por cima da tela de login.
-export function stopRouter() {
-  unmountCurrentView();
-  appShellEl.innerHTML = '';
+function renderNotFound(hash) {
+  appShellEl.innerHTML = '<p style="padding:2rem;">Rota <code></code> não encontrada.</p>';
+  appShellEl.querySelector('code').textContent = hash;
 }
 
 function handleRouteChange() {
-  // Sem usuário logado nenhuma view pode montar: state.platforms está
-  // vazio e qualquer tela mostraria (ou tentaria gravar) dados de uma
-  // sessão que já acabou. Mudança de hash durante o logout cai aqui.
-  if (!state.currentUid) {
-    stopRouter();
-    return;
+  // Desmonta a view anterior ANTES de montar a nova — essencial pra
+  // views com timers/instâncias próprias (ex: Calendário/FullCalendar,
+  // Edição/modais dinâmicos) não continuarem rodando em segundo plano
+  // depois de sair da rota.
+  if (currentView && typeof currentView.unmount === 'function') {
+    currentView.unmount();
   }
-
-  // Desmonta a view anterior ANTES de montar a nova.
-  unmountCurrentView();
+  currentView = null;
 
   const hash = window.location.hash || '#/inicio';
 
   if (!(hash in routes)) {
-    appShellEl.innerHTML = `<p style="padding:2rem;">Rota <code>${hash}</code> não encontrada.</p>`;
+    renderNotFound(hash);
     return;
   }
 

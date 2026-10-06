@@ -15,19 +15,25 @@
 // NENHUMA dependência de vip-obrigado-store.js, vip-misterioso-store.js
 // ou misterioso-logic.js nesta sub-entrega — só entram junto com a lógica
 // das respectivas abas.
+//
+// (Sub-entrega G2) Aba Obrigado: o total do mês conta só os dias que
+// EXISTEM no mês atual (mesma regra do calendário e do Saldo/Rollover —
+// getObrigadoDaysInMonth, vip-history-store.js). O card de um dia que não
+// existe neste mês (ex.: 31 em abril) continua aparecendo, pra edição, mas
+// marcado "não existe neste mês — não conta".
 
 import { state } from './state.js';
 import { formatCurrency, escapeHtml, showAppAlert, showAppConfirm } from './utils.js';
 import { getVipBonus, computeEmissionDates, getCurrentVipTemplateId } from './cycle-logic.js';
-import { DEFAULT_VIP_LEVELS, findVipTemplateById, createVipTemplate, addVipTemplateVersion, VIP_TEMPLATE_NAME_MAX } from './vip-bonus-template-logic.js';
-import { saveVipBonusTemplate, deleteVipBonusTemplate } from './vip-bonus-template-store.js';
+import { DEFAULT_VIP_LEVELS, findVipTemplateById, createVipTemplate, addVipTemplateVersion, VIP_TEMPLATE_NAME_MAX, collectReferencedTemplateIds } from './vip-bonus-template-logic.js';
+import { saveVipBonusTemplate, deleteVipBonusTemplate, restoreMissingVipBonusTemplate } from './vip-bonus-template-store.js';
 import { parseVipTemplatePaste, formatVipLevelsAsPasteText } from './vip-bonus-template-import.js';
 import { savePlatform } from './platforms-store.js';
 import { loadObrigadoValuePerAppearance, saveObrigadoValuePerAppearance } from './vip-obrigado-store.js';
-import { loadMisteriosoTemplates, saveMisteriosoTemplate, deleteMisteriosoTemplate } from './vip-misterioso-store.js';
+import { loadMisteriosoTemplates, saveMisteriosoTemplateAtomic, deleteMisteriosoTemplate } from './vip-misterioso-store.js';
 import { MISTERIOSO_DEPOSIT_THRESHOLDS, getEffectiveMisteriosoValue, isWithinEditableWindow } from './misterioso-logic.js';
 import { parseMisteriosoTemplatePaste } from './misterioso-template-import.js';
-import { checkAndCloseMonthlyHistory, loadHistoryList } from './vip-history-store.js';
+import { checkAndCloseMonthlyHistory, loadHistoryList, getObrigadoDaysInMonth } from './vip-history-store.js';
 
 let activeTab = 'vip';
 
@@ -62,15 +68,28 @@ export function renderVipPanel(filterGroup = null, searchTerm = '') {
 
   const q = searchTerm.trim().toLowerCase();
 
+  // (Sub-entrega D) Bônus calculado UMA vez por plataforma (antes era
+  // calculado duas vezes: nos totais e no card).
+  // Em "ALL", entra também quem está SEM grupo hoje mas já ganhou bônus
+  // neste mês (tinha grupo em dias anteriores) — getVipBonus conta esses
+  // dias, o Histórico Mensal e os Gráficos também; só o painel os
+  // escondia, e o total daqui não batia com os outros dois. COM/SEM
+  // continuam filtrando pelo grupo de hoje, como sempre.
+  const bonusById = new Map();
+  const getBonus = (p) => {
+    if (!bonusById.has(p.id)) bonusById.set(p.id, getVipBonus(p));
+    return bonusById.get(p.id);
+  };
+
   const vipList = state.platforms.filter(p => {
-    if (p.group !== 'com' && p.group !== 'sem') return false;
-    if (filterGroup && p.group !== filterGroup) return false;
     if (q && !p.name.toLowerCase().includes(q)) return false;
-    return true;
+    const hasGroupToday = p.group === 'com' || p.group === 'sem';
+    if (filterGroup) return p.group === filterGroup;
+    return hasGroupToday || getBonus(p).total > 0;
   });
 
   const totals = vipList.reduce((acc, platform) => {
-    const bonus = getVipBonus(platform);
+    const bonus = getBonus(platform);
     acc.daily += bonus.daily;
     acc.weekly += bonus.weekly;
     acc.monthly += bonus.monthly;
@@ -91,9 +110,11 @@ export function renderVipPanel(filterGroup = null, searchTerm = '') {
   }
 
   summaryEl.innerHTML = vipList.map((platform) => {
-    const bonus = getVipBonus(platform);
-    const groupLabel = platform.group === 'com' ? 'Com aposta' : 'Sem aposta';
+    const bonus = getBonus(platform);
+    const hasGroupToday = platform.group === 'com' || platform.group === 'sem';
+    const groupLabel = !hasGroupToday ? 'Sem grupo hoje' : (platform.group === 'com' ? 'Com aposta' : 'Sem aposta');
     const groupClass = platform.group === 'com' ? 'group-com' : 'group-sem';
+    const levelLabel = (platform.level === null || platform.level === undefined) ? '—' : platform.level;
     // Nome digitado pelo usuário: escapado antes de entrar no innerHTML,
     // pra um "<" ou "&" no código da plataforma não virar HTML sem querer.
     const safeName = escapeHtml(platform.name);
@@ -109,7 +130,7 @@ export function renderVipPanel(filterGroup = null, searchTerm = '') {
         <div class="vip-item-header">
           <div class="vip-code">${safeName}</div>
           <div class="vip-badges">
-            <span class="vip-badge level">VIP ${platform.level}</span>
+            <span class="vip-badge level">VIP ${levelLabel}</span>
             <span class="vip-badge ${groupClass}">${groupLabel}</span>
             ${templateBadge}
           </div>
@@ -224,7 +245,11 @@ export function renderObrigadoPanel() {
   if (!totalEl || !gridEl) return;
 
   const platformsWithDays = state.platforms.filter(p => (p.obrigadoDays || []).length > 0);
-  const totalAppearances = platformsWithDays.reduce((sum, p) => sum + p.obrigadoDays.length, 0);
+  // (Sub-entrega G2) Só dias que existem no mês atual entram no total.
+  const now = new Date();
+  const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const daysInCurrentMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const totalAppearances = platformsWithDays.reduce((sum, p) => sum + getObrigadoDaysInMonth(p, currentYearMonth).length, 0);
   const total = totalAppearances * obrigadoValuePerAppearance;
   totalEl.textContent = formatCurrency(total);
 
@@ -256,6 +281,15 @@ export function renderObrigadoPanel() {
     header.className = 'obrigado-day-card-header';
     header.textContent = `Dia ${day}`;
     card.appendChild(header);
+
+    // (Sub-entrega G2) Dia que não existe neste mês: não conta no total.
+    if (day > daysInCurrentMonth) {
+      card.style.opacity = '0.55';
+      const missingNote = document.createElement('div');
+      missingNote.className = 'finance-close-week-note';
+      missingNote.textContent = 'Não existe neste mês — não conta.';
+      card.appendChild(missingNote);
+    }
 
     const list = document.createElement('div');
     list.className = 'obrigado-day-card-platforms';
@@ -652,8 +686,11 @@ function renderMisteriosoTemplateManager() {
       const header = document.createElement('div');
       header.className = 'finance-week-card-header';
 
+      // (Sub-entrega D) Conta só plataformas que ainda existem — id de
+      // plataforma removida pode ficar no template até ele ser salvo de novo.
+      const existingIds = new Set(state.platforms.map(p => p.id));
       const titleSpan = document.createElement('span');
-      titleSpan.textContent = `${t.name} — ${(t.platformIds || []).length} plataforma(s)`;
+      titleSpan.textContent = `${t.name} — ${(t.platformIds || []).filter(pid => existingIds.has(pid)).length} plataforma(s)`;
       header.appendChild(titleSpan);
 
       const actions = document.createElement('div');
@@ -665,7 +702,8 @@ function renderMisteriosoTemplateManager() {
       editBtn.textContent = 'Editar';
       editBtn.addEventListener('click', () => {
         misteriosoEditingTemplateId = t.id;
-        misteriosoSelectedPlatformIds = new Set(t.platformIds || []);
+        // (Sub-entrega D) Ao salvar, o template já sai limpo de plataformas removidas.
+        misteriosoSelectedPlatformIds = new Set((t.platformIds || []).filter(pid => existingIds.has(pid)));
         renderMisteriosoTemplateForm();
       });
       actions.appendChild(editBtn);
@@ -677,8 +715,20 @@ function renderMisteriosoTemplateManager() {
       deleteBtn.addEventListener('click', async () => {
         const ok = await showAppConfirm(`Excluir o template "${t.name}"? As plataformas associadas deixam de ter faixa de Bônus Misterioso até você criar/associar outro template.`);
         if (!ok) return;
-        deleteMisteriosoTemplate(state.currentUid, t.id);
+        // (Sub-entrega C) Só sai da lista depois que o banco confirma.
+        deleteBtn.disabled = true;
+        deleteBtn.textContent = 'Excluindo...';
+        const result = await deleteMisteriosoTemplate(state.currentUid, t.id);
+        if (!result.ok) {
+          await showAppAlert(result.error);
+          renderMisteriosoTemplateManager();
+          return;
+        }
         misteriosoTemplates = misteriosoTemplates.filter(tt => tt.id !== t.id);
+        if (misteriosoEditingTemplateId === t.id) {
+          misteriosoEditingTemplateId = null;
+          misteriosoSelectedPlatformIds = new Set();
+        }
         renderMisteriosoTemplateManager();
         renderMisteriosoPanel();
       });
@@ -844,28 +894,25 @@ function renderMisteriosoTemplateForm() {
       return { min: isNaN(min) ? 0 : min, max: isNaN(max) ? 0 : max };
     });
 
-    const id = misteriosoEditingTemplateId || ('mt' + Date.now());
-
     // Bloco E — Item 14 — exclusividade: uma plataforma só pertence a UM
-    // template por vez — remove das outras antes de salvar esta.
-    misteriosoTemplates.forEach(t => {
-      if (t.id === id) return;
-      const filtered = (t.platformIds || []).filter(pid => !misteriosoSelectedPlatformIds.has(pid));
-      if (filtered.length !== (t.platformIds || []).length) {
-        t.platformIds = filtered;
-        saveMisteriosoTemplate(state.currentUid, t);
-      }
-    });
-
-    const platformIds = [...misteriosoSelectedPlatformIds];
-    saveMisteriosoTemplate(state.currentUid, { id, name, bonusRanges, platformIds });
-
-    const newTemplate = { id, name, bonusRanges, platformIds };
-    if (misteriosoEditingTemplateId) {
-      misteriosoTemplates = misteriosoTemplates.map(t => t.id === id ? newTemplate : t);
-    } else {
-      misteriosoTemplates.push(newTemplate);
+    // template por vez. (Sub-entrega C) Aplicada pelo store num ÚNICO
+    // batch (template salvo + os que perderam plataformas); a lista em
+    // memória só é trocada depois que o banco confirma. Em falha, nada
+    // muda e o formulário continua preenchido pra tentar de novo.
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Salvando...';
+    const result = await saveMisteriosoTemplateAtomic(
+      state.currentUid,
+      { id: misteriosoEditingTemplateId || undefined, name, bonusRanges, platformIds: [...misteriosoSelectedPlatformIds] },
+      misteriosoTemplates
+    );
+    if (!result.ok) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = editingTemplate ? 'Salvar alterações' : 'Criar template';
+      await showAppAlert(result.error);
+      return;
     }
+    misteriosoTemplates = result.templates;
 
     misteriosoEditingTemplateId = null;
     misteriosoSelectedPlatformIds = new Set();
@@ -931,10 +978,16 @@ function renderMisteriosoTemplatePlatformList() {
 }
 
 // ---------- ABA "HISTÓRICO MENSAL" (Bloco A) ----------
-// Chamada por último no mount() da view (view-vip.js), depois de
-// initObrigadoPanel/initMisteriosoPanel já terem carregado
-// obrigadoValuePerAppearance e misteriosoTemplates — reaproveita esses 2
-// valores de módulo em vez de recarregar do Firestore de novo.
+// Chamada por último no mount() da view (view-vip.js).
+//
+// (Sub-entrega B) O fechamento NÃO reaproveita mais
+// obrigadoValuePerAppearance/misteriosoTemplates desta tela: esses valores
+// vêm de loaders tolerantes (devolvem o padrão quando a leitura falha) e
+// o retrato do mês é permanente. vip-history-store.js lê os dois por
+// conta própria, de forma estrita. Se o fechamento for cancelado por
+// segurança, ou a lista não puder ser lida, a aba mostra uma nota
+// discreta DENTRO dela (sem modal, sem toast) — nada foi gravado e o mês
+// é tentado de novo na próxima visita.
 
 function formatYearMonthLabel(yearMonth) {
   const [y, m] = yearMonth.split('-');
@@ -970,15 +1023,35 @@ function buildHistoryMonthCard(entry) {
   return card;
 }
 
-async function renderHistoryList(isStale = () => false) {
+function buildHistoryNote(text) {
+  const note = document.createElement('p');
+  note.className = 'finance-close-week-note';
+  note.textContent = text;
+  return note;
+}
+
+// closeFailed: true quando o fechamento automático foi cancelado nesta visita.
+async function renderHistoryList(isStale = () => false, closeFailed = false) {
   const listEl = document.getElementById('vipHistoryList');
   if (!listEl) return;
   listEl.innerHTML = '<div class="history-empty">Carregando histórico...</div>';
 
-  const list = await loadHistoryList(state.currentUid);
+  let list;
+  try {
+    list = await loadHistoryList(state.currentUid);
+  } catch (err) {
+    console.error('Erro ao carregar lista do histórico mensal:', err);
+    if (isStale()) return;
+    listEl.innerHTML = '';
+    listEl.appendChild(buildHistoryNote('Não foi possível carregar o histórico agora. Nada foi apagado — verifique a internet e abra a aba VIP de novo.'));
+    return;
+  }
   if (isStale()) return;
 
   listEl.innerHTML = '';
+  if (closeFailed) {
+    listEl.appendChild(buildHistoryNote('O fechamento do mês anterior não foi feito agora (não deu pra confirmar os dados no banco). Nada foi gravado — ele será tentado de novo na próxima visita.'));
+  }
   if (list.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'history-empty';
@@ -993,18 +1066,19 @@ async function renderHistoryList(isStale = () => false) {
   listEl.appendChild(wrap);
 }
 
-// Chamada uma única vez no mount() da view, depois das outras 2 abas
-// terem carregado seus dados (obrigadoValuePerAppearance,
-// misteriosoTemplates — variáveis de módulo já preenchidas nesse ponto).
+// Chamada uma única vez no mount() da view. (Sub-entrega B) O fechamento
+// lê os próprios dados (ver nota da seção); falha cancelada vira só uma
+// nota dentro da aba.
 export async function initHistoryTab(isStale = () => false) {
-  await checkAndCloseMonthlyHistory(
-    state.currentUid,
-    state.platforms,
-    misteriosoTemplates,
-    obrigadoValuePerAppearance
-  );
+  let closeFailed = false;
+  try {
+    await checkAndCloseMonthlyHistory(state.currentUid, state.platforms);
+  } catch (err) {
+    closeFailed = true;
+    console.error('Fechamento do histórico mensal cancelado (nada foi gravado):', err, err && err.cause);
+  }
   if (isStale()) return;
-  await renderHistoryList(isStale);
+  await renderHistoryList(isStale, closeFailed);
 }
 
 // ---------- TEMPLATES DO BÔNUS VIP (botão "Templates" da aba VIP) ----------
@@ -1024,6 +1098,20 @@ export async function initHistoryTab(isStale = () => false) {
 // Estado de módulo é resetado a cada mount() (initVipBonusTemplatePanel).
 // Os listeners ficam em elementos do container da view, descartados junto
 // com o DOM na troca de rota — nenhum listener global, sem cleanup.
+//
+// (Sub-entrega A) TEMPLATES NÃO ENCONTRADOS: o aviso vermelho do login saiu
+// (auth-guard.js). Aqui, dentro do painel de Templates (que só abre quando
+// você clica), aparece um card com cada id citado por plataformas mas não
+// carregado, as plataformas afetadas e:
+//  - "Restaurar" (ausente no banco): recria com a tabela padrão — os mesmos
+//    valores que o cálculo já usa hoje pra esse id, então nada muda nos
+//    números. Depois dá pra editar (versão nova a partir de hoje) ou trocar
+//    as plataformas de template normalmente.
+//  - inválido no banco: só informa, nunca sobrescreve.
+// O botão "Templates" ganha um ⚠️ discreto enquanto houver pendência.
+// A lista é calculada AO VIVO (plataformas x templates carregados), então
+// some sozinha assim que o problema é resolvido.
+// Excluir template agora espera a releitura do banco (store assíncrono).
 
 let vipTemplateManagerOpen = false;
 let vipTemplateFormMode = null;   // null | 'new' | 'edit'
@@ -1044,6 +1132,43 @@ function getPlatformsUsingTemplate(templateId) {
   return state.platforms
     .filter(p => getCurrentVipTemplateId(p) === templateId)
     .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { numeric: true }));
+}
+
+function sortByPlatformName(list) {
+  return [...list].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { numeric: true }));
+}
+
+// (Sub-entrega A) Ids citados por alguma plataforma (levelHistory, passado
+// incluído) que NÃO estão carregados. Calculado ao vivo.
+function getVipTemplateProblems() {
+  const loadedIds = new Set(getVipTemplates().map(t => t.id));
+  const invalidIds = new Set(
+    Array.isArray(state.vipTemplateIssues?.invalid) ? state.vipTemplateIssues.invalid : []
+  );
+  const problems = [];
+  collectReferencedTemplateIds(state.platforms).forEach(id => {
+    if (loadedIds.has(id)) return;
+    const citing = state.platforms.filter(p =>
+      Array.isArray(p.levelHistory) && p.levelHistory.some(e => e && e.vipTemplateId === id)
+    );
+    problems.push({
+      id,
+      invalid: invalidIds.has(id),
+      currentUsers: sortByPlatformName(citing.filter(p => getCurrentVipTemplateId(p) === id)),
+      pastUsers: sortByPlatformName(citing.filter(p => getCurrentVipTemplateId(p) !== id))
+    });
+  });
+  return problems;
+}
+
+function getTemplatesButtonLabel() {
+  if (vipTemplateManagerOpen) return '✓ Fechar templates';
+  return getVipTemplateProblems().length > 0 ? 'Templates ⚠️' : 'Templates';
+}
+
+function updateTemplatesButtonLabel() {
+  const btn = document.getElementById('vipTemplateBtn');
+  if (btn) btn.textContent = getTemplatesButtonLabel();
 }
 
 // Redesenha a lista da aba VIP mantendo a busca e o filtro ALL/COM/SEM que
@@ -1077,14 +1202,90 @@ export function initVipBonusTemplatePanel() {
     btn.addEventListener('click', () => {
       vipTemplateManagerOpen = !vipTemplateManagerOpen;
       if (!vipTemplateManagerOpen) resetVipTemplateForm();
-      btn.textContent = vipTemplateManagerOpen ? '✓ Fechar templates' : 'Templates';
       renderVipTemplateManager();
     });
   }
   renderVipTemplateManager();
 }
 
+// (Sub-entrega A) Card "Templates não encontrados".
+function buildVipTemplateProblemsCard(problems) {
+  const card = document.createElement('div');
+  card.className = 'finance-week-card';
+
+  const header = document.createElement('div');
+  header.className = 'finance-week-card-header';
+  const title = document.createElement('span');
+  title.textContent = `⚠️ Template(s) não encontrado(s): ${problems.length}`;
+  header.appendChild(title);
+  card.appendChild(header);
+
+  const note = document.createElement('p');
+  note.className = 'finance-close-week-note';
+  note.textContent = 'Estas plataformas citam um template que não está no banco. Enquanto isso, o cálculo usa a tabela padrão pra elas. "Restaurar" recria o template com a tabela padrão — os valores mostrados hoje não mudam — e o aviso some. Depois você pode editar os valores ou trocar a plataforma de template.';
+  card.appendChild(note);
+
+  problems.forEach(problem => {
+    const block = document.createElement('div');
+    block.style.cssText = 'margin-top:0.6rem; padding-top:0.6rem; border-top:1px solid #e2e8f0;';
+
+    const idLine = document.createElement('p');
+    idLine.className = 'vip-template-meta';
+    idLine.textContent = `Id: ${problem.id}${problem.invalid ? ' — existe no banco, mas com dados inválidos' : ' — ausente no banco'}`;
+    block.appendChild(idLine);
+
+    if (problem.currentUsers.length > 0) {
+      const line = document.createElement('p');
+      line.className = 'vip-template-meta';
+      line.textContent = `Usam hoje: ${problem.currentUsers.map(p => p.name).join(', ')}`;
+      block.appendChild(line);
+    }
+    if (problem.pastUsers.length > 0) {
+      const line = document.createElement('p');
+      line.className = 'vip-template-meta';
+      line.textContent = `Usaram no passado: ${problem.pastUsers.map(p => p.name).join(', ')}`;
+      block.appendChild(line);
+    }
+
+    if (problem.invalid) {
+      const line = document.createElement('p');
+      line.className = 'finance-close-week-note';
+      line.textContent = 'Não é restaurado automaticamente pra não sobrescrever o que está no banco — precisa de correção manual.';
+      block.appendChild(line);
+    } else {
+      const restoreBtn = document.createElement('button');
+      restoreBtn.type = 'button';
+      restoreBtn.className = 'bet-manage-btn';
+      restoreBtn.textContent = 'Restaurar';
+      restoreBtn.addEventListener('click', async () => {
+        const ok = await showAppConfirm(
+          'Restaurar este template com a tabela padrão? É a mesma tabela que o sistema já usa hoje pra essas plataformas — nenhum valor de Bônus VIP, Saldo ou Rollover muda.'
+        );
+        if (!ok) return;
+        restoreBtn.disabled = true;
+        restoreBtn.textContent = 'Restaurando...';
+        const result = await restoreMissingVipBonusTemplate(state.currentUid, problem.id, state.platforms);
+        if (!result.ok) {
+          await showAppAlert(result.error);
+          renderVipTemplateManager();
+          return;
+        }
+        renderVipTemplateManager();
+        refreshVipPanelKeepingFilters();
+        await showAppAlert(`Template restaurado como "${result.name}". Pode renomear ou editar os valores em "Editar".`);
+      });
+      block.appendChild(restoreBtn);
+    }
+
+    card.appendChild(block);
+  });
+
+  return card;
+}
+
 function renderVipTemplateManager() {
+  updateTemplatesButtonLabel();
+
   const wrap = document.getElementById('vipTemplateManager');
   if (!wrap) return;
   wrap.innerHTML = '';
@@ -1095,6 +1296,11 @@ function renderVipTemplateManager() {
   intro.className = 'finance-close-week-note';
   intro.textContent = 'Template = tabela de Bônus Diário (BD), Semanal (BS) e Mensal (BM) por nível VIP, pra plataformas que pagam valores diferentes do padrão. Quem usa cada template se escolhe em Edição → Dados da plataforma. Alterar valores vale só a partir de hoje — o passado não muda.';
   wrap.appendChild(intro);
+
+  const problems = getVipTemplateProblems();
+  if (problems.length > 0) {
+    wrap.appendChild(buildVipTemplateProblemsCard(problems));
+  }
 
   const templates = getVipTemplates();
   const list = document.createElement('div');
@@ -1137,9 +1343,12 @@ function renderVipTemplateManager() {
       deleteBtn.addEventListener('click', async () => {
         const ok = await showAppConfirm(`Excluir o template "${t.name}"? Só é possível se nenhuma plataforma o usa nem usou.`);
         if (!ok) return;
-        const result = deleteVipBonusTemplate(state.currentUid, t.id, state.platforms, { onFailure: refreshAfterVipTemplateFailure });
+        deleteBtn.disabled = true;
+        deleteBtn.textContent = 'Conferindo...';
+        const result = await deleteVipBonusTemplate(state.currentUid, t.id, state.platforms, { onFailure: refreshAfterVipTemplateFailure });
         if (!result.ok) {
           await showAppAlert(result.error);
+          renderVipTemplateManager();
           return;
         }
         if (vipTemplateEditingId === t.id) resetVipTemplateForm();

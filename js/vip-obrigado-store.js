@@ -11,6 +11,12 @@
 // Por que não vive dentro de cada plataforma: é um valor ÚNICO,
 // compartilhado por todas — repetir o mesmo número em 40 documentos só
 // pra ele ser editável não faria sentido e multiplicaria escritas à toa.
+//
+// (Sub-entrega B) loadObrigadoValuePerAppearanceStrict: mesma leitura,
+// mas LANÇA erro se a leitura falhar, em vez de devolver o padrão. Usada
+// SÓ pelo fechamento do Histórico Mensal (vip-history-store.js), que
+// grava um retrato PERMANENTE — lá, "0,30 porque a internet caiu" não
+// pode virar dado. As telas continuam usando a versão tolerante.
 
 import { db, doc, getDoc, writeBatch } from './firebase-init.js';
 
@@ -20,6 +26,18 @@ function getObrigadoConfigRef(uid) {
   return doc(db, 'users', uid, 'meta', 'obrigadoConfig');
 }
 
+// Valor válido gravado no documento, ou o padrão (documento ausente ou
+// sem número válido = conta nunca configurou).
+function valueFromSnapshot(snap) {
+  if (snap.exists()) {
+    const data = snap.data();
+    if (typeof data.valuePerAppearance === 'number' && !isNaN(data.valuePerAppearance)) {
+      return data.valuePerAppearance;
+    }
+  }
+  return DEFAULT_VALUE_PER_APPEARANCE;
+}
+
 // Lê o valor salvo, ou devolve o padrão (0,30) se a conta ainda nunca
 // configurou isso — nunca lança erro pra quem chama, sempre resolve com
 // um número utilizável.
@@ -27,16 +45,20 @@ export async function loadObrigadoValuePerAppearance(uid) {
   if (!uid) return DEFAULT_VALUE_PER_APPEARANCE;
   try {
     const snap = await getDoc(getObrigadoConfigRef(uid));
-    if (snap.exists()) {
-      const data = snap.data();
-      if (typeof data.valuePerAppearance === 'number' && !isNaN(data.valuePerAppearance)) {
-        return data.valuePerAppearance;
-      }
-    }
+    return valueFromSnapshot(snap);
   } catch (err) {
     console.error('Erro ao carregar valor de referência do Bônus Obrigado:', err);
   }
   return DEFAULT_VALUE_PER_APPEARANCE;
+}
+
+// (Sub-entrega B) Igual à anterior, mas falha de leitura LANÇA erro.
+// Documento ausente continua sendo o padrão (isso é "nunca configurou",
+// não falha).
+export async function loadObrigadoValuePerAppearanceStrict(uid) {
+  if (!uid) throw new Error('Nenhum usuário logado.');
+  const snap = await getDoc(getObrigadoConfigRef(uid));
+  return valueFromSnapshot(snap);
 }
 
 // Grava o valor novo. Usa writeBatch (mesmo padrão de savePlatform em

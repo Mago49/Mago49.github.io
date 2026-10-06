@@ -14,12 +14,22 @@
 // dia é limpo no unmount() (Bloco K2). Um token de montagem evita que uma
 // leitura assíncrona que termina DEPOIS do unmount renderize num DOM que
 // já não existe.
+//
+// === (Sub-entrega F) ===
+// a) Obrigado/Misterioso vêm de loadBonusContextStrict
+//    (bonus-context-store.js), mesma leitura do Financeiro/Gráficos. Antes
+//    vinham dos loaders tolerantes: numa falha de leitura o histórico
+//    mostrava bônus calculados com 0,30 e sem Misterioso, sem avisar. Agora
+//    a falha fica explícita: nota no topo do histórico e Obrigado/Misterioso
+//    entram como 0 (nada inventado). A tela continua só leitura.
+// b) Os valores só são aplicados DEPOIS de conferir o mountToken (antes eram
+//    atribuídos antes da checagem).
+// c) "Sair da conta": falha do signOut agora avisa em vez de ficar muda.
 
 import { auth, signOut } from './firebase-init.js';
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency, escapeHtml } from './utils.js';
-import { loadObrigadoValuePerAppearance } from './vip-obrigado-store.js';
-import { loadMisteriosoTemplates } from './vip-misterioso-store.js';
+import { loadBonusContextStrict } from './bonus-context-store.js';
 import { buildDayFeed, toLocalDayKey, shiftDayKey } from './history-feed-logic.js';
 import { exportFullBackup } from './backup-store.js';
 
@@ -59,7 +69,7 @@ let mountToken = 0;
 let selectedDayKey = null;
 let searchTerm = '';
 let skipDays = 7;
-let obrigadoValuePerAppearance = 0.30;
+let obrigadoValuePerAppearance = 0;
 let misteriosoTemplates = [];
 
 function resolveCtxForPlatform(platform) {
@@ -217,6 +227,8 @@ export async function mount(container) {
         </div>
       </div>
 
+      <p id="histContextNote" class="finance-close-week-note app-hidden"></p>
+
       <div class="hist-nav">
         <div class="hist-nav-row">
           <button type="button" id="histPrevBtn" class="hist-btn" aria-label="Dia anterior">◀</button>
@@ -262,10 +274,18 @@ export async function mount(container) {
     </section>
   `;
 
-  document.getElementById('perfilLogoutBtn').addEventListener('click', async () => {
+  const logoutBtn = document.getElementById('perfilLogoutBtn');
+  logoutBtn.addEventListener('click', async () => {
     const ok = await showAppConfirm('Deseja realmente sair da sua conta? Você vai precisar entrar de novo com sua conta Google.');
     if (!ok) return;
-    await signOut(auth);
+    logoutBtn.disabled = true;
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.error('Erro ao sair da conta:', err);
+      logoutBtn.disabled = false;
+      await showAppAlert('Não foi possível sair da conta agora. Verifique a internet e tente de novo.');
+    }
   });
 
   const backupBtn = document.getElementById('perfilBackupBtn');
@@ -291,10 +311,31 @@ export async function mount(container) {
   initHistoryControls();
   syncControls();
 
-  // Mesmas 2 leituras já feitas por VIP/Financeiro, só leitura.
-  obrigadoValuePerAppearance = await loadObrigadoValuePerAppearance(state.currentUid);
-  misteriosoTemplates = await loadMisteriosoTemplates(state.currentUid);
+  // (Sub-entrega F) Leitura estrita do contexto de bônus — só leitura.
+  // Falha não impede a tela, mas fica explícita (ver nota no topo).
+  let loadedValue = 0;
+  let loadedTemplates = [];
+  let contextConfirmed = false;
+  try {
+    const bonusContext = await loadBonusContextStrict(state.currentUid);
+    loadedValue = bonusContext.obrigadoValuePerAppearance;
+    loadedTemplates = bonusContext.misteriosoTemplates;
+    contextConfirmed = true;
+  } catch (err) {
+    console.error('Perfil: contexto de bônus não confirmado — Obrigado/Misterioso fora do histórico:', err);
+  }
   if (token !== mountToken) return; // saiu da rota durante a leitura
+
+  obrigadoValuePerAppearance = loadedValue;
+  misteriosoTemplates = loadedTemplates;
+
+  if (!contextConfirmed) {
+    const noteEl = document.getElementById('histContextNote');
+    if (noteEl) {
+      noteEl.textContent = '⚠ Não foi possível carregar o valor do Bônus Obrigado e os templates do Misterioso. O histórico abaixo está SEM esses dois bônus. Abra esta tela de novo quando a internet voltar.';
+      noteEl.classList.remove('app-hidden');
+    }
+  }
 
   renderFeed();
   scheduleDailyUpdate();

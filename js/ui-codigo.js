@@ -23,10 +23,12 @@
 // seções "grandes" de outras páginas (Calendário, Financeiro) — não é o
 // padrão aqui no Hub.
 //
-// Sem timers próprios: os dois painéis recalculam tudo (inclusive as
-// somas "de hoje") toda vez que são montados/renderizados — a View
-// Início inteira é remontada a cada troca de rota, então não há
-// necessidade de scheduleDailyUpdate() aqui.
+// VIRADA DO DIA (Sub-entrega H): os painéis não têm timer próprio — a
+// View Início agenda a virada e chama refreshCodigoPanels(), que só
+// recalcula (códigos do dia, liberações e depósitos de HOJE) mantendo a
+// busca, a plataforma selecionada e a posição do "Depósitos - Hoje".
+// Antes, com o Início aberto depois da meia-noite, os dois painéis
+// continuavam mostrando o dia anterior.
 //
 // Estado de módulo (busca, seleção, página atual) é resetado a cada
 // mount() da view — sem isso, sair do Hub e voltar reaproveitaria a
@@ -278,4 +280,15 @@ export function initDepositsTodayPanel(mountEl) {
   return function cleanup() {
     depositsTodayContentEl = null;
   };
+}
+
+// ---------- (Sub-entrega H) VIRADA DO DIA ----------
+// Recalcula os dois painéis pro dia ATUAL, sem remontar: mantém busca,
+// plataforma selecionada e posição do "Depósitos - Hoje" (o índice é
+// ajustado sozinho se a lista do novo dia for menor). Painel não montado
+// (elemento null) é ignorado. Só leitura — nada é gravado.
+export function refreshCodigoPanels() {
+  renderCodigoList();
+  renderCodigoDetail();
+  renderDepositsTodayContent();
 }

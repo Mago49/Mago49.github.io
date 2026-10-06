@@ -68,6 +68,11 @@
 // platforms-store.js sobre por que isso importa (evita que uma aba com
 // dados desatualizados em memória apague alterações feitas em outra aba).
 //
+// (Sub-entrega D) REMOVER: a plataforma só sai da memória/tela DEPOIS que
+// o banco confirma a exclusão (deletePlatformDoc agora devolve o
+// resultado). Antes ela sumia na hora e, se a exclusão falhasse, voltava
+// no próximo login.
+//
 // === RECONCILIAÇÃO DE DOM (correção de scroll/busca em mobile, herdada
 //      do Sistema 1 sem alteração) ===
 // Um Map (rowElements) guarda o elemento <div> de cada linha já presente
@@ -983,8 +988,17 @@ function buildDataSection(p) {
       `apostas dela. Essa ação não pode ser desfeita.`
     );
     if (!ok) return;
+    // (Sub-entrega D) Só sai da tela depois que o banco confirma.
+    removeBtn.disabled = true;
+    removeBtn.textContent = 'Removendo...';
+    const result = await deletePlatformDoc(state.currentUid, p.id);
+    if (!result.ok) {
+      removeBtn.disabled = false;
+      removeBtn.textContent = 'Remover';
+      await showAppAlert(result.error);
+      return;
+    }
     state.platforms = state.platforms.filter(pp => pp.id !== p.id);
-    deletePlatformDoc(state.currentUid, p.id);
     openRowId = null;
     renderManageList();
   });

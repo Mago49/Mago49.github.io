@@ -38,12 +38,11 @@
 // próprio: são descartados junto com o DOM quando o router substitui
 // container.innerHTML na próxima troca de rota.
 //
-// ORDEM DO mount(): initObrigadoPanel() e initMisteriosoPanel() carregam
-// dado do Firestore (obrigadoValuePerAppearance, misteriosoTemplates) que
-// ficam em variáveis de módulo dentro de ui-vip-panel.js — initHistoryTab()
-// PRECISA rodar por último, depois das outras duas, porque reaproveita
-// esses 2 valores já carregados em vez de buscar de novo (ver
-// checkAndCloseMonthlyHistory em vip-history-store.js).
+// ORDEM DO mount(): initHistoryTab() roda por último. (Sub-entrega B)
+// Ela NÃO reaproveita mais os valores do Obrigado/Misterioso carregados
+// pelas outras abas: o fechamento do mês lê os próprios dados, de forma
+// estrita (ver checkAndCloseMonthlyHistory em vip-history-store.js).
+// (Sub-entrega D) Só este comentário mudou — nenhuma linha de código.
 
 import {
   renderVipPanel, refreshVipPanelKeepingFilters, initVipFilters, initVipTabs,

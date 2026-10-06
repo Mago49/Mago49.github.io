@@ -15,75 +15,127 @@
 // (cycle-logic.js) nem com qualquer cálculo de ciclo/bônus. Escolha livre
 // do usuário, sem efeito em nenhuma lógica de negócio existente.
 //
-// CACHE SÍNCRONO: diferente dos outros stores (que só expõem
-// load/save assíncronos), este arquivo mantém um cache em memória
-// (cachedCustomization) atualizado tanto no load() quanto no save().
-// Motivo: ui-platform-cards.js precisa ler cor/marcador de cada
-// plataforma DURANTE a renderização síncrona do grid de cards — não dá
-// pra fazer uma leitura assíncrona ao Firestore a cada render. O cache é
-// sempre a fonte usada pra pintar os cards; loadCardCustomization() é
-// chamado uma vez no mount() da view (ver view-calendario.js) antes do
-// primeiro render, garantindo que o cache já esteja populado.
+// CACHE SÍNCRONO: este arquivo mantém um cache em memória
+// (cachedCustomization), porque ui-platform-cards.js precisa ler
+// cor/marcador de cada plataforma DURANTE a renderização síncrona do grid
+// de cards. loadCardCustomization() é chamado uma vez no mount() da view
+// (ver view-calendario.js) antes do primeiro render.
+//
+// === (Sub-entrega H) NUNCA APAGAR A PERSONALIZAÇÃO POR ENGANO ===
+// ANTES: falha de leitura virava "nada configurado" em silêncio; o painel
+// abria vazio e o primeiro "Salvar" SUBSTITUÍA o documento inteiro por
+// esse rascunho vazio (+ o que fosse editado) — todas as cores/marcadores
+// salvos eram apagados pra sempre. E o save era otimista: a tela mostrava
+// como salvo mesmo quando o commit falhava.
+// AGORA:
+//  a) loadStatus registra se a última leitura deu certo ('ok') ou falhou
+//     ('failed'). Documento inexistente NÃO é falha ('ok', vazio).
+//     Os cards continuam abrindo (sem personalização) quando falha.
+//  b) saveCardCustomization RECUSA gravar se a leitura não foi confirmada
+//     (reason 'not-loaded') — nunca substitui o documento a partir de um
+//     rascunho montado sobre uma leitura que falhou.
+//  c) save é async e ESPERA o commit; o cache só muda depois da
+//     confirmação. Devolve { ok, reason?, error? }.
+//  d) Dados sanitizados na leitura e na gravação: cor só em formato
+//     #RRGGBB, motivo até 80 caracteres, marcador não vazio até 16
+//     caracteres. Entradas de plataformas que não existem mais são
+//     descartadas ao salvar (quando a lista de ids válidos é informada).
 
 import { db, doc, getDoc, writeBatch } from './firebase-init.js';
 
-const DEFAULT_CUSTOMIZATION = { colors: {}, markers: {} };
+const DEFAULT_CUSTOMIZATION = Object.freeze({ colors: Object.freeze({}), markers: Object.freeze({}) });
+const HEX_RE = /^#[0-9a-f]{6}$/i;
+const MOTIVO_MAX = 80;
+const MARKER_MAX = 16;
 
 let cachedCustomization = null;
+let loadStatus = 'idle'; // 'idle' | 'ok' | 'failed'
 
 function getCustomizationRef(uid) {
   return doc(db, 'users', uid, 'meta', 'cardCustomization');
 }
 
-// Carrega do Firestore e atualiza o cache em memória. Nunca lança erro
-// pra quem chama — em qualquer falha (sem conta, erro de rede, documento
-// ainda não existente), resolve com a estrutura padrão vazia, já que
-// personalização ausente não é um estado de erro, é só "nada configurado
-// ainda" (mesmo espírito de vip-obrigado-store.js).
+// Limpa colors/markers. validIds (Set) opcional: se informado, descarta
+// entradas de plataformas fora dele.
+function sanitizeCustomization(data, validIds = null) {
+  const colors = {};
+  const markers = {};
+  const srcColors = (data && data.colors && typeof data.colors === 'object') ? data.colors : {};
+  const srcMarkers = (data && data.markers && typeof data.markers === 'object') ? data.markers : {};
+
+  Object.keys(srcColors).forEach(id => {
+    if (validIds && !validIds.has(id)) return;
+    const entry = srcColors[id];
+    if (!entry || typeof entry !== 'object') return;
+    const hex = String(entry.hex || '').trim();
+    if (!HEX_RE.test(hex)) return;
+    colors[id] = { hex: hex.toLowerCase(), motivo: String(entry.motivo || '').slice(0, MOTIVO_MAX) };
+  });
+
+  Object.keys(srcMarkers).forEach(id => {
+    if (validIds && !validIds.has(id)) return;
+    const value = String(srcMarkers[id] ?? '').trim();
+    if (!value) return;
+    markers[id] = value.slice(0, MARKER_MAX);
+  });
+
+  return { colors, markers };
+}
+
+// Carrega do Firestore e atualiza o cache. Nunca lança erro pra quem
+// chama — mas registra o resultado em loadStatus (ver nota no topo).
 export async function loadCardCustomization(uid) {
   if (!uid) {
     cachedCustomization = { colors: {}, markers: {} };
+    loadStatus = 'failed';
     return cachedCustomization;
   }
   try {
     const snap = await getDoc(getCustomizationRef(uid));
-    if (snap.exists()) {
-      const data = snap.data();
-      cachedCustomization = {
-        colors: (data.colors && typeof data.colors === 'object') ? data.colors : {},
-        markers: (data.markers && typeof data.markers === 'object') ? data.markers : {}
-      };
-    } else {
-      cachedCustomization = { colors: {}, markers: {} };
-    }
+    cachedCustomization = snap.exists()
+      ? sanitizeCustomization(snap.data())
+      : { colors: {}, markers: {} };
+    loadStatus = 'ok';
   } catch (err) {
     console.error('Erro ao carregar personalização de cards:', err);
     cachedCustomization = { colors: {}, markers: {} };
+    loadStatus = 'failed';
   }
   return cachedCustomization;
 }
 
-// Grava o objeto completo (substitui colors/markers inteiros — o rascunho
-// em ui-card-customization.js já é a fonte de verdade completa no
-// momento do clique em "Salvar", não um patch parcial). Atualiza o cache
-// ANTES do commit assíncrono terminar — mesmo padrão "otimista" já usado
-// em savePlatform/savePlatforms: a tela reflete a mudança na hora, sem
-// esperar confirmação de rede.
-export function saveCardCustomization(uid, data) {
-  if (!uid) return;
-  cachedCustomization = {
-    colors: data.colors || {},
-    markers: data.markers || {}
-  };
-  const batch = writeBatch(db);
-  batch.set(getCustomizationRef(uid), cachedCustomization);
-  batch.commit().catch(err => console.error('Erro ao salvar personalização de cards:', err));
+// true só se a última leitura foi confirmada (documento lido ou inexistente).
+export function isCardCustomizationLoaded() {
+  return loadStatus === 'ok';
+}
+
+/**
+ * Grava o objeto completo (substitui colors/markers inteiros — o rascunho
+ * do painel é a fonte de verdade completa no momento do "Salvar").
+ * @param {string} uid
+ * @param {{colors:Object, markers:Object}} data
+ * @param {Set<string>|null} validIds ids das plataformas existentes (opcional)
+ * @returns {Promise<{ok:boolean, reason?:string, error?:any, saved?:Object}>}
+ */
+export async function saveCardCustomization(uid, data, validIds = null) {
+  if (!uid) return { ok: false, reason: 'no-user' };
+  if (loadStatus !== 'ok') return { ok: false, reason: 'not-loaded' };
+
+  const clean = sanitizeCustomization(data, validIds && validIds.size > 0 ? validIds : null);
+  try {
+    const batch = writeBatch(db);
+    batch.set(getCustomizationRef(uid), clean);
+    await batch.commit();
+  } catch (err) {
+    console.error('Erro ao salvar personalização de cards:', err);
+    return { ok: false, reason: 'commit-failed', error: err };
+  }
+  cachedCustomization = clean;
+  return { ok: true, saved: clean };
 }
 
 // Leitura síncrona — usada por ui-platform-cards.js a cada render do grid
-// de cards. Nunca retorna null/undefined: se loadCardCustomization()
-// ainda não rodou nesta sessão (não deveria acontecer, ver mount() da
-// view), devolve a estrutura padrão vazia em vez de quebrar o render.
+// de cards. Nunca retorna null/undefined.
 export function getCachedCardCustomization() {
   return cachedCustomization || DEFAULT_CUSTOMIZATION;
 }

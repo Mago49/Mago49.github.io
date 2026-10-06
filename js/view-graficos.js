@@ -13,6 +13,17 @@
 // (6.3) mountToken: mount() é assíncrono; se o usuário sair da rota antes
 // dos awaits terminarem, o mount desiste em silêncio (sem desenhar na
 // tela seguinte). Tooltip do heatmap agora também funciona por toque.
+//
+// (Sub-entrega E) CONTEXTO DE BÔNUS: Obrigado/Misterioso vêm de
+// loadBonusContextStrict (bonus-context-store.js). Esta tela é só leitura,
+// então uma falha NÃO impede de abrir — mas agora fica explícita: aparece
+// uma nota no topo, Obrigado/Misterioso entram como 0 (em vez do 0,30
+// padrão em silêncio) e o snapshot diário NÃO é agendado (ele grava Saldo
+// e Rollover, que dependem desses dois valores).
+//
+// (Sub-entrega G) Heatmap "Bônus Avulso" recebe o resolvedor de ctx (o
+// avulso efetivo depende da fórmula do dia) e a nota do "Bônus por Tipo"
+// explica que o Avulso agora inclui a diferença informada nos fechamentos.
 
 import { state } from './state.js';
 import { formatCurrency } from './utils.js';
@@ -22,8 +33,7 @@ import {
   computePlatformRankings, computeWeeklyResultBetting,
   computeWeeklyWagered, computeBonusRoiByPlatform, computeHeatmapMatrix
 } from './analytics-logic.js';
-import { loadObrigadoValuePerAppearance } from './vip-obrigado-store.js';
-import { loadMisteriosoTemplates } from './vip-misterioso-store.js';
+import { loadBonusContextStrict } from './bonus-context-store.js';
 import { scheduleDailySnapshot } from './daily-snapshot-store.js';
 
 let dailyTimer = null;
@@ -43,6 +53,7 @@ let mountToken = 0; // (6.3) invalida mount() assíncrono se o usuário sair da 
 
 let obrigadoValuePerAppearance = 0.30;
 let misteriosoTemplates = [];
+let bonusContextConfirmed = false; // (Sub-entrega E)
 
 function loadChartJsScript() {
   if (window.Chart) return Promise.resolve();
@@ -312,7 +323,7 @@ function renderHeatmapCanvas() {
   if (!canvas) return;
 
   currentHeatmapMetric = metricSelect ? metricSelect.value : currentHeatmapMetric;
-  const { dayKeys, rows } = computeHeatmapMatrix(state.platforms, currentHeatmapMetric, 14, new Date());
+  const { dayKeys, rows } = computeHeatmapMatrix(state.platforms, currentHeatmapMetric, 14, new Date(), resolveCtxForPlatform);
 
   const cellW = 26;
   const cellH = 16;
@@ -463,6 +474,8 @@ export async function mount(container) {
       </div>
     </div>
 
+    <p id="graficosContextNote" class="graficos-note app-hidden"></p>
+
     <section class="card-shell graficos-section" aria-label="KPIs Globais">
       <div class="section-heading" style="padding:0 0 0.9rem;">
         <div><h2>KPIs Globais</h2></div>
@@ -491,7 +504,7 @@ export async function mount(container) {
       <div class="section-heading" style="padding:0 0 0.9rem;">
         <div><h2>Bônus por Tipo</h2></div>
       </div>
-      <p class="graficos-note">VIP/Obrigado/Misterioso são a PROJEÇÃO do mês atual (mesma fórmula da aba VIP); Avulso é o valor real já lançado via "Inserir bônus hoje" neste mês.</p>
+      <p class="graficos-note">VIP/Obrigado/Misterioso são a PROJEÇÃO do mês atual (mesma fórmula da aba VIP); Avulso = valor real lançado via "Inserir bônus hoje" neste mês (sem repetir o que a fórmula já conta) + a diferença informada ao fechar as semanas que terminam neste mês (bônus real − contabilizado; diferença negativa abate, total nunca abaixo de zero).</p>
       <div class="chart-wrap" style="height:280px;"><canvas id="graficoBonusTipo"></canvas></div>
     </section>
 
@@ -559,13 +572,30 @@ export async function mount(container) {
     </section>
   `;
 
-  const loadedObrigado = await loadObrigadoValuePerAppearance(state.currentUid);
-  if (token !== mountToken) return; // saiu da rota durante o await
-  const loadedMisterioso = await loadMisteriosoTemplates(state.currentUid);
-  if (token !== mountToken) return;
-  obrigadoValuePerAppearance = loadedObrigado;
-  misteriosoTemplates = loadedMisterioso;
-  scheduleDailySnapshot(state.currentUid, state.platforms, resolveCtxForPlatform);
+  // (Sub-entrega E) Leitura estrita do contexto de bônus. Falha não impede
+  // a tela (só leitura), mas fica explícita e bloqueia o snapshot.
+  try {
+    const bonusContext = await loadBonusContextStrict(state.currentUid);
+    if (token !== mountToken) return; // saiu da rota durante o await
+    obrigadoValuePerAppearance = bonusContext.obrigadoValuePerAppearance;
+    misteriosoTemplates = bonusContext.misteriosoTemplates;
+    bonusContextConfirmed = true;
+  } catch (err) {
+    console.error('Gráficos: contexto de bônus não confirmado — Obrigado/Misterioso fora dos cálculos, snapshot não agendado:', err);
+    if (token !== mountToken) return;
+    obrigadoValuePerAppearance = 0;
+    misteriosoTemplates = [];
+    bonusContextConfirmed = false;
+    const noteEl = document.getElementById('graficosContextNote');
+    if (noteEl) {
+      noteEl.textContent = '⚠ Não foi possível carregar o valor do Bônus Obrigado e os templates do Misterioso. Os valores abaixo estão SEM esses dois bônus (Saldo, Rollover e Bônus por Tipo podem aparecer menores que o real). Abra esta tela de novo quando a internet voltar.';
+      noteEl.classList.remove('app-hidden');
+    }
+  }
+
+  if (bonusContextConfirmed) {
+    scheduleDailySnapshot(state.currentUid, state.platforms, resolveCtxForPlatform);
+  }
 
   // Heatmap não depende do Chart.js — renderiza na hora, antes da
   // biblioteca terminar de baixar, pra não ficar esperando à toa.

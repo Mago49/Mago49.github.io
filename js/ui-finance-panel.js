@@ -38,6 +38,21 @@
 //    (obrigatório, mesmo tratamento do Saldo Inicial — sem isso o
 //    Rollover da fase nova nasceria incorreto).
 //
+// === (Sub-entrega G) ===
+// a) "Inserir bônus hoje": o valor digitado é o TOTAL do dia. A entrada
+//    gravada em otherBonusLog passa a guardar também `claimedTotal` (esse
+//    total) e `formulaAtLog` (a fórmula no instante do lançamento) — é o
+//    que permite ao sistema nunca contar 2x o VIP diário liberado DEPOIS
+//    do lançamento (ver "AVULSO EFETIVO" em bonus-ledger-logic.js). A
+//    liberação automática pelo mínimo de aposta continua funcionando: sem
+//    lançamento no dia ela soma normalmente; com lançamento, só soma o que
+//    passar do total já informado. Uma linha abaixo do campo mostra o
+//    resumo do dia (fórmula + avulso = total) e avisa quando a fórmula
+//    subiu depois do lançamento.
+// b) Centavos: valores digitados são arredondados em centavos antes de
+//    gravar, e os campos de edição de semana/aposta/saque mostram o valor
+//    arredondado (antes podiam aparecer ~11 casas decimais no R.B.).
+//
 // === RECONCILIAÇÃO DE DOM (mesmo padrão já usado em Edição/Calendário/VIP) ===
 // Um Map (rowElements) guarda o elemento de cada linha já presente na
 // tela, indexado por platform.id — refreshRow() troca só uma linha,
@@ -77,10 +92,10 @@ import {
   computeCurrentWeekLive, closeWeek, isCurrentWeekClosed, canCloseCurrentWeek,
   updateClosedWeek, deleteClosedWeek, addHistoricalWeek, setClosedWeekRealBonus,
   computePlatformTotals, computeOverallTotalsPeriod, computeLiveBalance, computeRolloverLive,
-  computePhaseHistory, startNewPhase, removePhaseByNumber
+  computePhaseHistory, startNewPhase, removePhaseByNumber, roundMoney
 } from './finance-logic.js';
 import {
-  getExpectedBonusToday, computeBonusDiffToday, getAlreadyLoggedToday,
+  getExpectedBonusToday, computeBonusDiffToday, getEffectiveOtherBonusForDay,
   getAccumulatedBonusThisWeek, computeAutoAccruedBonusForWeek
 } from './bonus-ledger-logic.js';
 import { getCachedPreferences, saveManualOrder, saveBadgeVisibility } from './user-preferences-store.js';
@@ -91,6 +106,8 @@ import {
 import { filterAndSortForManage } from './platform-sort.js';
 import { initSortMenu } from './ui-sort.js';
 import { scheduleDailySnapshot } from './daily-snapshot-store.js';
+
+const r2 = roundMoney;
 
 // --- Referências de DOM do painel principal (busca + lista) ---
 // Resolvidas por initFinanceControls(), chamada pelo mount() da view
@@ -298,10 +315,10 @@ function getOverviewPlatformQuery() {
 function getVisibleList() {
   const q = currentSearch.trim().toLowerCase();
   const overviewQ = getOverviewPlatformQuery();
-   let list = state.platforms.filter(p => {
-     const n = p.name.toLowerCase();
-     return n.includes(q) && n.includes(overviewQ);
-   });
+  let list = state.platforms.filter(p => {
+    const n = p.name.toLowerCase();
+    return n.includes(q) && n.includes(overviewQ);
+  });
 
   if (currentMode === 'saldo-desc') {
     return [...list].sort((a, b) => computeLiveBalance(b, new Date(), resolveCtxForPlatform(b)) - computeLiveBalance(a, new Date(), resolveCtxForPlatform(a)));
@@ -350,7 +367,7 @@ function statsGridHtml(totals, opts = {}) {
     ${statBox('Saque', formatCurrency(totals.withdrawal))}
     ${statBox('Diferença', formatCurrency(totals.difference), totals.difference >= 0 ? 'positive' : 'negative')}
     ${statBox('Apostado', formatCurrency(totals.wagered))}
-    ${statBox('N° Apostas', String(totals.betCount))}
+    ${statBox('N° Apostas', String(Math.round(Number(totals.betCount) || 0)))}
     ${statBox('Bônus', formatCurrency(totals.bonus))}
     ${statBox('R.B.', formatCurrency(totals.resultBetting), totals.resultBetting >= 0 ? 'positive' : 'negative')}
     ${statBox('R.B. + Bônus', formatCurrency(totals.rbPlusBonus), totals.rbPlusBonus >= 0 ? 'positive' : 'negative')}
@@ -643,7 +660,7 @@ function buildCollapsibleSection(p, sectionKey, label, buildContentFn) {
       if (sectionKey === 'phases') {
         startingPhaseId = null;
         clearOverridesForPlatform(phaseExpandedOverrides, p.id);
-       }
+      }
       if (sectionKey === 'history') {
         editingWeek = null;
         historyDateFilter = null;
@@ -859,6 +876,7 @@ function buildPendingBonusPanels(p) {
           await showAppAlert('Digite um valor válido (maior ou igual a zero) ou deixe em branco.');
           return;
         }
+        realBonus = r2(realBonus);
       }
       const ok = await showAppConfirm(realBonus === null
         ? `Manter o bônus contabilizado de ${formatCurrency(w.bonus)} na semana ${range}?`
@@ -900,11 +918,11 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
 
   const rolloverLive = computeRolloverLive(p, new Date(), ctx);
   // Bônus já emitido na semana em aberto: fórmula (VIP/Obrigado/Misterioso,
-  // dia a dia até hoje) + avulso lançado. Só exibição — o cálculo é o mesmo
-  // que o Saldo/Rollover ao vivo já usam.
+  // dia a dia até hoje) + avulso EFETIVO lançado (Sub-entrega G). Só
+  // exibição — o cálculo é o mesmo que o Saldo/Rollover ao vivo já usam.
   const weekBonusSoFar = closed
     ? 0
-    : computeAutoAccruedBonusForWeek(p, new Date(), ctx) + getAccumulatedBonusThisWeek(p, new Date());
+    : r2(computeAutoAccruedBonusForWeek(p, new Date(), ctx) + getAccumulatedBonusThisWeek(p, new Date(), ctx));
   const statsWrap = document.createElement('div');
   statsWrap.className = 'finance-week-current';
   statsWrap.innerHTML = `
@@ -913,7 +931,7 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
       ${statBox('Saque', formatCurrency(live.withdrawal))}
       ${statBox('Diferença', formatCurrency(live.difference), live.difference >= 0 ? 'positive' : 'negative')}
       ${statBox('Apostado', formatCurrency(live.wagered))}
-      ${statBox('N° Apostas', String(live.betCount))}
+      ${statBox('N° Apostas', String(Math.round(Number(live.betCount) || 0)))}
       ${statBox('R.B.', formatCurrency(live.resultBetting), live.resultBetting >= 0 ? 'positive' : 'negative')}
       ${statBox('Bônus', formatCurrency(weekBonusSoFar), 'positive')}
       ${statBox('Saldo (Balance)', formatCurrency(liveBalance), 'positive')}
@@ -947,8 +965,8 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
   depositBtn.type = 'button';
   depositBtn.textContent = 'Registrar depósito';
   depositBtn.addEventListener('click', async () => {
-    const value = parseFloat(depositInput.value);
-    if (isNaN(value) || value <= 0) {
+    const value = r2(parseFloat(depositInput.value));
+    if (isNaN(parseFloat(depositInput.value)) || value <= 0) {
       await showAppAlert('Digite um valor válido');
       return;
     }
@@ -967,7 +985,7 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
   depositForm.appendChild(depositInput);
   depositForm.appendChild(depositBtn);
   section.appendChild(depositForm);
-  
+
   // --- registrar saque ---
   const withdrawForm = document.createElement('div');
   withdrawForm.className = 'finance-entry-form';
@@ -981,8 +999,8 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
   withdrawBtn.type = 'button';
   withdrawBtn.textContent = 'Registrar saque';
   withdrawBtn.addEventListener('click', async () => {
-    const value = parseFloat(withdrawInput.value);
-    if (isNaN(value) || value <= 0) {
+    const value = r2(parseFloat(withdrawInput.value));
+    if (isNaN(parseFloat(withdrawInput.value)) || value <= 0) {
       await showAppAlert('Digite um valor válido');
       return;
     }
@@ -1029,13 +1047,15 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
   betBtn.type = 'button';
   betBtn.textContent = 'Registrar aposta';
   betBtn.addEventListener('click', async () => {
-    const wagered = parseFloat(wageredInput.value);
+    const wageredRaw = parseFloat(wageredInput.value);
     const betCount = parseInt(betCountInput.value, 10);
-    const resultBetting = parseFloat(rbInput.value);
-    if (isNaN(wagered) || wagered <= 0 || isNaN(betCount) || betCount <= 0 || isNaN(resultBetting)) {
+    const rbRaw = parseFloat(rbInput.value);
+    if (isNaN(wageredRaw) || r2(wageredRaw) <= 0 || isNaN(betCount) || betCount <= 0 || isNaN(rbRaw)) {
       await showAppAlert('Digite valor apostado, n° de apostas e R.B. válidos');
       return;
     }
+    const wagered = r2(wageredRaw);
+    const resultBetting = r2(rbRaw);
     if (!p.betEntries) p.betEntries = [];
     p.betEntries.push({ date: new Date().toISOString(), wagered, betCount, resultBetting });
     savePlatform(state.currentUid, p);
@@ -1079,15 +1099,15 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
     closeSection.appendChild(closeNote);
 
     // Bloco F Item 16.7 — só-leitura: soma do que a fórmula (Bônus 1) já
-    // vinha creditando sozinha essa semana + o que foi lançado via
+    // vinha creditando sozinha essa semana + o avulso EFETIVO lançado via
     // "Inserir bônus hoje" (Bônus 2, sem escala aqui — é o valor real
     // recebido). Ajuda o usuário a conferir ANTES de digitar o total
     // final abaixo — nunca substitui o campo manual.
     const accumulatedAuto = computeAutoAccruedBonusForWeek(p, new Date(), ctx);
-    const accumulatedManual = getAccumulatedBonusThisWeek(p, new Date());
+    const accumulatedManual = getAccumulatedBonusThisWeek(p, new Date(), ctx);
     const accumulatedStat = document.createElement('div');
     accumulatedStat.className = 'finance-stats-grid';
-    accumulatedStat.innerHTML = statBox('Bônus Acumulado (fórmula + avulso)', formatCurrency(accumulatedAuto + accumulatedManual), 'positive');
+    accumulatedStat.innerHTML = statBox('Bônus Acumulado (fórmula + avulso)', formatCurrency(r2(accumulatedAuto + accumulatedManual)), 'positive');
     closeSection.appendChild(accumulatedStat);
 
     const closeForm = document.createElement('div');
@@ -1106,11 +1126,12 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
     closeBtn.type = 'button';
     closeBtn.textContent = '🔒 Fechar semana';
     closeBtn.addEventListener('click', async () => {
-      const bonus = parseFloat(bonusInput.value);
-      if (isNaN(bonus)) {
+      const bonusRaw = parseFloat(bonusInput.value);
+      if (isNaN(bonusRaw)) {
         await showAppAlert('Preencha o Bônus pra fechar a semana.');
         return;
       }
+      const bonus = r2(bonusRaw);
       const ok = await showAppConfirm(`Fechar a semana de ${p.name}? Depois de fechada, os valores não mudam mais sozinhos.`);
       if (!ok) return;
       closeWeek(p, bonus, new Date(), ctx);
@@ -1129,21 +1150,26 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
 
 // ---------- Etapa 7, sub-entrega 3: "INSERIR BÔNUS HOJE" (Item 16.4/16.5) ----------
 // Campo de bônus avulso + botão R (escala do Rollover pra ESTE
-// lançamento específico, padrão 1:1). O sistema já desconta sozinho o
-// que a fórmula (VIP diário/semanal/mensal + Obrigado/Misterioso) já
-// contava pra hoje, e o que já foi lançado hoje em cliques anteriores —
-// só a diferença vira uma entrada nova em otherBonusLog (Item 16.4/16.6:
-// recalculado do zero a cada clique, nunca acumula erro de ordem entre
-// "Apostei hoje" e "Inserir bônus hoje").
+// lançamento específico, padrão 1:1). O valor digitado é o TOTAL recebido
+// hoje. (Sub-entrega G) O sistema compara com o que JÁ conta hoje —
+// fórmula atual + avulso efetivo (= max(fórmula atual, total já informado))
+// — e grava só a diferença, junto com o total informado (claimedTotal) e a
+// fórmula do instante (formulaAtLog). Se depois a fórmula subir (ex.: a
+// aposta que atinge o mínimo é registrada mais tarde), o avulso efetivo
+// encolhe na mesma medida — o total do dia nunca passa do informado
+// enquanto a fórmula não o ultrapassar.
 function buildDailyBonusSection(p, ctx) {
+  const container = document.createElement('div');
+
   const wrap = document.createElement('div');
   wrap.className = 'finance-entry-form';
+  container.appendChild(wrap);
 
   const bonusInput = document.createElement('input');
   bonusInput.type = 'number';
   bonusInput.step = '0.01';
   bonusInput.min = '0';
-  bonusInput.placeholder = 'Inserir bônus hoje';
+  bonusInput.placeholder = 'Inserir bônus hoje (total do dia)';
   bonusInput.setAttribute('aria-label', 'Valor total de bônus recebido hoje');
   wrap.appendChild(bonusInput);
 
@@ -1178,31 +1204,52 @@ function buildDailyBonusSection(p, ctx) {
   wrap.appendChild(scaleBtn);
   wrap.appendChild(scaleInput);
 
+  // (Sub-entrega G) Resumo do dia: fórmula + avulso efetivo = total.
+  const now = new Date();
+  const expectedNow = r2(getExpectedBonusToday(p, now, ctx));
+  const todayInfo = getEffectiveOtherBonusForDay(p, now, ctx);
+  const summary = document.createElement('p');
+  summary.className = 'finance-close-week-note';
+  if (todayInfo.entries.length > 0) {
+    const total = r2(expectedNow + todayInfo.raw);
+    let text = `Hoje: fórmula ${formatCurrency(expectedNow)} + avulso ${formatCurrency(todayInfo.raw)} = ${formatCurrency(total)}.`;
+    if (todayInfo.claimed !== null && todayInfo.formulaAtLog !== null && todayInfo.formula > todayInfo.formulaAtLog + 0.004) {
+      const grew = r2(todayInfo.formula - todayInfo.formulaAtLog);
+      text += ` A fórmula subiu ${formatCurrency(grew)} depois do seu último lançamento (ex.: VIP diário liberado pela aposta) e foi considerada JÁ INCLUÍDA no total informado (${formatCurrency(todayInfo.claimed)}). Se não estava incluída, informe o novo total do dia.`;
+    }
+    summary.textContent = text;
+  } else {
+    summary.textContent = `Hoje a fórmula já conta ${formatCurrency(expectedNow)}. Digite o TOTAL de bônus recebido hoje — só a diferença é lançada.`;
+  }
+  container.appendChild(summary);
+
   const confirmBtn = document.createElement('button');
   confirmBtn.type = 'button';
   confirmBtn.className = 'bet-manage-btn';
   confirmBtn.textContent = 'Confirmar bônus';
   confirmBtn.addEventListener('click', async () => {
-    const valorDigitado = parseFloat(bonusInput.value);
-    if (isNaN(valorDigitado) || valorDigitado < 0) {
+    const typedRaw = parseFloat(bonusInput.value);
+    if (isNaN(typedRaw) || typedRaw < 0) {
       await showAppAlert('Digite um valor válido pro bônus recebido hoje.');
       return;
     }
+    const valorDigitado = r2(typedRaw);
 
-    const expected = getExpectedBonusToday(p, new Date(), ctx);
-    const alreadyLogged = getAlreadyLoggedToday(p, new Date());
+    const clickNow = new Date();
+    const expected = r2(getExpectedBonusToday(p, clickNow, ctx));
+    const alreadyLogged = getEffectiveOtherBonusForDay(p, clickNow, ctx).raw;
     // A0: arredonda em centavos pra nunca deixar sobra de ponto flutuante
     // (ex: -0.0000001) passar como positivo/negativo por engano.
-    const diff = Math.round(computeBonusDiffToday(p, valorDigitado, new Date(), ctx) * 100) / 100;
+    const diff = r2(computeBonusDiffToday(p, valorDigitado, clickNow, ctx));
 
-    // A0: avulso = valor digitado − esperado do dia (− o que já foi
-    // lançado hoje). Nunca pode ser negativo; zero também não gera
-    // lançamento (nada a registrar, nem no Rollover).
+    // Avulso = total digitado − (fórmula atual + avulso efetivo de hoje).
+    // Nunca pode ser negativo; zero também não gera lançamento (nada a
+    // registrar, nem no Rollover).
     if (diff < 0) {
       await showAppAlert(
-        `Valor menor que o esperado hoje. O sistema já conta ${formatCurrency(expected)} pela fórmula` +
-        (alreadyLogged > 0 ? ` e ${formatCurrency(alreadyLogged)} já lançados hoje` : '') +
-        `. Digite o TOTAL recebido hoje, que precisa ser maior que isso.`
+        `Valor menor que o já contabilizado hoje. O sistema já conta ${formatCurrency(expected)} pela fórmula` +
+        (alreadyLogged > 0 ? ` e ${formatCurrency(alreadyLogged)} de avulso` : '') +
+        ` (total ${formatCurrency(r2(expected + alreadyLogged))}). Digite o TOTAL recebido hoje, que precisa ser maior que isso.`
       );
       return;
     }
@@ -1211,24 +1258,28 @@ function buildDailyBonusSection(p, ctx) {
       return;
     }
 
-    const rolloverValue = diff * currentScale;
+    const rolloverValue = r2(diff * currentScale);
 
     const ok = await showAppConfirm(
-      `Registrar ${formatCurrency(valorDigitado)} de bônus hoje? ` +
-      `O sistema já esperava ${formatCurrency(expected)} pela fórmula (VIP/Obrigado/Misterioso) hoje — ` +
+      `Registrar ${formatCurrency(valorDigitado)} como TOTAL de bônus de hoje? ` +
+      `O sistema já contava ${formatCurrency(r2(expected + alreadyLogged))} (fórmula VIP/Obrigado/Misterioso` +
+      (alreadyLogged > 0 ? ' + avulso já lançado' : '') + `) — ` +
       `será lançada só a diferença: ${formatCurrency(diff)} no Saldo` +
       (currentScale !== 1 ? ` e ${formatCurrency(rolloverValue)} no Rollover (escala ${currentScale}x)` : ' e no Rollover (escala 1:1)') +
-      `.`
+      `. Se o VIP diário for liberado depois (aposta mínima), ele será considerado já incluído nesse total.`
     );
     if (!ok) return;
 
+    const stamp = new Date().toISOString();
     if (!p.otherBonusLog) p.otherBonusLog = [];
     p.otherBonusLog.push({
-      date: new Date().toISOString(),
+      date: stamp,
       rawValue: diff,
       scale: currentScale,
       rolloverValue,
-      createdAt: new Date().toISOString()
+      claimedTotal: valorDigitado,
+      formulaAtLog: expected,
+      createdAt: stamp
     });
     savePlatform(state.currentUid, p);
 
@@ -1246,7 +1297,7 @@ function buildDailyBonusSection(p, ctx) {
   });
   wrap.appendChild(confirmBtn);
 
-  return wrap;
+  return container;
 }
 
 // ---------- SEÇÃO "TOTAL DA PLATAFORMA" ----------
@@ -1495,21 +1546,21 @@ function buildPhaseCard(phase, platformId) {
 
   header.appendChild(rangeSpan);
   header.appendChild(phaseBtnGroup);
-  
+
   card.appendChild(header);
 
- if (isExpanded) {
-  const stats = document.createElement('div');
-  stats.className = 'finance-stats-grid';
-  stats.innerHTML = statsGridHtml(phase, {
-    balanceLabel: phase.isCurrent ? 'Saldo da fase atual' : 'Saldo da fase',
-    showInitialBalance: true,
-    showInitialRollover: true,
-    rolloverValue: phase.rollover,
-    rolloverLabel: phase.isCurrent ? 'Rollover da fase atual' : 'Rollover da fase'
-  });
-  card.appendChild(stats);
- }
+  if (isExpanded) {
+    const stats = document.createElement('div');
+    stats.className = 'finance-stats-grid';
+    stats.innerHTML = statsGridHtml(phase, {
+      balanceLabel: phase.isCurrent ? 'Saldo da fase atual' : 'Saldo da fase',
+      showInitialBalance: true,
+      showInitialRollover: true,
+      rolloverValue: phase.rollover,
+      rolloverLabel: phase.isCurrent ? 'Rollover da fase atual' : 'Rollover da fase'
+    });
+    card.appendChild(stats);
+  }
 
   return card;
 }
@@ -1738,6 +1789,7 @@ function buildManualHistoricalWeekControls(p, wrap) {
     const ok = await showAppConfirm(`Adicionar a semana de ${rangeLabel} pra ${p.name}, com Depósito ${formatCurrency(deposit)} e Saque ${formatCurrency(withdrawal)}?`);
     if (!ok) return;
 
+    // addHistoricalWeek arredonda em centavos (Sub-entrega G).
     const result = addHistoricalWeek(p, chosenDate, { deposit, withdrawal, wagered, betCount, bonus, resultBetting, balance });
     if (!result.ok) {
       await showAppAlert(describeAddHistoricalWeekFailure(result.reason));
@@ -2066,16 +2118,16 @@ function buildWeekCardReadOnly(p, w, isFirst) {
   header.appendChild(btnGroup);
   card.appendChild(header);
 
- if (isExpanded) {
-  const stats = document.createElement('div');
-  stats.className = 'finance-stats-grid';
-  stats.innerHTML = statsGridHtml(w, {
-    balanceLabel: 'Saldo (travado nesta semana)',
-    rolloverValue: w.rolloverAtClose,
-    rolloverLabel: 'Rollover (no momento do fechamento)'
-  });
-  card.appendChild(stats);
-}
+  if (isExpanded) {
+    const stats = document.createElement('div');
+    stats.className = 'finance-stats-grid';
+    stats.innerHTML = statsGridHtml(w, {
+      balanceLabel: 'Saldo (travado nesta semana)',
+      rolloverValue: w.rolloverAtClose,
+      rolloverLabel: 'Rollover (no momento do fechamento)'
+    });
+    card.appendChild(stats);
+  }
 
   return card;
 }
@@ -2159,6 +2211,7 @@ function buildWeekCardEditing(p, w) {
       return;
     }
 
+    // updateClosedWeek arredonda em centavos (Sub-entrega G).
     updateClosedWeek(p, w.weekStart, { deposit, withdrawal, wagered, betCount, bonus, resultBetting, balance: editedBalance });
     savePlatform(state.currentUid, p);
     editingWeek = null;
@@ -2183,12 +2236,24 @@ function buildWeekCardEditing(p, w) {
   return card;
 }
 
+// (Sub-entrega G) Valor numérico vindo do banco é mostrado já arredondado
+// (centavos, ou inteiro quando step = '1') — antes um R.B. somado podia
+// aparecer com ~11 casas decimais no campo de edição. String vazia
+// continua vazia (campos que nascem em branco).
+function formatInputValue(value, step) {
+  if (value === '' || value === null || value === undefined) return '';
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '';
+  if (step === '1') return String(Math.round(n));
+  return String(r2(n));
+}
+
 function numberInput(placeholder, value, step = '0.01') {
   const input = document.createElement('input');
   input.type = 'number';
   input.step = step;
   input.placeholder = placeholder;
-  input.value = value;
+  input.value = formatInputValue(value, step);
   input.setAttribute('aria-label', placeholder);
   return input;
 }
@@ -2278,16 +2343,16 @@ function renderBetHistoryList() {
       saveBtn.className = 'history-edit-btn';
       saveBtn.textContent = 'Salvar';
       saveBtn.addEventListener('click', async () => {
-        const wagered = parseFloat(wageredInput.value);
+        const wageredRaw = parseFloat(wageredInput.value);
         const betCount = parseInt(betCountInput.value, 10);
-        const resultBetting = parseFloat(rbInput.value);
-        if (isNaN(wagered) || wagered <= 0 || isNaN(betCount) || betCount <= 0 || isNaN(resultBetting)) {
+        const rbRaw = parseFloat(rbInput.value);
+        if (isNaN(wageredRaw) || r2(wageredRaw) <= 0 || isNaN(betCount) || betCount <= 0 || isNaN(rbRaw)) {
           await showAppAlert('Digite valor apostado, n° de apostas e R.B. válidos.');
           return;
         }
-        entry.wagered = wagered;
+        entry.wagered = r2(wageredRaw);
         entry.betCount = betCount;
-        entry.resultBetting = resultBetting;
+        entry.resultBetting = r2(rbRaw);
         savePlatform(state.currentUid, platform);
         editingBetEntry = null;
         renderBetHistoryList();
@@ -2416,7 +2481,7 @@ function renderWithdrawalsList() {
       valueInput.type = 'number';
       valueInput.min = '0';
       valueInput.step = '0.01';
-      valueInput.value = entry.value;
+      valueInput.value = formatInputValue(entry.value, '0.01');
       valueInput.className = 'history-value-input';
       valueInput.setAttribute('aria-label', 'Valor do saque');
       itemContent.appendChild(valueInput);
@@ -2426,12 +2491,12 @@ function renderWithdrawalsList() {
       saveBtn.className = 'history-edit-btn';
       saveBtn.textContent = 'Salvar';
       saveBtn.addEventListener('click', async () => {
-        const newValue = parseFloat(valueInput.value);
-        if (isNaN(newValue) || newValue <= 0) {
+        const raw = parseFloat(valueInput.value);
+        if (isNaN(raw) || r2(raw) <= 0) {
           await showAppAlert('Digite um valor válido');
           return;
         }
-        entry.value = newValue;
+        entry.value = r2(raw);
         savePlatform(state.currentUid, platform);
         editingWithdrawal = null;
         renderWithdrawalsList();

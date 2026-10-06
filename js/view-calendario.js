@@ -63,12 +63,19 @@
 // renderPlatformCards() — não refreshPage() inteiro — pra não recalcular
 // eventos do calendário à toa a cada clique em "Salvar" da
 // personalização, que não afeta nada relacionado a datas de emissão.
+//
+// (Sub-entrega H) refreshPage() reaplica o filtro da plataforma
+// selecionada depois de recriar os eventos (reapplyCalendarFilter) —
+// antes, na virada do dia, o calendário voltava a mostrar todas as
+// plataformas enquanto o card continuava marcado como selecionado.
 
 import { state } from './state.js';
 import { computeHeroStats } from './cycle-logic.js';
 import { renderLegend } from './ui-hero.js';
 import { createCalendar, updateCalendarEvents, scrollToCurrentWeek } from './ui-calendar.js';
-import { renderPlatformCards, initPlatformCardsControls, resetPlatformCardsFilters } from './ui-platform-cards.js';
+import {
+  renderPlatformCards, initPlatformCardsControls, resetPlatformCardsFilters, reapplyCalendarFilter
+} from './ui-platform-cards.js';
 import { loadCardCustomization } from './card-customization-store.js';
 import { initCardCustomizationPanel } from './ui-card-customization.js';
 
@@ -101,6 +108,7 @@ function loadFullCalendarScript() {
 
 function refreshPage() {
   updateCalendarEvents(() => renderLegend(computeHeroStats(state.platforms)));
+  reapplyCalendarFilter();
   renderPlatformCards();
 }
 

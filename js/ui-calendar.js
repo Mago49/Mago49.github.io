@@ -5,6 +5,13 @@
 // diferentes, updateCalendarEvents() aceita um callback opcional e quem
 // chama (main-calendario.js) decide o que atualizar depois — nesse caso,
 // a legenda via renderLegend().
+//
+// (Sub-entrega H) COR DO EVENTO = MESMO PATAMAR DO MISTERIOSO: a cor de
+// cada evento usava os depósitos até 00:00 do dia da emissão, enquanto o
+// valor do Bônus Misterioso (getEffectiveMisteriosoValue,
+// misterioso-logic.js) conta até 23:59:59 do mesmo dia. Um depósito feito
+// no próprio dia da emissão mudava o patamar na aba Misterioso mas não a
+// cor no calendário. Agora os dois contam até o fim do dia.
 import { state } from './state.js';
 import { computeEmissionDates, sumDepositsUpTo, colorForLevel } from './cycle-logic.js';
 
@@ -15,6 +22,14 @@ function toLocalDayKey(date) {
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+// (Sub-entrega H) 23:59:59 do mesmo dia — mesmo instante usado por
+// getEffectiveMisteriosoValue (misterioso-logic.js).
+function endOfDay(date) {
+  const d = new Date(date);
+  d.setHours(23, 59, 59, 0);
+  return d;
 }
 
 // Cria a instância do FullCalendar e guarda em state.calendar.
@@ -69,7 +84,7 @@ export function createCalendar() {
       });
     });
   }
-  
+
   return state.calendar;
 }
 
@@ -113,7 +128,8 @@ export function updateCalendarEvents(onDone) {
     const emissionDates = computeEmissionDates(platform, now);
     emissionDates.forEach((emDate, emIndex) => {
       if (emDate >= windowFrom && emDate <= windowTo) {
-        const totalAtEmission = sumDepositsUpTo(platform, emDate);
+        // (Sub-entrega H) até o fim do dia da emissão — ver nota no topo.
+        const totalAtEmission = sumDepositsUpTo(platform, endOfDay(emDate));
         const bg = colorForLevel(totalAtEmission);
         const isDay30 = emIndex === emissionDates.length - 1; // último item = bônus do dia 30
 
@@ -140,6 +156,7 @@ export function updateCalendarEvents(onDone) {
 }
 
 export function filterCalendarByPlatform(platformId) {
+  if (!state.calendar) return;
   const allEvents = state.calendar.getEvents();
   allEvents.forEach(event => {
     const eventPlatformId = event.extendedProps.platformId;
@@ -148,6 +165,7 @@ export function filterCalendarByPlatform(platformId) {
 }
 
 export function showAllBonusCalendar() {
+  if (!state.calendar) return;
   const allEvents = state.calendar.getEvents();
   allEvents.forEach(event => {
     event.setProp('display', 'block');

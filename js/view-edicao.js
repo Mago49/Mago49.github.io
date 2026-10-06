@@ -40,30 +40,35 @@
 // sub-entregas seguintes desta mesma Etapa 5.
 //
 // === SUB-ENTREGA 3 — Editor do Bloco G (aviso interno) ===
-// announcement-store.js já expõe loadAnnouncement()/saveAnnouncement()
-// prontas desde a Etapa 4 (Hub só as usa em modo leitura, via
-// ui-announcement.js). O editor mora AQUI, na view — não em
-// ui-platform-manage.js — de propósito: é um dado GLOBAL do sistema
-// (documento único `announcements/current`, fora de qualquer
-// `users/{uid}`), não um dado de plataforma. Misturar os dois módulos
-// repetiria o mesmo erro de acoplamento que o Bloco C evitou ao não
-// importar cycle-logic.js/finance-logic.js em codigo-logic.js.
+// announcement-store.js expõe a leitura/gravação do aviso. O editor mora
+// AQUI, na view — não em ui-platform-manage.js — de propósito: é um dado
+// GLOBAL do sistema (documento único `announcements/current`, fora de
+// qualquer `users/{uid}`), não um dado de plataforma.
 //
 // Fica fora do acordeão (`#platformManagePanel`), como uma seção própria
 // logo abaixo dele. Carregado de forma assíncrona no fim do mount() —
 // depois que a lista de plataformas (que não depende disso) já está
-// renderizada, mesmo padrão já usado em view-inicio.js
-// (initAnnouncementBanner como último passo). Sem Regra de Segurança
-// nova: se o usuário logado não for o UID administrador, saveAnnouncement
-// falha silenciosamente (mesmo comportamento já documentado desde a
-// Etapa 4) — nenhuma validação de permissão é feita no front-end.
+// renderizada.
+//
+// === (Sub-entrega D) ===
+// a) mountToken (mesmo padrão de view-vip.js/view-graficos.js): mount() é
+//    assíncrono (await loadPreferences e do aviso). Se o usuário sair da
+//    rota durante o await, o unmount() já removeu os modais — sem o token,
+//    o mount atrasado chamava initModalListeners() sem os modais (erro) e
+//    ligava o listener global do "Ordenar" sem ninguém pra desligar (vazava
+//    a cada visita). Agora ele confere o token depois de cada await e
+//    desiste em silêncio.
+// b) Editor do aviso: lê com loadAnnouncementStrict. Se a leitura falhar,
+//    os campos ficam bloqueados e o "Salvar" desabilitado — antes abriam em
+//    branco e um "Salvar" APAGAVA a mensagem real. E "Aviso salvo." só
+//    aparece depois que o banco confirma (antes aparecia sempre).
 
 import { state } from './state.js';
 import {
   initManageControls, initModalListeners, renderManageList,
   refreshAllRows, resetManageListCache
 } from './ui-platform-manage.js';
-import { loadAnnouncement, saveAnnouncement } from './announcement-store.js';
+import { loadAnnouncementStrict, saveAnnouncement } from './announcement-store.js';
 import { loadPreferences } from './user-preferences-store.js';
 import { showAppAlert } from './utils.js';
 
@@ -71,17 +76,17 @@ import { showAppAlert } from './utils.js';
 // estava sendo montado pra QUALQUER usuário logado, não só pro
 // administrador — a Regra de Segurança do Firestore já bloqueava a
 // ESCRITA de quem não é admin, mas a UI de edição continuava aparecendo
-// pra todo mundo, e "Salvar" mostrava "Aviso salvo." mesmo quando a
-// gravação falhava silenciosamente por falta de permissão. Este UID é o
-// MESMO já cadastrado na Regra de Segurança (Firestore Console >
-// announcements/{docId} > allow write), copiado aqui só pra decidir se a
-// seção HTML nasce ou não — nunca é usado pra validar nada no backend
-// (quem garante a permissão de verdade continua sendo o Firestore).
+// pra todo mundo. Este UID é o MESMO já cadastrado na Regra de Segurança
+// (Firestore Console > announcements/{docId} > allow write), copiado aqui
+// só pra decidir se a seção HTML nasce ou não — nunca é usado pra validar
+// nada no backend (quem garante a permissão de verdade continua sendo o
+// Firestore).
 const ADMIN_UID = 'cyC02BqwkqfXAL1Y0C7P2r4JxD32';
 
 let dailyTimer = null;
 let sortMenuCleanup = null;
 let modalsContainerEl = null;
+let mountToken = 0;
 
 function scheduleDailyUpdate() {
   if (dailyTimer) clearTimeout(dailyTimer);
@@ -152,35 +157,56 @@ function removeModals() {
   }
 }
 
-// Carrega o aviso atual (loadAnnouncement) e preenche os campos com o
-// valor REAL salvo — nunca abre em branco, pra não arriscar sobrescrever
-// uma mensagem existente com um "Salvar" acidental. Chamada uma vez por
-// mount(), depois que o HTML da seção já foi escrito no container.
-async function initAnnouncementEditor() {
+// Carrega o aviso atual com leitura ESTRITA e preenche os campos com o
+// valor REAL salvo — nunca abre em branco por falha de leitura, pra não
+// arriscar sobrescrever uma mensagem existente com um "Salvar" acidental.
+// Chamada uma vez por mount(), depois que o HTML da seção já foi escrito.
+async function initAnnouncementEditor(isStale) {
   const checkbox = document.getElementById('announcementActiveCheckbox');
   const messageInput = document.getElementById('announcementMessageInput');
   const saveBtn = document.getElementById('announcementSaveBtn');
+  const statusEl = document.getElementById('announcementLoadStatus');
   if (!checkbox || !messageInput || !saveBtn) return;
 
-  const current = await loadAnnouncement();
+  // Bloqueado até a leitura confirmar o valor real.
+  checkbox.disabled = true;
+  messageInput.disabled = true;
+  saveBtn.disabled = true;
+
+  let current;
+  try {
+    current = await loadAnnouncementStrict();
+  } catch (err) {
+    console.error('Editor do aviso: leitura falhou — edição bloqueada pra não apagar o aviso atual:', err);
+    if (isStale()) return;
+    if (statusEl) {
+      statusEl.textContent = 'Não foi possível carregar o aviso atual. A edição está bloqueada pra não apagar a mensagem salva — abra esta tela de novo quando a internet voltar.';
+      statusEl.classList.remove('app-hidden');
+    }
+    return;
+  }
+  if (isStale()) return;
+
   checkbox.checked = current.active === true;
   messageInput.value = current.message || '';
+  checkbox.disabled = false;
+  messageInput.disabled = false;
+  saveBtn.disabled = false;
 
   saveBtn.addEventListener('click', async () => {
-    // saveAnnouncement (announcement-store.js) não lança erro: se o UID
-    // logado não for o administrador, a Regra de Segurança do Firestore
-    // recusa a escrita e o commit falha silenciosamente (só console.error)
-    // — mesmo comportamento já documentado desde a Etapa 4. Nenhuma
-    // validação de permissão é feita aqui no front-end.
-    saveAnnouncement({
+    saveBtn.disabled = true;
+    const result = await saveAnnouncement({
       active: checkbox.checked,
       message: messageInput.value
     });
-    await showAppAlert('Aviso salvo.');
+    saveBtn.disabled = false;
+    await showAppAlert(result.ok ? 'Aviso salvo.' : result.error);
   });
 }
 
 export async function mount(container) {
+  const token = ++mountToken;
+  const isStale = () => token !== mountToken;
   const isAdmin = state.currentUid === ADMIN_UID;
 
   container.innerHTML = `
@@ -271,6 +297,7 @@ export async function mount(container) {
           <p>Mensagem exibida no topo da página Início pra todos os usuários. Deixe desmarcado pra guardar o texto sem exibir.</p>
         </div>
       </div>
+      <p id="announcementLoadStatus" class="finance-close-week-note app-hidden"></p>
       <div class="platform-form-fields">
         <label for="announcementActiveCheckbox">Status</label>
         <div style="display:flex; align-items:center; gap:0.5rem;">
@@ -295,6 +322,9 @@ export async function mount(container) {
   resetManageListCache();
   createModals();
   await loadPreferences(state.currentUid);
+  // (Sub-entrega D) Saiu da rota durante o await: o unmount() já removeu os
+  // modais — não liga nada.
+  if (isStale()) return;
 
   sortMenuCleanup = initManageControls();
   initModalListeners();
@@ -306,14 +336,15 @@ export async function mount(container) {
   // bloqueia a renderização do acordeão de plataformas, que já está
   // pronto e interativo antes desta leitura do Firestore terminar. Só
   // roda pro administrador (isAdmin) — pra qualquer outro usuário a
-  // seção nem existe no HTML (ver container.innerHTML acima), então
-  // chamar loadAnnouncement() aqui seria uma leitura ao Firestore à toa.
+  // seção nem existe no HTML.
   if (isAdmin) {
-    await initAnnouncementEditor();
+    await initAnnouncementEditor(isStale);
   }
 }
 
 export function unmount() {
+  mountToken++; // (Sub-entrega D) invalida qualquer mount() ainda esperando um await
+
   if (dailyTimer) {
     clearTimeout(dailyTimer);
     dailyTimer = null;

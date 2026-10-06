@@ -26,15 +26,33 @@
 // leitura na hora, sem precisar recarregar a página. Se a pessoa recusar,
 // fica na tela de carregamento como antes. Nada é gravado em nenhum
 // momento desse fluxo.
+//
+// (Sub-entrega A) TEMPLATE CITADO MAS NÃO ENCONTRADO: antes disparava um
+// aviso vermelho FORÇADO a cada login — e como a verificação olha todo o
+// levelHistory (passado incluído), o aviso nunca mais sumia, nem trocando a
+// plataforma pra "Padrão". Agora a leitura que DEU CERTO só registra o
+// problema em state.vipTemplateIssues, separando:
+//   - missing: documento não existe no banco -> a aba VIP → Templates
+//     oferece "Restaurar" (recria com a tabela padrão, que é exatamente o
+//     que o cálculo já usa hoje pra esse id — nenhum valor muda);
+//   - invalid: documento existe mas está inválido -> só é mostrado, nunca
+//     sobrescrito automaticamente.
+// Nenhum aviso aparece no login. O cálculo continua igual: id ausente cai
+// na tabela padrão (getVipConfigAt, cycle-logic.js). A falha de LEITURA
+// continua bloqueando o app exatamente como antes (6.3b).
 
 import {
-  auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged, authReady, showSaveFailureToast
+  auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged, authReady
 } from './firebase-init.js';
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm } from './utils.js';
 import { loadPlatformsFromFirestore } from './platforms-store.js';
 import { loadVipBonusTemplates } from './vip-bonus-template-store.js';
 import { collectReferencedTemplateIds } from './vip-bonus-template-logic.js';
+
+function emptyTemplateIssues() {
+  return { missing: [], invalid: [] };
+}
 
 /**
  * @param {Object} options
@@ -100,6 +118,7 @@ export function initAuth({ onLogin, onLogout }) {
     onAuthStateChanged(auth, async (user) => {
       if (user) {
         state.currentUid = user.uid;
+        state.vipTemplateIssues = emptyTemplateIssues();
         if (userLabelEl) {
           userLabelEl.textContent = user.displayName ? `Olá, ${user.displayName.split(' ')[0]}` : (user.email || '');
         }
@@ -143,17 +162,25 @@ export function initAuth({ onLogin, onLogout }) {
         let templatesResolved = false;
         while (!templatesResolved) {
           try {
-            const { templates } = await loadVipBonusTemplates(state.currentUid);
+            const { templates, invalidIds } = await loadVipBonusTemplates(state.currentUid);
             state.vipBonusTemplates = templates;
+
+            // (Sub-entrega A) Só registra — sem aviso no login. A aba
+            // VIP → Templates mostra o problema e oferece a correção.
             const loadedIds = new Set(templates.map(t => t.id));
-            const missing = [...referencedTemplateIds].filter(id => !loadedIds.has(id));
-            if (missing.length > 0) {
-              console.error('Templates VIP citados por plataformas mas ausentes/inválidos:', missing);
-              showSaveFailureToast('Atenção: algum template de Bônus VIP usado por uma plataforma não foi encontrado — ela está usando a tabela padrão. Não altere dados dessas plataformas até resolver.', true);
+            const invalidSet = new Set(Array.isArray(invalidIds) ? invalidIds : []);
+            const notLoaded = [...referencedTemplateIds].filter(id => !loadedIds.has(id));
+            state.vipTemplateIssues = {
+              missing: notLoaded.filter(id => !invalidSet.has(id)),
+              invalid: notLoaded.filter(id => invalidSet.has(id))
+            };
+            if (notLoaded.length > 0) {
+              console.warn('Templates VIP citados por plataformas e não carregados (usando tabela padrão):', state.vipTemplateIssues);
             }
             templatesResolved = true;
           } catch (err) {
             state.vipBonusTemplates = [];
+            state.vipTemplateIssues = emptyTemplateIssues();
             if (referencedTemplateIds.size === 0) {
               console.error('Templates do Bônus VIP indisponíveis (nenhuma plataforma depende deles, seguindo sem):', err);
               templatesResolved = true;
@@ -176,6 +203,7 @@ export function initAuth({ onLogin, onLogout }) {
         state.currentUid = null;
         state.platforms = [];
         state.vipBonusTemplates = [];
+        state.vipTemplateIssues = emptyTemplateIssues();
         if (userLabelEl) userLabelEl.textContent = '';
         showLoginScreen();
         if (typeof onLogout === 'function') onLogout();
