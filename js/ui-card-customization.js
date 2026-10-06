@@ -281,7 +281,10 @@ function buildMarkerSelectedRow(p, context) {
 
 function renderMarkerSelectedList(context) {
   context.selectedMarkerListEl.innerHTML = '';
-  const ids = Object.keys(context.draftMarkers);
+   // (6.3) marcador vazio/só espaço (campo apagado mas ainda sem blur) não
+  // aparece em "Selecionados" e não conta como marcador.
+    const ids = Object.keys(context.draftMarkers)
+    .filter(id => String(context.draftMarkers[id] ?? '').trim() !== ''); 
 
   if (ids.length === 0) {
     const empty = document.createElement('div');
@@ -440,6 +443,19 @@ export function initCardCustomizationPanel(mountEl, onSaved) {
   saveBtn.className = 'btn-confirm';
   saveBtn.textContent = 'Salvar';
   saveBtn.addEventListener('click', () => {
+        // (6.3) limpa marcadores vazios/com espaços antes de gravar — senão
+    // um "" ou " " ia pro Firestore e o card ganhava um marcador invisível.
+    const cleanMarkers = {};
+    Object.keys(context.draftMarkers).forEach(id => {
+      const v = String(context.draftMarkers[id] ?? '').trim();
+      if (v) cleanMarkers[id] = v;
+    });
+    context.draftMarkers = cleanMarkers;
+    context.markerInputRefs.forEach((input, id) => {
+      input.value = cleanMarkers[id] || '';
+    });
+    renderMarkerSelectedList(context);
+
     // "Salvar" só salva — painel continua aberto, não recolhe.
     saveCardCustomization(state.currentUid, {
       colors: context.draftColors,
