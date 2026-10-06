@@ -187,6 +187,15 @@
   color: #64748b;
 }
 
+/* (6.3) Texto de detalhe (ex.: "Início em 05/10 · Saldo inicial …") — pode
+   ser longo: ocupa a linha inteira e quebra em vez de estourar o card. */
+.hist-detail {
+  flex: 1 1 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
 .hist-rb {
   font-weight: 700;
 }
