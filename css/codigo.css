@@ -135,8 +135,30 @@
   gap: 0.6rem;
 }
 
-.codigo-nav-row .btn-cancel-modal {
+/* (6.3) Botões ← → do "Depósitos - Hoje": classe própria, autocontida.
+   Antes usavam .btn-cancel-modal, cuja forma/padding só existe dentro de
+   .reset-modal-buttons (modals.css) — fora dali perdiam o acabamento. */
+.codigo-nav-btn {
   min-width: 48px;
+  min-height: 40px;
+  padding: 0.55rem 1rem;
+  border: none;
+  border-radius: 12px;
+  background: #e5e7eb;
+  color: #1f2937;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.codigo-nav-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.codigo-nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .codigo-nav-counter {
