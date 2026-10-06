@@ -335,6 +335,14 @@ export function resetManageListCache() {
   expandedDataId = null;
   reorderModeActive = false;
   lastVisibleList = [];
+  // (6.4, item 8) a tela nova nasce com busca vazia e ordenação "Padrão" —
+  // o estado em memória precisa nascer igual, senão a lista aparece
+  // filtrada por uma busca/modo de uma visita anterior.
+  currentSearch = '';
+  currentMode = null;
+  editingDepositDate = null;
+  currentResetPlatform = null;
+  currentBetPlatform = null;
 }
 
 export function renderManageList() {

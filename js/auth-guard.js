@@ -18,12 +18,20 @@
 //    específico e NÃO deixa a página seguir com state.platforms vazio —
 //    evita tanto a falsa impressão de "os dados sumiram" quanto o risco
 //    de qualquer ação subsequente salvar esse vazio por cima de dados reais.
+//
+// (6.3b) TEMPLATES DO BÔNUS VIP — "AVISA E TENTA DE NOVO": se a leitura
+// dos templates falhar e alguma plataforma depende deles, o app continua
+// NÃO abrindo (abrir com tabela padrão em silêncio deixaria Saldo/Rollover
+// errados), mas agora o aviso pergunta se quer TENTAR DE NOVO e repete a
+// leitura na hora, sem precisar recarregar a página. Se a pessoa recusar,
+// fica na tela de carregamento como antes. Nada é gravado em nenhum
+// momento desse fluxo.
 
 import {
   auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged, authReady, showSaveFailureToast
 } from './firebase-init.js';
 import { state } from './state.js';
-import { showAppAlert } from './utils.js';
+import { showAppAlert, showAppConfirm } from './utils.js';
 import { loadPlatformsFromFirestore } from './platforms-store.js';
 import { loadVipBonusTemplates } from './vip-bonus-template-store.js';
 import { collectReferencedTemplateIds } from './vip-bonus-template-logic.js';
@@ -81,7 +89,7 @@ export function initAuth({ onLogin, onLogout }) {
       }
     });
   }
-  
+
 
   showLoading();
 
@@ -128,27 +136,38 @@ export function initAuth({ onLogin, onLogout }) {
         // Histórico, Gráficos). Se a leitura falhar e alguma plataforma
         // depende de template, NÃO abrimos o app: todo bônus voltaria pra
         // tabela padrão em silêncio e o Saldo/Rollover ficariam errados.
-        // Sem nenhuma plataforma usando template, uma falha aqui não
-        // impede o uso (só é logada).
+        // (6.3b) Em vez de só barrar, o aviso pergunta se quer tentar de
+        // novo e repete a leitura. Sem nenhuma plataforma usando template,
+        // uma falha aqui não impede o uso (só é logada).
         const referencedTemplateIds = collectReferencedTemplateIds(state.platforms);
-        try {
-          const { templates } = await loadVipBonusTemplates(state.currentUid);
-          state.vipBonusTemplates = templates;
-          const loadedIds = new Set(templates.map(t => t.id));
-          const missing = [...referencedTemplateIds].filter(id => !loadedIds.has(id));
-          if (missing.length > 0) {
-            console.error('Templates VIP citados por plataformas mas ausentes/inválidos:', missing);
-            showSaveFailureToast('Atenção: algum template de Bônus VIP usado por uma plataforma não foi encontrado — ela está usando a tabela padrão. Não altere dados dessas plataformas até resolver.', true);
-          }
-        } catch (err) {
-          state.vipBonusTemplates = [];
-          if (referencedTemplateIds.size > 0) {
+        let templatesResolved = false;
+        while (!templatesResolved) {
+          try {
+            const { templates } = await loadVipBonusTemplates(state.currentUid);
+            state.vipBonusTemplates = templates;
+            const loadedIds = new Set(templates.map(t => t.id));
+            const missing = [...referencedTemplateIds].filter(id => !loadedIds.has(id));
+            if (missing.length > 0) {
+              console.error('Templates VIP citados por plataformas mas ausentes/inválidos:', missing);
+              showSaveFailureToast('Atenção: algum template de Bônus VIP usado por uma plataforma não foi encontrado — ela está usando a tabela padrão. Não altere dados dessas plataformas até resolver.', true);
+            }
+            templatesResolved = true;
+          } catch (err) {
+            state.vipBonusTemplates = [];
+            if (referencedTemplateIds.size === 0) {
+              console.error('Templates do Bônus VIP indisponíveis (nenhuma plataforma depende deles, seguindo sem):', err);
+              templatesResolved = true;
+              break;
+            }
             console.error('Erro ao carregar templates do Bônus VIP:', err);
-            await showAppAlert('Não foi possível carregar os templates de Bônus VIP (algumas plataformas dependem deles). Nada foi apagado. Verifique sua internet e recarregue a página antes de continuar.');
-            showLoading();
-            return;
+            const retry = await showAppConfirm('Não foi possível carregar os templates de Bônus VIP (algumas plataformas dependem deles). Nada foi apagado. Verifique sua internet. Deseja tentar de novo?');
+            // Se a conta mudou/saiu enquanto o aviso estava aberto, para aqui.
+            if (state.currentUid !== user.uid) return;
+            if (!retry) {
+              showLoading();
+              return;
+            }
           }
-          console.error('Templates do Bônus VIP indisponíveis (nenhuma plataforma depende deles, seguindo sem):', err);
         }
 
         showApp();

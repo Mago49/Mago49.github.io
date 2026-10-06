@@ -9,6 +9,10 @@
 // sub-entregas 2 e 3 — este arquivo será EDITADO por cima delas, nunca
 // reescrito do zero (mesmo padrão de ui-finance-panel.js entre
 // sub-entregas).
+//
+// (6.3) mountToken: mount() é assíncrono; se o usuário sair da rota antes
+// dos awaits terminarem, o mount desiste em silêncio (sem desenhar na
+// tela seguinte). Tooltip do heatmap agora também funciona por toque.
 
 import { state } from './state.js';
 import { formatCurrency } from './utils.js';
@@ -33,7 +37,9 @@ let wageredChart = null;
 let bonusRoiChart = null;
 let currentRankingMetric = 'balance';
 let currentHeatmapMetric = 'deposito';
-let heatmapLayout = null; // { dayKeys, rows, cellW, cellH, labelWidth, headerHeight } — usado pelo tooltip no mousemove
+let heatmapLayout = null; // { dayKeys, rows, cellW, cellH, labelWidth, headerHeight } — usado pelo tooltip (mouse e toque)
+let heatmapTipTimer = null; // (6.3) esconde o tooltip sozinho depois de um toque
+let mountToken = 0; // (6.3) invalida mount() assíncrono se o usuário sair da rota no meio
 
 let obrigadoValuePerAppearance = 0.30;
 let misteriosoTemplates = [];
@@ -45,7 +51,11 @@ function loadChartJsScript() {
     const script = document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js';
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Falha ao carregar Chart.js'));
+    script.onerror = () => {
+      chartJsLoadPromise = null; // próxima visita tenta de novo
+      script.remove();
+      reject(new Error('Falha ao carregar Chart.js'));
+    };
     document.head.appendChild(script);
   });
   return chartJsLoadPromise;
@@ -357,38 +367,65 @@ function renderHeatmapCanvas() {
   heatmapLayout = { dayKeys, rows, cellW, cellH, labelWidth, headerHeight };
 }
 
+function hideHeatmapTooltip() {
+  const tooltip = document.getElementById('heatmapTooltip');
+  if (tooltip) tooltip.style.display = 'none';
+  if (heatmapTipTimer) { clearTimeout(heatmapTipTimer); heatmapTipTimer = null; }
+}
+
+// Mostra o tooltip da célula sob (clientX, clientY). autoHideMs > 0 (toque):
+// some sozinho; 0 (mouse): fica enquanto o cursor estiver em cima.
+function showHeatmapTooltipAt(canvas, tooltip, clientX, clientY, autoHideMs) {
+  if (!heatmapLayout) return;
+  const rect = canvas.getBoundingClientRect();
+  const x = clientX - rect.left;
+  const y = clientY - rect.top;
+  const { dayKeys, rows, cellW, cellH, labelWidth, headerHeight } = heatmapLayout;
+
+  const col = Math.floor((x - labelWidth) / cellW);
+  const row = Math.floor((y - headerHeight) / cellH);
+
+  if (col < 0 || col >= dayKeys.length || row < 0 || row >= rows.length) {
+    hideHeatmapTooltip();
+    return;
+  }
+
+  const [, m, d] = dayKeys[col].split('-');
+  const value = rows[row].values[col];
+  tooltip.textContent = `${rows[row].name} — ${d}/${m}: ${formatHeatmapValue(value)}`;
+  tooltip.style.display = 'block';
+
+  // Não deixa o tooltip sair pela borda direita da tela (celular).
+  const margin = 8;
+  const maxLeft = window.innerWidth - tooltip.offsetWidth - margin;
+  tooltip.style.left = `${Math.max(margin, Math.min(clientX + 12, maxLeft))}px`;
+  tooltip.style.top = `${clientY + 12}px`;
+
+  if (heatmapTipTimer) { clearTimeout(heatmapTipTimer); heatmapTipTimer = null; }
+  if (autoHideMs > 0) heatmapTipTimer = setTimeout(hideHeatmapTooltip, autoHideMs);
+}
+
 function initHeatmapControls() {
   const select = document.getElementById('heatmapMetricSelect');
   const canvas = document.getElementById('graficoHeatmap');
   const tooltip = document.getElementById('heatmapTooltip');
   if (select) {
     select.value = currentHeatmapMetric;
-    select.addEventListener('change', renderHeatmapCanvas);
+    select.addEventListener('change', () => {
+      hideHeatmapTooltip();
+      renderHeatmapCanvas();
+    });
   }
   if (canvas && tooltip) {
-    canvas.addEventListener('mousemove', (e) => {
-      if (!heatmapLayout) return;
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      const { dayKeys, rows, cellW, cellH, labelWidth, headerHeight } = heatmapLayout;
-
-      const col = Math.floor((x - labelWidth) / cellW);
-      const row = Math.floor((y - headerHeight) / cellH);
-
-      if (col < 0 || col >= dayKeys.length || row < 0 || row >= rows.length) {
-        tooltip.style.display = 'none';
-        return;
-      }
-
-      const [, m, d] = dayKeys[col].split('-');
-      const value = rows[row].values[col];
-      tooltip.textContent = `${rows[row].name} — ${d}/${m}: ${formatHeatmapValue(value)}`;
-      tooltip.style.left = `${e.clientX + 12}px`;
-      tooltip.style.top = `${e.clientY + 12}px`;
-      tooltip.style.display = 'block';
+    canvas.addEventListener('mousemove', (e) => showHeatmapTooltipAt(canvas, tooltip, e.clientX, e.clientY, 0));
+    canvas.addEventListener('mouseleave', hideHeatmapTooltip);
+    // Toque/caneta: mostra no ponto tocado, some em 3,5 s ou ao tocar fora de
+    // uma célula. Rolar o heatmap na horizontal também esconde.
+    canvas.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse') return;
+      showHeatmapTooltipAt(canvas, tooltip, e.clientX, e.clientY, 3500);
     });
-    canvas.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+    if (canvas.parentElement) canvas.parentElement.addEventListener('scroll', hideHeatmapTooltip, { passive: true });
   }
 }
 
@@ -415,6 +452,8 @@ function scheduleDailyUpdate() {
 }
 
 export async function mount(container) {
+  const token = ++mountToken;
+  heatmapLayout = null;
   container.innerHTML = `
     <div class="page-header">
       <div class="page-header-text">
@@ -520,8 +559,12 @@ export async function mount(container) {
     </section>
   `;
 
-  obrigadoValuePerAppearance = await loadObrigadoValuePerAppearance(state.currentUid);
-  misteriosoTemplates = await loadMisteriosoTemplates(state.currentUid);
+  const loadedObrigado = await loadObrigadoValuePerAppearance(state.currentUid);
+  if (token !== mountToken) return; // saiu da rota durante o await
+  const loadedMisterioso = await loadMisteriosoTemplates(state.currentUid);
+  if (token !== mountToken) return;
+  obrigadoValuePerAppearance = loadedObrigado;
+  misteriosoTemplates = loadedMisterioso;
   scheduleDailySnapshot(state.currentUid, state.platforms, resolveCtxForPlatform);
 
   // Heatmap não depende do Chart.js — renderiza na hora, antes da
@@ -531,6 +574,7 @@ export async function mount(container) {
   renderHeatmapCanvas();
 
   await loadChartJsScript();
+  if (token !== mountToken) return; // saiu da rota durante o download
 
   initRankingControls();
   refreshPage();
@@ -538,6 +582,8 @@ export async function mount(container) {
 }
 
 export function unmount() {
+  mountToken++; // invalida qualquer mount() ainda esperando um await
+  if (heatmapTipTimer) { clearTimeout(heatmapTipTimer); heatmapTipTimer = null; }
   if (dailyTimer) { clearTimeout(dailyTimer); dailyTimer = null; }
   if (balanceChart) { balanceChart.destroy(); balanceChart = null; }
   if (depositWithdrawalChart) { depositWithdrawalChart.destroy(); depositWithdrawalChart = null; }

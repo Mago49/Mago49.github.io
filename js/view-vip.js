@@ -14,11 +14,24 @@
 //
 // CUIDADO, exclusivo da SPA (Bloco K, item K2): dailyTimer precisa de
 // clearTimeout() no unmount() — sem isso, cada visita a esta rota
-// empilharia um novo setTimeout, duplicando renderVipPanel() a cada
-// virada de dia. Mesmo padrão já aplicado em view-calendario-new.js.
+// empilharia um novo setTimeout, duplicando a renderização a cada
+// virada de dia. Mesmo padrão já aplicado em view-calendario.js.
 // Só a aba VIP depende da virada diária (Obrigado é padrão mensal fixo,
 // Misterioso só muda quando um evento entra/sai da janela de 7 dias —
 // resolvido sozinho na próxima renderização da aba).
+//
+// (6.3) A virada do dia redesenha a lista MANTENDO a busca e o filtro
+// ALL/COM/SEM que estão na tela (refreshVipPanelKeepingFilters). Antes
+// chamava renderVipPanel() sem argumentos, que zerava a lista pra
+// "tudo" enquanto o campo de busca e o botão ativo continuavam
+// mostrando o filtro antigo — tela mentindo pro usuário.
+//
+// (6.3) mountToken: o mount() é assíncrono (3 awaits no final). Se o
+// usuário sair da rota antes de terminarem, cada etapa seguinte confere
+// o token e desiste — sem isso, as etapas atrasadas escreveriam no DOM
+// da tela seguinte (ou duplicariam listeners nela). Os init* de
+// ui-vip-panel.js recebem a função isStale() pelo mesmo motivo: o await
+// acontece DENTRO deles, antes de tocar no DOM.
 //
 // initVipFilters()/initVipTabs() só registram listeners em elementos
 // DENTRO do container (nunca em document) — não precisam de cleanup
@@ -32,9 +45,13 @@
 // esses 2 valores já carregados em vez de buscar de novo (ver
 // checkAndCloseMonthlyHistory em vip-history-store.js).
 
-import { renderVipPanel, initVipFilters, initVipTabs, initObrigadoPanel, initMisteriosoPanel, initHistoryTab, initVipBonusTemplatePanel } from './ui-vip-panel.js';
+import {
+  renderVipPanel, refreshVipPanelKeepingFilters, initVipFilters, initVipTabs,
+  initObrigadoPanel, initMisteriosoPanel, initHistoryTab, initVipBonusTemplatePanel
+} from './ui-vip-panel.js';
 
 let dailyTimer = null;
+let mountToken = 0;
 
 function scheduleDailyUpdate() {
   if (dailyTimer) clearTimeout(dailyTimer);
@@ -42,12 +59,15 @@ function scheduleDailyUpdate() {
   const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
   const ms = nextMidnight - now;
   dailyTimer = setTimeout(() => {
-    renderVipPanel();
+    refreshVipPanelKeepingFilters();
     scheduleDailyUpdate();
   }, ms);
 }
 
 export async function mount(container) {
+  const token = ++mountToken;
+  const isStale = () => token !== mountToken;
+
   container.innerHTML = `
     <div class="page-header">
       <div class="page-header-text">
@@ -146,12 +166,16 @@ export async function mount(container) {
   initVipBonusTemplatePanel();
   renderVipPanel();
   scheduleDailyUpdate();
-  await initObrigadoPanel();
-  await initMisteriosoPanel();
-  await initHistoryTab();
+
+  await initObrigadoPanel(isStale);
+  if (isStale()) return;
+  await initMisteriosoPanel(isStale);
+  if (isStale()) return;
+  await initHistoryTab(isStale);
 }
 
 export function unmount() {
+  mountToken++; // invalida qualquer mount() ainda esperando um await
   if (dailyTimer) {
     clearTimeout(dailyTimer);
     dailyTimer = null;

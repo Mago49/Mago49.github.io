@@ -76,15 +76,17 @@ export function computeVipMonthlyTotals(platforms, refDate) {
   platforms.forEach(platform => {
     if (platform.group !== 'com' && platform.group !== 'sem') return;
     const bonus = getVipBonus(platform, refDate);
-    if (platform.group === 'com') {
-      totals.dailyCom += bonus.daily;
-      totals.weeklyCom += bonus.weekly;
-      totals.monthlyCom += bonus.monthly;
-    } else {
-      totals.dailySem += bonus.daily;
-      totals.weeklySem += bonus.weekly;
-      totals.monthlySem += bonus.monthly;
-    }
+    // SUB-ENTREGA 6.2: Com/Sem pelo grupo que valia em cada DIA do mês
+    // (byGroup, ver getVipBonus em cycle-logic.js), não pelo grupo atual da
+    // plataforma — quem trocou de grupo no meio do mês tinha o mês inteiro
+    // jogado num lado só. O total da plataforma não muda.
+    const g = bonus.byGroup;
+    totals.dailyCom += g.com.daily;
+    totals.weeklyCom += g.com.weekly;
+    totals.monthlyCom += g.com.monthly;
+    totals.dailySem += g.sem.daily;
+    totals.weeklySem += g.sem.weekly;
+    totals.monthlySem += g.sem.monthly;
     totals.total += bonus.total;
   });
 

@@ -21,6 +21,15 @@
 //    o cleanup de initSortMenu(); guardamos aqui e disparamos no
 //    unmount().
 //
+// 4) (6.3) mountToken: o mount() é assíncrono (espera a personalização e
+//    o script do FullCalendar). Se o usuário sair da rota ENQUANTO ele
+//    ainda espera, o unmount() roda antes do mount() terminar — e, sem
+//    esta checagem, o mount "atrasado" continuaria depois, criando
+//    calendário, timer e listeners numa tela que já não existe (ou,
+//    pior, por cima da tela nova). Mesmo padrão já usado em
+//    view-perfil.js: cada mount() tira um número; depois de cada await,
+//    se o número mudou, o mount desiste em silêncio.
+//
 // FULLCALENDAR VIA CDN: o JS é carregado SOB DEMANDA (lazy), só quando
 // esta view monta pela primeira vez — não fica no <head> global do
 // shell. O CSS do FullCalendar é leve e fica global (ver index.html),
@@ -28,7 +37,9 @@
 // contrariaria o próprio cuidado já documentado no Sistema 1
 // (main-inicio.js: "não carrega a biblioteca FullCalendar, economizando
 // peso à toa"). Cacheado via fullCalendarLoadPromise — baixa uma única
-// vez por sessão, mesmo entrando e saindo da rota repetidas vezes.
+// vez por sessão, mesmo entrando e saindo da rota repetidas vezes. Se o
+// download falhar, o cache é limpo (6.3) pra a próxima visita tentar de
+// novo em vez de ficar presa na falha até recarregar o app.
 //
 // FOOTER/LEGENDA (#appFooter): só esta página tem legenda fixa. Criada
 // dinamicamente aqui no mount() e removida no unmount() (Opção A). A
@@ -66,6 +77,7 @@ let footerEl = null;
 let fullCalendarLoadPromise = null;
 let sortMenuCleanup = null;
 let cardCustomizationCleanup = null;
+let mountToken = 0;
 
 function loadFullCalendarScript() {
   if (window.FullCalendar) return Promise.resolve();
@@ -75,7 +87,12 @@ function loadFullCalendarScript() {
     const script = document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js';
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Falha ao carregar FullCalendar'));
+    script.onerror = () => {
+      // Libera o cache e remove a tag falha — a próxima visita tenta de novo.
+      fullCalendarLoadPromise = null;
+      script.remove();
+      reject(new Error('Falha ao carregar FullCalendar'));
+    };
     document.head.appendChild(script);
   });
 
@@ -99,6 +116,8 @@ function scheduleDailyUpdate() {
 }
 
 export async function mount(container) {
+  const token = ++mountToken;
+
   // Item 26j: sem subtítulo. Item 26k: novo título. Nav não entra aqui —
   // já é global (top-nav do shell, index.html), sempre acima de
   // qualquer view (resolve o Item 26l automaticamente).
@@ -156,12 +175,15 @@ export async function mount(container) {
   // cards, senão a primeira renderização da sessão abriria sem cor/
   // marcador mesmo já tendo dado salvo no Firestore.
   await loadCardCustomization(state.currentUid);
+  if (token !== mountToken) return; // saiu da rota durante o await
+
   cardCustomizationCleanup = initCardCustomizationPanel(
     document.getElementById('cardCustomizationMount'),
     () => renderPlatformCards()
   );
 
   await loadFullCalendarScript();
+  if (token !== mountToken) return; // saiu da rota durante o download
 
   createCalendar();
   sortMenuCleanup = initPlatformCardsControls();
@@ -174,6 +196,8 @@ export async function mount(container) {
 }
 
 export function unmount() {
+  mountToken++; // invalida qualquer mount() ainda esperando um await
+
   if (dailyTimer) {
     clearTimeout(dailyTimer);
     dailyTimer = null;

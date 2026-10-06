@@ -32,6 +32,13 @@
 // mount() da view — sem isso, sair do Hub e voltar reaproveitaria a
 // última busca/seleção/página de uma visita anterior (mesmo cuidado já
 // documentado em ui-platform-cards.js -> resetPlatformCardsFilters()).
+//
+// (6.3) NAVEGAÇÃO DO "DEPÓSITOS - HOJE": os botões ← → agora são
+// CIRCULARES (← na primeira vai pra última; → na última volta pra
+// primeira) e só ficam desabilitados quando há 1 plataforma (nada pra
+// navegar). Usam a classe própria .codigo-nav-btn (codigo.css) — antes
+// usavam .btn-cancel-modal (modals.css), que só tem forma/padding dentro
+// de .reset-modal-buttons; fora dali o botão perdia o acabamento.
 
 import { state } from './state.js';
 import { formatCurrency, escapeHtml } from './utils.js';
@@ -196,32 +203,38 @@ function renderDepositsTodayContent() {
   if (depositsTodayIndex >= entries.length) depositsTodayIndex = entries.length - 1;
   if (depositsTodayIndex < 0) depositsTodayIndex = 0;
 
+  const total = entries.length;
   const current = entries[depositsTodayIndex];
+  // Com 1 plataforma só, não há pra onde navegar. Com 2 ou mais, a
+  // navegação é circular — nenhum botão fica desabilitado.
+  const canNavigate = total > 1;
 
   const nav = document.createElement('div');
   nav.className = 'codigo-nav-row';
 
   const prevBtn = document.createElement('button');
   prevBtn.type = 'button';
-  prevBtn.className = 'btn-cancel-modal';
+  prevBtn.className = 'codigo-nav-btn';
   prevBtn.textContent = '←';
-  prevBtn.disabled = depositsTodayIndex === 0;
+  prevBtn.setAttribute('aria-label', 'Plataforma anterior');
+  prevBtn.disabled = !canNavigate;
   prevBtn.addEventListener('click', () => {
-    depositsTodayIndex -= 1;
+    depositsTodayIndex = (depositsTodayIndex - 1 + total) % total;
     renderDepositsTodayContent();
   });
 
   const counter = document.createElement('span');
   counter.className = 'codigo-nav-counter';
-  counter.textContent = `${depositsTodayIndex + 1} / ${entries.length}`;
+  counter.textContent = `${depositsTodayIndex + 1} / ${total}`;
 
   const nextBtn = document.createElement('button');
   nextBtn.type = 'button';
-  nextBtn.className = 'btn-cancel-modal';
+  nextBtn.className = 'codigo-nav-btn';
   nextBtn.textContent = '→';
-  nextBtn.disabled = depositsTodayIndex === entries.length - 1;
+  nextBtn.setAttribute('aria-label', 'Próxima plataforma');
+  nextBtn.disabled = !canNavigate;
   nextBtn.addEventListener('click', () => {
-    depositsTodayIndex += 1;
+    depositsTodayIndex = (depositsTodayIndex + 1) % total;
     renderDepositsTodayContent();
   });
 

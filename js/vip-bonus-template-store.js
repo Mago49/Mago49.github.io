@@ -19,9 +19,21 @@
 // state.vipBonusTemplates é atualizado de forma OTIMISTA, antes do commit
 // assíncrono — mesmo padrão de card-customization-store.js. É essa lista
 // que cycle-logic.js lê, de forma síncrona, pra calcular o bônus.
+//
+// (6.3b) FALHA DE GRAVAÇÃO: se o commit for recusado/falhar, a lista em
+// memória VOLTA ao que era antes (senão a tela e os cálculos de bônus
+// continuariam usando um template que não existe no banco — e o próximo
+// login abriria sem ele) e o usuário recebe um aviso claro pra tentar de
+// novo. O aviso genérico de firebase-init.js (showSaveFailureToast)
+// continua existindo; este é o aviso ESPECÍFICO, que diz o que foi
+// desfeito. `options.onFailure` deixa a tela se redesenhar depois do
+// desfazer. A reversão só acontece se a lista ainda tem EXATAMENTE o que
+// esta gravação colocou — se o usuário já salvou outra versão do mesmo
+// template nesse meio tempo, a mais nova é preservada.
 
 import { db, collection, doc, getDocs, deleteDoc, writeBatch } from './firebase-init.js';
 import { state } from './state.js';
+import { showAppAlert } from './utils.js';
 import {
   validateVipTemplate, cleanVipLevels, isVipTemplateUpdateSafe,
   isVipTemplateInUse, findVipTemplateById
@@ -64,11 +76,24 @@ export async function loadVipBonusTemplates(uid) {
   return { templates, invalidIds };
 }
 
+// Desfaz na memória uma gravação que falhou. Devolve true se desfez.
+function rollbackSave(id, stored, previous) {
+  const list = ensureStateList();
+  const idx = list.findIndex(t => t.id === id);
+  if (idx === -1 || list[idx] !== stored) return false; // já mudou depois — não mexe
+  if (previous) list[idx] = previous; else list.splice(idx, 1);
+  return true;
+}
+
 /**
  * Cria (sem id) ou atualiza (com id) um template.
+ * @param {string} uid
+ * @param {Object} template
+ * @param {{onFailure?: () => void}} [options] onFailure: chamado depois que
+ *        uma gravação FALHOU e a memória foi desfeita (pra redesenhar a tela).
  * @returns {{ok:true, id:string} | {ok:false, error:string}}
  */
-export function saveVipBonusTemplate(uid, template) {
+export function saveVipBonusTemplate(uid, template, options = {}) {
   if (!uid) return { ok: false, error: 'Nenhum usuário logado.' };
 
   const check = validateVipTemplate(template);
@@ -76,9 +101,10 @@ export function saveVipBonusTemplate(uid, template) {
 
   const list = ensureStateList();
   const isUpdate = !!template.id;
+  let previous = null;
 
   if (isUpdate) {
-    const previous = findVipTemplateById(list, template.id);
+    previous = findVipTemplateById(list, template.id);
     if (!previous) {
       return { ok: false, error: 'Template não está carregado — recarregue a página antes de editar.' };
     }
@@ -92,22 +118,36 @@ export function saveVipBonusTemplate(uid, template) {
     versions: template.versions.map(v => ({ from: v.from, levels: cleanVipLevels(v.levels) }))
   };
 
+  // O batch é montado ANTES de mexer na memória: se montar falhar, nada mudou.
   const batch = writeBatch(db);
   batch.set(doc(getTemplatesCollection(uid), id), { ...clean, updatedAt: new Date().toISOString() });
-  batch.commit().catch(err => console.error('Erro ao salvar template do Bônus VIP:', err));
 
   const stored = { id, ...clean };
   const idx = list.findIndex(t => t.id === id);
   if (idx === -1) list.push(stored); else list[idx] = stored;
+
+  batch.commit().catch(err => {
+    console.error('Erro ao salvar template do Bônus VIP:', err);
+    const undone = rollbackSave(id, stored, previous);
+    showAppAlert(
+      `Não foi possível salvar o template "${clean.name}" no banco de dados` +
+      (undone ? ' — a alteração foi desfeita na tela.' : '.') +
+      ' Verifique a internet e tente salvar de novo.'
+    );
+    if (undone && typeof options.onFailure === 'function') options.onFailure();
+  });
 
   return { ok: true, id };
 }
 
 /**
  * Exclui um template — só se nenhuma plataforma o usa nem usou.
+ * Se a exclusão falhar no banco, o template volta pra lista (mesma posição)
+ * e o usuário é avisado.
+ * @param {{onFailure?: () => void}} [options]
  * @returns {{ok:true} | {ok:false, error:string}}
  */
-export function deleteVipBonusTemplate(uid, templateId, platforms = state.platforms) {
+export function deleteVipBonusTemplate(uid, templateId, platforms = state.platforms, options = {}) {
   if (!uid || !templateId) return { ok: false, error: 'Template inválido.' };
 
   if (isVipTemplateInUse(platforms, templateId)) {
@@ -117,9 +157,28 @@ export function deleteVipBonusTemplate(uid, templateId, platforms = state.platfo
     };
   }
 
-  deleteDoc(doc(db, 'users', uid, 'vipBonusTemplates', templateId))
-    .catch(err => console.error('Erro ao remover template do Bônus VIP:', err));
+  const list = ensureStateList();
+  const removedIndex = list.findIndex(t => t.id === templateId);
+  const removed = removedIndex === -1 ? null : list[removedIndex];
 
-  state.vipBonusTemplates = ensureStateList().filter(t => t.id !== templateId);
+  state.vipBonusTemplates = list.filter(t => t.id !== templateId);
+
+  deleteDoc(doc(db, 'users', uid, 'vipBonusTemplates', templateId))
+    .catch(err => {
+      console.error('Erro ao remover template do Bônus VIP:', err);
+      let restored = false;
+      const current = ensureStateList();
+      if (removed && !current.some(t => t.id === templateId)) {
+        current.splice(Math.min(removedIndex, current.length), 0, removed);
+        restored = true;
+      }
+      showAppAlert(
+        `Não foi possível excluir o template${removed ? ` "${removed.name}"` : ''} no banco de dados` +
+        (restored ? ' — ele voltou pra lista.' : '.') +
+        ' Verifique a internet e tente de novo.'
+      );
+      if (restored && typeof options.onFailure === 'function') options.onFailure();
+    });
+
   return { ok: true };
 }

@@ -446,8 +446,17 @@ function findTemplateForPlatform(platformId) {
 
 // Carrega os templates do Firestore e faz a primeira renderização —
 // chamado uma única vez pela view, depois do login/mount.
-export async function initMisteriosoPanel() {
-  misteriosoTemplates = await loadMisteriosoTemplates(state.currentUid);
+export async function initMisteriosoPanel(isStale = () => false) {
+  // (6.3) zera o formulário de template de uma visita anterior (o botão
+  // "Gerenciar templates" nasce fechado no DOM novo).
+  misteriosoTemplateFormOpen = false;
+  misteriosoEditingTemplateId = null;
+  misteriosoTemplateSearch = '';
+  misteriosoSelectedPlatformIds = new Set();
+
+  const loadedTemplates = await loadMisteriosoTemplates(state.currentUid);
+  if (isStale()) return;
+  misteriosoTemplates = loadedTemplates;
   const now = new Date();
   misteriosoForecastMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   initMisteriosoControls();
@@ -997,6 +1006,7 @@ export async function initHistoryTab(isStale = () => false) {
   if (isStale()) return;
   await renderHistoryList(isStale);
 }
+
 // ---------- TEMPLATES DO BÔNUS VIP (botão "Templates" da aba VIP) ----------
 // Template = tabela de Bônus Diário (BD) / Semanal (BS) / Mensal (BM) por
 // nível VIP 0 a 5, pra plataformas que pagam valores diferentes do padrão.
@@ -1048,6 +1058,14 @@ export function refreshVipPanelKeepingFilters() {
 function resetVipTemplateForm() {
   vipTemplateFormMode = null;
   vipTemplateEditingId = null;
+}
+
+// (6.3b) Chamada pelo store quando uma gravação/exclusão de template FALHOU
+// e a memória foi desfeita: redesenha o painel e a lista pra não mostrar
+// mais o que não existe no banco.
+function refreshAfterVipTemplateFailure() {
+  renderVipTemplateManager();
+  refreshVipPanelKeepingFilters();
 }
 
 export function initVipBonusTemplatePanel() {
@@ -1119,7 +1137,7 @@ function renderVipTemplateManager() {
       deleteBtn.addEventListener('click', async () => {
         const ok = await showAppConfirm(`Excluir o template "${t.name}"? Só é possível se nenhuma plataforma o usa nem usou.`);
         if (!ok) return;
-        const result = deleteVipBonusTemplate(state.currentUid, t.id, state.platforms);
+        const result = deleteVipBonusTemplate(state.currentUid, t.id, state.platforms, { onFailure: refreshAfterVipTemplateFailure });
         if (!result.ok) {
           await showAppAlert(result.error);
           return;
@@ -1249,7 +1267,7 @@ function buildVipTemplateForm(wrap) {
         await showAppAlert(created.error);
         return;
       }
-      result = saveVipBonusTemplate(state.currentUid, created.template);
+      result = saveVipBonusTemplate(state.currentUid, created.template, { onFailure: refreshAfterVipTemplateFailure });
     } else {
       const versioned = addVipTemplateVersion(editing, parsed.levels);
       if (!versioned.ok) {
@@ -1268,7 +1286,7 @@ function buildVipTemplateForm(wrap) {
         );
         if (!ok) return;
       }
-      result = saveVipBonusTemplate(state.currentUid, { ...versioned.template, id: editing.id, name });
+      result = saveVipBonusTemplate(state.currentUid, { ...versioned.template, id: editing.id, name }, { onFailure: refreshAfterVipTemplateFailure });
     }
 
     if (!result.ok) {
