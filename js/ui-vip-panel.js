@@ -166,8 +166,19 @@ let obrigadoEditMode = false;
 let obrigadoAddSearch = '';
 let obrigadoSelectedIds = new Set();
 
-export async function initObrigadoPanel() {
-  obrigadoValuePerAppearance = await loadObrigadoValuePerAppearance(state.currentUid);
+// (6.3) isStale: função passada por view-vip.js — retorna true se o usuário
+// já saiu da rota enquanto o await abaixo esperava (evita ligar listeners
+// no DOM da tela seguinte). O reset do modo edição/busca/seleção garante
+// que voltar à aba nunca reaproveita "Concluir edição" de uma visita
+// anterior com o botão visualmente em "✏️ Editar".
+export async function initObrigadoPanel(isStale = () => false) {
+  obrigadoEditMode = false;
+  obrigadoAddSearch = '';
+  obrigadoSelectedIds = new Set();
+
+  const loadedValue = await loadObrigadoValuePerAppearance(state.currentUid);
+  if (isStale()) return;
+  obrigadoValuePerAppearance = loadedValue;
   initObrigadoControls();
   renderObrigadoPanel();
 }
@@ -950,12 +961,13 @@ function buildHistoryMonthCard(entry) {
   return card;
 }
 
-async function renderHistoryList() {
+async function renderHistoryList(isStale = () => false) {
   const listEl = document.getElementById('vipHistoryList');
   if (!listEl) return;
   listEl.innerHTML = '<div class="history-empty">Carregando histórico...</div>';
 
   const list = await loadHistoryList(state.currentUid);
+  if (isStale()) return;
 
   listEl.innerHTML = '';
   if (list.length === 0) {
@@ -975,16 +987,16 @@ async function renderHistoryList() {
 // Chamada uma única vez no mount() da view, depois das outras 2 abas
 // terem carregado seus dados (obrigadoValuePerAppearance,
 // misteriosoTemplates — variáveis de módulo já preenchidas nesse ponto).
-export async function initHistoryTab() {
+export async function initHistoryTab(isStale = () => false) {
   await checkAndCloseMonthlyHistory(
     state.currentUid,
     state.platforms,
     misteriosoTemplates,
     obrigadoValuePerAppearance
   );
-  await renderHistoryList();
+  if (isStale()) return;
+  await renderHistoryList(isStale);
 }
-
 // ---------- TEMPLATES DO BÔNUS VIP (botão "Templates" da aba VIP) ----------
 // Template = tabela de Bônus Diário (BD) / Semanal (BS) / Mensal (BM) por
 // nível VIP 0 a 5, pra plataformas que pagam valores diferentes do padrão.
@@ -1026,7 +1038,7 @@ function getPlatformsUsingTemplate(templateId) {
 
 // Redesenha a lista da aba VIP mantendo a busca e o filtro ALL/COM/SEM que
 // estão na tela (renderVipPanel() sem argumentos zeraria os dois).
-function refreshVipPanelKeepingFilters() {
+export function refreshVipPanelKeepingFilters() {
   const searchEl = document.getElementById('vipSearch');
   const activeBtn = document.querySelector('.vip-filter-btn.active');
   const group = activeBtn ? activeBtn.dataset.group : 'all';
