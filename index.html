@@ -12,7 +12,58 @@
   background: #b45309; color: #fff; text-align: center;
   font-weight: 700; font-size: 0.85rem; padding: 0.5rem;
 }
+    /* DIAGNÓSTICO TEMPORÁRIO (pelo celular, sem console) */
+    #diagBox {
+      position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 10000;
+      max-height: 60vh; overflow: auto; display: none;
+      background: #7f1d1d; color: #fff; font: 12px/1.4 monospace;
+      padding: 10px; border-radius: 10px; white-space: pre-wrap; word-break: break-word;
+    }
   </style>
+  <!-- DIAGNÓSTICO TEMPORÁRIO: mostra na tela qualquer erro de carregamento
+       ou de execução (o celular não tem console). Roda ANTES do app.
+       Remover depois que o problema for encontrado (voltar ao index.html
+       original). Não grava nada, não envia nada pra lugar nenhum. -->
+  <script>
+    (function () {
+      function show(msg) {
+        var box = document.getElementById('diagBox');
+        if (!box) {
+          box = document.createElement('div');
+          box.id = 'diagBox';
+          (document.body || document.documentElement).appendChild(box);
+        }
+        box.style.display = 'block';
+        box.textContent += '• ' + msg + '\n\n';
+      }
+      window.__diagShow = show;
+      // capture=true: pega também arquivo que não carregou (404) — script/css.
+      window.addEventListener('error', function (e) {
+        var t = e.target;
+        if (t && t !== window && (t.src || t.href)) {
+          show('ARQUIVO NÃO CARREGOU: ' + (t.src || t.href));
+          return;
+        }
+        show('ERRO: ' + (e.message || '') + '\nArquivo: ' + (e.filename || '?') + '\nLinha: ' + (e.lineno || '?') + ':' + (e.colno || '?'));
+      }, true);
+      window.addEventListener('unhandledrejection', function (e) {
+        var r = e.reason;
+        show('ERRO (promessa): ' + (r && (r.stack || r.message) ? (r.stack || r.message) : String(r)));
+      });
+      // Se em 12 s o app não saiu da tela de carregamento, avisa.
+      setTimeout(function () {
+        var loading = document.getElementById('authLoading');
+        var main = document.getElementById('appMain');
+        var login = document.getElementById('authScreen');
+        var stuck = loading && !loading.classList.contains('app-hidden') &&
+          main && main.classList.contains('app-hidden') &&
+          login && login.classList.contains('app-hidden');
+        if (stuck && !document.getElementById('diagBox')) {
+          show('O app não saiu da tela de carregamento em 12 s e nenhum erro foi capturado. Tire um print e mande.');
+        }
+      }, 12000);
+    })();
+  </script>
   <link rel="stylesheet" href="css/variables.css" />
   <link rel="stylesheet" href="css/base.css" />
   <link rel="stylesheet" href="css/layout.css" />
