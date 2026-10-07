@@ -53,3 +53,371 @@
   display: none;
   white-space: nowrap;
 }
+
+/* =====================================================================
+   (Análises — Sub-entrega 1) ABAS + ABA "ANÁLISES"
+   Só acréscimos — nenhuma regra acima foi alterada. O visual das abas
+   vem de .vip-tabs/.vip-tab-btn (vip.css, global); aqui só o espaçamento
+   próprio desta página.
+   ===================================================================== */
+
+.graficos-tabs {
+  margin: 0 0 1.1rem;
+}
+
+/* Filtro de período */
+.graficos-period-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0 1.1rem;
+}
+
+.graficos-period-custom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.1rem 0;
+}
+
+.graficos-period-custom input[type="date"] {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 12px;
+  outline: none;
+}
+
+.graficos-period-badge {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 0.4rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.graficos-note-warn {
+  color: #b45309;
+  font-weight: 600;
+}
+
+/* Cards de resumo das análises (reaproveitam .summary-card) */
+.analise-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+  padding: 0 1.1rem 0.9rem;
+}
+
+.analise-pos {
+  color: #15803d;
+}
+
+.analise-neg {
+  color: #dc2626;
+}
+
+.analise-muted {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+/* Tabelas (Rollover / Bônus previsto) — rolagem horizontal no celular */
+.analise-table-wrap {
+  overflow-x: auto;
+  margin: 0.6rem 1.1rem 0.2rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+}
+
+.analise-table {
+  width: 100%;
+  min-width: 420px;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.analise-table th,
+.analise-table td {
+  padding: 0.55rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  white-space: nowrap;
+}
+
+.analise-table th {
+  background: #f8fafc;
+  color: #475569;
+  font-weight: 700;
+  position: sticky;
+  top: 0;
+}
+
+.analise-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.analise-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+@media (max-width: 640px) {
+  .graficos-period-bar,
+  .graficos-period-custom {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+  }
+  .analise-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 0 0.6rem 0.9rem;
+  }
+  .analise-table-wrap {
+    margin-left: 0.6rem;
+    margin-right: 0.6rem;
+  }
+}
+
+/* =====================================================================
+   (Total Apostado — Sub-entrega 2) ACORDEÃO POR PLATAFORMA
+   Só acréscimos — nenhuma regra acima foi alterada.
+   ===================================================================== */
+
+.wager-search-wrap {
+  padding: 0 1.1rem 0.9rem;
+}
+
+.wager-search-wrap input[type="search"] {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 12px;
+  outline: none;
+}
+
+.wager-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0 1.1rem 0.4rem;
+}
+
+.wager-row {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.wager-row.open {
+  border-color: rgba(37, 99, 235, 0.35);
+}
+
+.wager-row-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 0.85rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.wager-row-left,
+.wager-row-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.wager-row-left {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+}
+
+.wager-row-name {
+  font-weight: 700;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.wager-row-sub {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.wager-row-sub-warn {
+  color: #b45309;
+  font-weight: 600;
+}
+
+.wager-row-total {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.wager-row-chevron {
+  color: #94a3b8;
+  transition: transform 0.15s ease;
+}
+
+.wager-row.open .wager-row-chevron {
+  transform: rotate(180deg);
+}
+
+.wager-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 0.2rem 0.85rem 0.9rem;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+/* Composição: Referência + Apostas depois = Total */
+.wager-composition {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding-top: 0.7rem;
+  font-size: 0.88rem;
+}
+
+.wager-comp-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.wager-comp-line .num {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.wager-comp-total {
+  margin-top: 0.2rem;
+  padding-top: 0.35rem;
+  border-top: 1px dashed rgba(15, 23, 42, 0.15);
+  font-weight: 700;
+}
+
+.wager-note {
+  margin: 0.2rem 0 0;
+}
+
+/* Formulário de nova referência */
+.wager-form {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.5rem 0.6rem;
+  padding: 0.75rem;
+  background: #f8fafc;
+  border-radius: 10px;
+}
+
+.wager-form label {
+  font-size: 0.82rem;
+  color: #475569;
+  font-weight: 600;
+}
+
+.wager-form input {
+  min-width: 0;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 10px;
+  outline: none;
+  background: #fff;
+}
+
+.wager-form .btn-confirm {
+  grid-column: 1 / -1;
+  justify-self: end;
+}
+
+/* Histórico de referências */
+.wager-history-title {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+  color: #334155;
+}
+
+.wager-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.wager-history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 10px;
+  font-size: 0.85rem;
+}
+
+.wager-history-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.6rem;
+}
+
+.wager-history-date {
+  color: #475569;
+}
+
+.wager-history-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.wager-badge {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #15803d;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.wager-del-btn {
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .wager-search-wrap,
+  .wager-list {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+  }
+  .wager-form {
+    grid-template-columns: 1fr;
+  }
+  .wager-form .btn-confirm {
+    justify-self: stretch;
+  }
+}
