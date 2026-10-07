@@ -18,6 +18,14 @@ import { db, collection, doc, getDoc, getDocs, deleteDoc, writeBatch, showSaveFa
 // Obrigado — padrão que se repete todo mês, sem depender de ciclo/reset
 // (Página 3, aba "Bônus Obrigado"). Array vazio = plataforma ainda não
 // cadastrada em nenhum dia.
+//
+// (Total Apostado — Sub-entrega 2) wagerAnchors: histórico de REFERÊNCIAS
+// do total apostado real ({ id, at, value, createdAt } — ver
+// wager-total-logic.js). OBRIGATÓRIO estar aqui: este normalize monta o
+// objeto só com os campos que conhece e savePlatform grava o documento
+// INTEIRO (batch.set sem merge) — um campo ausente daqui seria apagado do
+// banco no próximo salvamento de qualquer tela. Mesmo padrão defensivo dos
+// outros logs: conta antiga começa com array vazio, nunca `undefined`.
 export function normalizePlatformData(parsed) {
   if (!Array.isArray(parsed)) return null;
   return parsed.map((p, i) => {
@@ -58,6 +66,8 @@ export function normalizePlatformData(parsed) {
       // simplesmente começam com o array vazio, nunca `undefined`.
       otherBonusLog: Array.isArray(p.otherBonusLog) ? p.otherBonusLog : [],
       levelHistory: Array.isArray(p.levelHistory) ? p.levelHistory : [],
+      // (Total Apostado — Sub-entrega 2) ver nota no topo do arquivo.
+      wagerAnchors: Array.isArray(p.wagerAnchors) ? p.wagerAnchors : [],
       codigoConfig: (p.codigoConfig && typeof p.codigoConfig === 'object')
         ? p.codigoConfig : { tipo: null, fixo: '', baseDate: null, variavelInicio: 0 },
       codigoDeposito: (p.codigoDeposito && typeof p.codigoDeposito === 'object')
@@ -182,10 +192,17 @@ export async function loadPlatformsFromFirestore(uid) {
 //     decide). A alteração continua na tela e vai junto na próxima
 //     gravação bem-sucedida (o documento é gravado inteiro). O aviso
 //     genérico de firebase-init.js (showSaveFailureToast) já aparece.
+//
+// (Total Apostado — Sub-entrega 2) 'wagerAnchors' entra na trava de
+// encolhimento: só a exclusão deliberada de uma referência (que passa
+// allowShrink: ['wagerAnchors']) pode diminuir a lista. A segunda barreira
+// é a Regra do Firestore, que recusa qualquer gravação que REMOVA o campo
+// de um documento que já o tem (protege contra aparelho/aba com JS antigo,
+// que não conhece o campo).
 const GUARDED_FIELDS = [
   'depositLog', 'deposits', 'withdrawals', 'betEntries', 'financeWeeks',
   'otherBonusLog', 'balancePhases', 'betDays', 'misteriosoBonusLog',
-  'obrigadoDays', 'levelHistory'
+  'obrigadoDays', 'levelHistory', 'wagerAnchors'
 ];
 
 // id da plataforma -> { campo: quantidade de itens } (carga ou última gravação)

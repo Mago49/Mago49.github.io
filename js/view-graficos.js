@@ -24,6 +24,29 @@
 // (Sub-entrega G) Heatmap "Bônus Avulso" recebe o resolvedor de ctx (o
 // avulso efetivo depende da fórmula do dia) e a nota do "Bônus por Tipo"
 // explica que o Avulso agora inclui a diferença informada nos fechamentos.
+//
+// === (Análises — Sub-entrega 1) ABAS ===
+// A página passa a ter abas: "Visão Geral" (TUDO que já existia, sem
+// nenhuma mudança de lógica — as seções só foram envolvidas no painel da
+// aba) e "Análises" (ui-graficos-analise.js + analise-logic.js).
+//   - Visual das abas reaproveita .vip-tabs/.vip-tab-btn (vip.css, já
+//     global). A SELEÇÃO usa só .graficos-tab-btn/.graficos-tab-panel e
+//     fica restrita ao container desta view — nunca colide com o
+//     applyActiveTab de ui-vip-panel.js (que usa seletor global).
+//   - Análises é montada SOB DEMANDA (primeira abertura da aba), depois do
+//     Chart.js carregado e com o painel já visível — canvas em painel
+//     oculto nasce com tamanho 0.
+//   - Voltar pra uma aba chama .resize() nos gráficos dela (podem ter sido
+//     redesenhados escondidos na virada do dia).
+//   - A aba ativa é lembrada durante a sessão (variável de módulo).
+//   - Nenhuma leitura/gravação nova no Firestore.
+//
+// === (Total Apostado — Sub-entrega 2) ===
+// Terceira aba, "Total Apostado" (ui-total-apostado.js + wager-total-
+// logic.js). Não usa Chart.js: monta na primeira abertura da aba e é
+// redesenhada a cada volta pra ela (os lançamentos podem ter mudado no
+// Financeiro) e na virada do dia. É a ÚNICA parte desta página que grava
+// no banco — sempre via savePlatform (platforms-store.js), nunca direto.
 
 import { state } from './state.js';
 import { formatCurrency } from './utils.js';
@@ -35,6 +58,8 @@ import {
 } from './analytics-logic.js';
 import { loadBonusContextStrict } from './bonus-context-store.js';
 import { scheduleDailySnapshot } from './daily-snapshot-store.js';
+import { mountAnalise, refreshAnalise, resizeAnaliseCharts, unmountAnalise } from './ui-graficos-analise.js';
+import { mountTotalApostado, refreshTotalApostado, unmountTotalApostado } from './ui-total-apostado.js';
 
 let dailyTimer = null;
 let chartJsLoadPromise = null;
@@ -54,6 +79,13 @@ let mountToken = 0; // (6.3) invalida mount() assíncrono se o usuário sair da 
 let obrigadoValuePerAppearance = 0.30;
 let misteriosoTemplates = [];
 let bonusContextConfirmed = false; // (Sub-entrega E)
+
+// (Análises — Sub-entrega 1)
+const GRAFICOS_TABS = ['geral', 'analises', 'apostado'];
+let activeGraficosTab = 'geral'; // lembrada durante a sessão
+let analiseMounted = false;
+let analiseMountPromise = null;
+let apostadoMounted = false; // (Total Apostado — Sub-entrega 2)
 
 function loadChartJsScript() {
   if (window.Chart) return Promise.resolve();
@@ -440,6 +472,88 @@ function initHeatmapControls() {
   }
 }
 
+// ---------- (Análises — Sub-entrega 1) ABAS ----------
+
+function getGeralCharts() {
+  return [balanceChart, depositWithdrawalChart, bonusTypeChart, rankingChart, resultBettingChart, wageredChart, bonusRoiChart];
+}
+
+// Monta a aba Análises uma única vez por visita à rota. Só depois do
+// Chart.js carregado e com o painel visível. Falha no Chart.js mostra o
+// motivo no próprio painel (a Visão Geral continua funcionando).
+function ensureAnaliseMounted(container, token) {
+  if (analiseMounted) return Promise.resolve();
+  if (analiseMountPromise) return analiseMountPromise;
+
+  analiseMountPromise = loadChartJsScript()
+    .then(() => {
+      if (token !== mountToken) return; // saiu da rota durante o download
+      if (activeGraficosTab !== 'analises') return; // trocou de aba antes de terminar: monta na próxima abertura
+      const root = container.querySelector('#graficosAnaliseRoot');
+      if (!root) return;
+      mountAnalise(root, { resolveCtx: resolveCtxForPlatform, contextConfirmed: bonusContextConfirmed });
+      analiseMounted = true;
+    })
+    .catch(err => {
+      console.error('Análises: não foi possível carregar o Chart.js:', err);
+      if (token !== mountToken) return;
+      const root = container.querySelector('#graficosAnaliseRoot');
+      if (root) {
+        root.innerHTML = '<p class="graficos-note graficos-note-warn"></p>';
+        root.firstElementChild.textContent = 'Não foi possível carregar a biblioteca de gráficos. Verifique a internet e abra a aba de novo.';
+      }
+    })
+    .finally(() => {
+      analiseMountPromise = null;
+    });
+
+  return analiseMountPromise;
+}
+
+function applyGraficosTab(container, token) {
+  if (!GRAFICOS_TABS.includes(activeGraficosTab)) activeGraficosTab = 'geral';
+
+  container.querySelectorAll('.graficos-tab-btn').forEach(btn => {
+    const isActive = btn.dataset.tab === activeGraficosTab;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+  container.querySelectorAll('.graficos-tab-panel').forEach(panel => {
+    panel.classList.toggle('app-hidden', panel.dataset.tabPanel !== activeGraficosTab);
+  });
+
+  hideHeatmapTooltip();
+
+  if (activeGraficosTab === 'geral') {
+    getGeralCharts().forEach(c => { if (c) c.resize(); });
+  } else if (activeGraficosTab === 'analises') {
+    if (analiseMounted) resizeAnaliseCharts();
+    else ensureAnaliseMounted(container, token);
+  } else if (activeGraficosTab === 'apostado') {
+    // (Total Apostado) sem Chart.js — monta na hora; na volta, redesenha.
+    if (apostadoMounted) {
+      refreshTotalApostado();
+    } else {
+      const root = container.querySelector('#graficosApostadoRoot');
+      if (root) {
+        mountTotalApostado(root);
+        apostadoMounted = true;
+      }
+    }
+  }
+}
+
+function initGraficosTabs(container, token) {
+  container.querySelectorAll('.graficos-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.tab === activeGraficosTab) return;
+      activeGraficosTab = btn.dataset.tab;
+      applyGraficosTab(container, token);
+    });
+  });
+  applyGraficosTab(container, token);
+}
+
 function refreshPage() {
   renderKpis();
   renderHeatmapCanvas();
@@ -458,6 +572,8 @@ function scheduleDailyUpdate() {
   const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
   dailyTimer = setTimeout(() => {
     refreshPage();
+    refreshAnalise(); // (Análises) não faz nada se a aba não foi aberta
+    refreshTotalApostado(); // (Total Apostado) idem
     scheduleDailyUpdate();
   }, nextMidnight - now);
 }
@@ -465,6 +581,9 @@ function scheduleDailyUpdate() {
 export async function mount(container) {
   const token = ++mountToken;
   heatmapLayout = null;
+  analiseMounted = false;
+  analiseMountPromise = null;
+  apostadoMounted = false;
   container.innerHTML = `
     <div class="page-header">
       <div class="page-header-text">
@@ -475,6 +594,14 @@ export async function mount(container) {
     </div>
 
     <p id="graficosContextNote" class="graficos-note app-hidden"></p>
+
+    <div class="vip-tabs graficos-tabs" role="tablist" aria-label="Seções de gráficos">
+      <button type="button" class="vip-tab-btn graficos-tab-btn" role="tab" data-tab="geral">Visão Geral</button>
+      <button type="button" class="vip-tab-btn graficos-tab-btn" role="tab" data-tab="analises">Análises</button>
+      <button type="button" class="vip-tab-btn graficos-tab-btn" role="tab" data-tab="apostado">Total Apostado</button>
+    </div>
+
+    <div class="graficos-tab-panel" data-tab-panel="geral" role="tabpanel">
 
     <section class="card-shell graficos-section" aria-label="KPIs Globais">
       <div class="section-heading" style="padding:0 0 0.9rem;">
@@ -570,6 +697,16 @@ export async function mount(container) {
       </div>
       <div id="heatmapTooltip" class="heatmap-tooltip"></div>
     </section>
+
+    </div>
+
+    <div class="graficos-tab-panel app-hidden" data-tab-panel="analises" role="tabpanel">
+      <div id="graficosAnaliseRoot"></div>
+    </div>
+
+    <div class="graficos-tab-panel app-hidden" data-tab-panel="apostado" role="tabpanel">
+      <div id="graficosApostadoRoot"></div>
+    </div>
   `;
 
   // (Sub-entrega E) Leitura estrita do contexto de bônus. Falha não impede
@@ -597,6 +734,11 @@ export async function mount(container) {
     scheduleDailySnapshot(state.currentUid, state.platforms, resolveCtxForPlatform);
   }
 
+  // (Análises) Abas — depois do contexto de bônus, pra a aba Análises
+  // receber bonusContextConfirmed já resolvido. Se a aba lembrada for
+  // Análises, a montagem dela espera o Chart.js sozinha.
+  initGraficosTabs(container, token);
+
   // Heatmap não depende do Chart.js — renderiza na hora, antes da
   // biblioteca terminar de baixar, pra não ficar esperando à toa.
   initHeatmapControls();
@@ -622,4 +764,11 @@ export function unmount() {
   if (resultBettingChart) { resultBettingChart.destroy(); resultBettingChart = null; }
   if (wageredChart) { wageredChart.destroy(); wageredChart = null; }
   if (bonusRoiChart) { bonusRoiChart.destroy(); bonusRoiChart = null; }
+  // (Análises)
+  unmountAnalise();
+  analiseMounted = false;
+  analiseMountPromise = null;
+  // (Total Apostado)
+  unmountTotalApostado();
+  apostadoMounted = false;
 }

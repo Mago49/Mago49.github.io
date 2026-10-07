@@ -37,8 +37,17 @@
 // agora recebe o ctx — ver "AVULSO EFETIVO" em bonus-ledger-logic.js):
 // sem dupla contagem quando o VIP diário é liberado depois de um
 // lançamento de "Inserir bônus hoje".
+//
+// === (Análises — Sub-entrega 3) LEITURA POR INTERVALO ===
+// loadDailySnapshotsRange: SÓ LEITURA, nova. Nada da gravação acima mudou.
+// Consulta por intervalo de id do documento (o id É a data 'AAAA-MM-DD'),
+// em ordem crescente, com teto de documentos — nunca lê a coleção inteira.
+// Regras do Firestore: o `read` de dailySnapshots já é liberado ao dono.
 
-import { db, doc, writeBatch } from './firebase-init.js';
+import {
+  db, collection, doc, writeBatch,
+  getDocs, query, where, orderBy, limit, documentId
+} from './firebase-init.js';
 import {
   toLocalDateString, computeLiveBalance, computeRolloverLive
 } from './finance-logic.js';
@@ -46,6 +55,10 @@ import { getExpectedBonusToday, getAlreadyLoggedToday } from './bonus-ledger-log
 import { getCurrentCycleDay } from './cycle-logic.js';
 
 const DEBOUNCE_MS = 4000;
+
+// (Análises — Sub-entrega 3) teto da leitura por intervalo.
+export const DAILY_SNAPSHOT_READ_MAX = 400;
+const DAY_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 let timer = null;
 let lastPayloadKey = null;
@@ -143,4 +156,46 @@ export function scheduleDailySnapshot(uid, platforms, resolveCtx) {
     timer = null;
     saveDailySnapshotNow(uid, platforms, resolveCtx);
   }, DEBOUNCE_MS);
+}
+
+// ============================================================
+// (Análises — Sub-entrega 3) LEITURA POR INTERVALO — só leitura
+// ============================================================
+// fromKey/toKey: 'AAAA-MM-DD' (inclusivos). Devolve Promise de
+// [{ day, updatedAt, platforms }] em ordem crescente de dia. Documento com
+// id fora do formato ou sem `platforms` em formato de mapa é ignorado
+// (nunca vira 0). Lança Error (mensagem em português) se os parâmetros
+// forem inválidos; erro de rede/permissão é propagado pra quem chama
+// decidir o que mostrar.
+export async function loadDailySnapshotsRange(uid, fromKey, toKey, max = DAILY_SNAPSHOT_READ_MAX) {
+  if (!uid) throw new Error('Nenhum usuário logado.');
+  if (typeof fromKey !== 'string' || typeof toKey !== 'string'
+    || !DAY_KEY_RE.test(fromKey) || !DAY_KEY_RE.test(toKey) || fromKey > toKey) {
+    throw new Error('Período inválido para os retratos diários.');
+  }
+  const safeMax = Math.max(1, Math.min(DAILY_SNAPSHOT_READ_MAX, Math.floor(Number(max) || DAILY_SNAPSHOT_READ_MAX)));
+
+  const q = query(
+    collection(db, 'users', uid, 'dailySnapshots'),
+    where(documentId(), '>=', fromKey),
+    where(documentId(), '<=', toKey),
+    orderBy(documentId()),
+    limit(safeMax)
+  );
+  const snap = await getDocs(q);
+
+  return snap.docs
+    .filter(d => DAY_KEY_RE.test(d.id))
+    .map(d => {
+      const data = d.data() || {};
+      const platforms = (data.platforms && typeof data.platforms === 'object' && !Array.isArray(data.platforms))
+        ? data.platforms
+        : null;
+      return {
+        day: d.id,
+        updatedAt: typeof data.updatedAt === 'string' ? data.updatedAt : null,
+        platforms
+      };
+    })
+    .filter(item => item.platforms !== null);
 }

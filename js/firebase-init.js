@@ -2,6 +2,12 @@
 // Único lugar do projeto onde initializeApp() é chamado.
 // Toda página nova deve importar auth/db DAQUI, nunca chamar initializeApp()
 // de novo — isso causa erro de "app já inicializado" ou aponta pro projeto errado.
+//
+// (Análises — Sub-entrega 3) Reexporta também query/where/orderBy/limit/
+// documentId — usados SÓ pra LEITURA por intervalo (dailySnapshots, ver
+// loadDailySnapshotsRange em daily-snapshot-store.js). Nenhuma função de
+// gravação nova: toda escrita continua passando pelo writeBatch/deleteDoc
+// abaixo (SAFE_MODE continua valendo).
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import {
@@ -10,6 +16,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
   getFirestore, collection, doc, getDoc, getDocs,
+  query, where, orderBy, limit, documentId,
   deleteDoc as _deleteDoc, writeBatch as _writeBatch
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { SAFE_MODE } from './dev-flags.js';
@@ -151,7 +158,10 @@ export function deleteDoc(ref) {
 // getDoc (singular) foi adicionado pra suportar o doc-sentinela em
 // platforms-store.js (ver loadPlatformsFromFirestore) — não muda nada do
 // que já existia, só soma uma leitura pontual nova.
+// (Análises — Sub-entrega 3) query/where/orderBy/limit/documentId: só
+// leitura por intervalo, ver nota no topo.
 export {
   signInWithPopup, signOut, onAuthStateChanged,
   collection, doc, getDoc, getDocs,
+  query, where, orderBy, limit, documentId,
 };
