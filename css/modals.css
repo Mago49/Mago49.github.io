@@ -351,3 +351,222 @@
   font-size: 0.9rem;
   padding: 0.5rem 0;
 }
+
+/* === (Sub-entrega 7a) TIPO DO DEPÓSITO — mini-contêiner centralizado ===
+   Criado por deposit-kinds.js (pickDepositKind) ao clicar em "Adicionar"
+   (Edição), "Registrar depósito" (Financeiro) ou "Tipo" (Histórico).
+   position: fixed + centro: a página por baixo não rola nem pula.
+   z-index 200: acima dos modais de Histórico/Reinício/Apostas (100) e
+   abaixo do alerta/confirmação global (.modal / appModal, 210). */
+
+.deposit-kind-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(1rem, env(safe-area-inset-top)) 1rem max(1rem, env(safe-area-inset-bottom));
+  background: rgba(15,23,42,0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  overscroll-behavior: contain;
+  animation: depositKindFade 0.14s ease-out;
+}
+
+.deposit-kind-box {
+  width: min(100%, 360px);
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 20px;
+  border: 1px solid rgba(15,23,42,0.08);
+  box-shadow: 0 20px 50px rgba(0,0,0,0.22);
+  padding: 1.1rem 1rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  animation: depositKindPop 0.16s ease-out;
+}
+
+.deposit-kind-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-dark, #0f172a);
+  text-align: center;
+}
+
+.deposit-kind-subtitle {
+  margin: -0.35rem 0 0;
+  font-size: 0.85rem;
+  color: #64748b;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.deposit-kind-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.deposit-kind-option {
+  --kind-color: #2563eb;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 56px;
+  padding: 0.65rem 0.8rem;
+  border: 1.5px solid #e2e8f0;
+  border-left: 5px solid var(--kind-color);
+  border-radius: 14px;
+  background: #f8fafc;
+  color: var(--text-dark, #0f172a);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.deposit-kind-option:hover,
+.deposit-kind-option:focus-visible {
+  background: #fff;
+  border-color: var(--kind-color);
+  outline: none;
+}
+
+.deposit-kind-option:active {
+  transform: scale(0.98);
+}
+
+.deposit-kind-option.is-current {
+  background: #fff;
+  border-color: var(--kind-color);
+  box-shadow: 0 0 0 3px rgba(37,99,235,0.10);
+}
+
+.deposit-kind-emoji {
+  font-size: 1.5rem;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.deposit-kind-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.deposit-kind-text strong {
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+.deposit-kind-text small {
+  font-size: 0.76rem;
+  color: #64748b;
+}
+
+.deposit-kind-footer {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.deposit-kind-cancel,
+.deposit-kind-clear {
+  border: none;
+  border-radius: 12px;
+  padding: 0.65rem 1rem;
+  font-weight: 700;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.deposit-kind-cancel {
+  background: #e5e7eb;
+  color: #1f2937;
+}
+
+.deposit-kind-clear {
+  background: #fee2e2;
+  color: #b91c1c;
+  margin-right: auto;
+}
+
+/* Etiqueta do tipo dentro do Histórico de Depósitos (Edição). */
+.deposit-kind-tag {
+  --kind-color: #64748b;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--kind-color);
+  background: #f1f5f9;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+.deposit-kind-tag.is-untyped {
+  border-style: dashed;
+  font-weight: 600;
+}
+
+/* Botão "Tipo" — mesma medida do Editar, cor neutra pra não competir. */
+.history-edit-btn.deposit-kind-edit-btn {
+  background: #475569;
+}
+
+.history-edit-btn.deposit-kind-edit-btn:hover {
+  background: #334155;
+}
+
+/* Abas "Ciclo atual" / "Todos" do Histórico de Depósitos. */
+.deposit-history-views {
+  display: flex;
+  gap: 0.4rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.deposit-history-view-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0.55rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+  font-weight: 700;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.deposit-history-view-btn.active {
+  background: var(--blue, #2563eb);
+  border-color: var(--blue, #2563eb);
+  color: #fff;
+}
+
+.deposit-history-note {
+  margin: 0.6rem 0 0;
+  font-size: 0.8rem;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+@keyframes depositKindFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes depositKindPop { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .deposit-kind-overlay,
+  .deposit-kind-box { animation: none; }
+}
