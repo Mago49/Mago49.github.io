@@ -101,6 +101,20 @@
 // plataforma — só "Ações" fica sempre visível. expandedDataId guarda qual
 // plataforma tem "Dados" expandida (reseta junto com openRowId sempre que
 // a linha inteira é aberta/fechada).
+//
+// === (Sub-entrega 7a) TIPO DO DEPÓSITO ("codinome") ===
+// "Adicionar" agora abre o mini-contêiner centralizado de deposit-kinds.js
+// (🗓️ Ativação Semanal / 🎁 Ativação Mensal / 🎲 Depósito de Aposta) DEPOIS
+// de validar o valor e ANTES de gravar. Cancelar = nada é gravado. A entrada
+// nasce com `kind` nas duas cópias (deposits + depositLog, mesmo `date`).
+// O Histórico de Depósitos ganhou:
+//   - o tipo de cada depósito (antigos aparecem "Sem tipo");
+//   - botão "Tipo" pra reclassificar (sincroniza deposits + depositLog pela
+//     data, igual à edição de valor — applyDepositKind);
+//   - visão "Todos" (depositLog, histórico permanente), pra classificar
+//     depósitos de ciclos já encerrados. Nessa visão só o TIPO é editável —
+//     valor/exclusão continuam só na visão "Ciclo atual", como sempre.
+// Nenhuma soma muda: Total, Saldo, Rollover e Misterioso ignoram `kind`.
 
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
@@ -109,6 +123,7 @@ import { savePlatform, deletePlatformDoc } from './platforms-store.js';
 import { filterAndSortForManage } from './platform-sort.js';
 import { initSortMenu } from './ui-sort.js';
 import { getCachedPreferences, saveManualOrder, saveBadgeVisibility } from './user-preferences-store.js';
+import { pickDepositKind, applyDepositKind, getDepositKindId, getDepositKindInfo, CLEAR_KIND } from './deposit-kinds.js';
 
 // --- Referências de DOM do painel principal (busca + lista) ---
 // Resolvidas por initManageControls(), chamada pelo mount() da view
@@ -171,6 +186,12 @@ let lastVisibleList = [];
 // pela `date` (chave natural, já que não existe um id próprio por
 // depósito). null quando nenhum item está em edição.
 let editingDepositDate = null;
+
+// (Sub-entrega 7a) Visão do modal de Histórico: 'cycle' (deposits do ciclo
+// atual — editar valor/excluir/tipo, comportamento de sempre) ou 'all'
+// (depositLog permanente — só o tipo é editável). Reseta pra 'cycle' toda
+// vez que o modal é aberto pelo botão "Histórico".
+let historyViewMode = 'cycle';
 
 // Plataforma atualmente associada ao modal de Reinício/Apostas aberto.
 let currentResetPlatform = null;
@@ -346,6 +367,7 @@ export function resetManageListCache() {
   currentSearch = '';
   currentMode = null;
   editingDepositDate = null;
+  historyViewMode = 'cycle';
   currentResetPlatform = null;
   currentBetPlatform = null;
 }
@@ -557,7 +579,20 @@ function buildActionsSection(p) {
         await showAppAlert('Digite um valor válido');
         return;
       }
-      const entry = { date: new Date().toISOString(), value };
+      // (7a) Tipo do depósito — mini-contêiner centralizado. Cancelar não
+      // grava nada (o valor digitado continua no campo). O botão fica
+      // travado enquanto o seletor está aberto, contra toque duplo.
+      addBtn.disabled = true;
+      let kind = null;
+      try {
+        kind = await pickDepositKind({ subtitle: `${p.name} · ${formatCurrency(value)}` });
+      } finally {
+        addBtn.disabled = false;
+      }
+      if (!kind) return;
+      // A data é carimbada DEPOIS da escolha — é o instante real do registro.
+      const entry = { date: new Date().toISOString(), value, kind };
+      if (!Array.isArray(p.deposits)) p.deposits = [];
       p.deposits.push(entry);
       // depositLog é o histórico PERMANENTE usado pelo Financeiro (Página
       // 5) e também pelo badge "Depósito: X dias" — ao contrário de
@@ -581,7 +616,11 @@ function buildActionsSection(p) {
   const historyBtn = document.createElement('button');
   historyBtn.textContent = 'Histórico';
   historyBtn.style.background = '#2563eb';
-  historyBtn.addEventListener('click', () => showHistoryModal(p));
+  historyBtn.addEventListener('click', () => {
+    historyViewMode = 'cycle';
+    editingDepositDate = null;
+    showHistoryModal(p);
+  });
 
   const endBtn = document.createElement('button');
   endBtn.className = 'platform-end-btn' + (p.cycleEnded ? ' already-ended' : '');
@@ -1097,22 +1136,96 @@ function initAddRow() {
 
 // ---------- MODAL: HISTÓRICO ----------
 
+function formatDepositDateTime(isoStr) {
+  const depositDate = new Date(isoStr);
+  const dia = String(depositDate.getDate()).padStart(2, '0');
+  const mes = String(depositDate.getMonth() + 1).padStart(2, '0');
+  const ano = depositDate.getFullYear();
+  const horas = String(depositDate.getHours()).padStart(2, '0');
+  const minutos = String(depositDate.getMinutes()).padStart(2, '0');
+  return `${dia}/${mes}/${ano} ${horas}:${minutos}`;
+}
+
+// (7a) Etiqueta colorida do tipo ("Sem tipo" pra depósitos antigos).
+function buildDepositKindTag(dep) {
+  const info = getDepositKindInfo(getDepositKindId(dep));
+  const tag = document.createElement('span');
+  tag.className = 'deposit-kind-tag' + (info.id ? '' : ' is-untyped');
+  tag.style.setProperty('--kind-color', info.color);
+  tag.textContent = `${info.emoji} ${info.label}`;
+  return tag;
+}
+
+// (7a) Reclassifica um depósito. Sincroniza deposits + depositLog pela data
+// (applyDepositKind). Mesma gravação da edição de valor: savePlatform da
+// plataforma inteira, sem allowShrink (nenhum array diminui).
+async function reclassifyDeposit(platform, dep) {
+  const current = getDepositKindId(dep);
+  const choice = await pickDepositKind({
+    title: 'Reclassificar depósito',
+    subtitle: `${platform.name} · ${formatDepositDateTime(dep.date)} · ${formatCurrency(dep.value)}`,
+    current,
+    allowClear: true
+  });
+  if (!choice) return;
+  const newKind = choice === CLEAR_KIND ? null : choice;
+  if (newKind === current) return;
+  const changed = applyDepositKind(platform, dep.date, dep.value, newKind);
+  if (!changed) {
+    await showAppAlert('Não encontrei esse depósito pra reclassificar — feche o histórico e abra de novo.');
+    return;
+  }
+  savePlatform(state.currentUid, platform);
+  openRowId = platform.id;
+  // Não afeta filtro/ordenação nem nenhum total — só o conteúdo exibido.
+  refreshRow(platform.id);
+  showHistoryModal(platform);
+}
+
+function buildHistoryViewToggle(platform) {
+  const wrap = document.createElement('div');
+  wrap.className = 'deposit-history-views';
+  wrap.setAttribute('role', 'tablist');
+  const cycleCount = (platform.deposits || []).length;
+  const allCount = (platform.depositLog || []).length;
+  [['cycle', `Ciclo atual (${cycleCount})`], ['all', `Todos (${allCount})`]].forEach(([mode, text]) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'deposit-history-view-btn' + (historyViewMode === mode ? ' active' : '');
+    btn.setAttribute('role', 'tab');
+    btn.setAttribute('aria-selected', historyViewMode === mode ? 'true' : 'false');
+    btn.textContent = text;
+    btn.addEventListener('click', () => {
+      if (historyViewMode === mode) return;
+      historyViewMode = mode;
+      editingDepositDate = null;
+      showHistoryModal(platform);
+    });
+    wrap.appendChild(btn);
+  });
+  return wrap;
+}
+
 function showHistoryModal(platform) {
   historyTitle.textContent = `Histórico de Depósitos - ${platform.name}`;
   historyList.innerHTML = '';
+  historyList.appendChild(buildHistoryViewToggle(platform));
 
-  if (platform.deposits.length === 0) {
-    historyList.innerHTML = '<div class="history-empty">Nenhum depósito registrado</div>';
+  if (historyViewMode === 'all') {
+    renderAllDepositsHistory(platform);
+    historyModal.style.display = 'flex';
+    return;
+  }
+
+  const cycleDeposits = Array.isArray(platform.deposits) ? platform.deposits : [];
+  if (cycleDeposits.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'history-empty';
+    empty.textContent = 'Nenhum depósito registrado';
+    historyList.appendChild(empty);
   } else {
-    const sortedDeposits = [...platform.deposits].sort((a, b) => new Date(b.date) - new Date(a.date));
+    const sortedDeposits = [...cycleDeposits].sort((a, b) => new Date(b.date) - new Date(a.date));
     sortedDeposits.forEach((dep) => {
-      const depositDate = new Date(dep.date);
-      const dia = String(depositDate.getDate()).padStart(2, '0');
-      const mes = String(depositDate.getMonth() + 1).padStart(2, '0');
-      const ano = depositDate.getFullYear();
-      const horas = String(depositDate.getHours()).padStart(2, '0');
-      const minutos = String(depositDate.getMinutes()).padStart(2, '0');
-
       const item = document.createElement('div');
       item.className = 'history-item';
 
@@ -1121,14 +1234,15 @@ function showHistoryModal(platform) {
 
       const dateSpan = document.createElement('span');
       dateSpan.className = 'history-date';
-      dateSpan.textContent = `${dia}/${mes}/${ano} ${horas}:${minutos}`;
+      dateSpan.textContent = formatDepositDateTime(dep.date);
       itemContent.appendChild(dateSpan);
 
       const isEditingThis = editingDepositDate === dep.date;
 
       if (isEditingThis) {
         // Modo edição: só o VALOR é editável — data/hora nunca mudam, pra
-        // não confundir quem não está acostumado com planilha.
+        // não confundir quem não está acostumado com planilha. O tipo é
+        // preservado (só `value` muda nas duas cópias).
         const valueInput = document.createElement('input');
         valueInput.type = 'number';
         valueInput.min = '0';
@@ -1171,11 +1285,20 @@ function showHistoryModal(platform) {
         });
         item.appendChild(cancelBtn);
       } else {
+        itemContent.appendChild(buildDepositKindTag(dep));
+
         const valueSpan = document.createElement('span');
         valueSpan.className = 'history-value';
         valueSpan.textContent = formatCurrency(dep.value);
         itemContent.appendChild(valueSpan);
         item.appendChild(itemContent);
+
+        const kindBtn = document.createElement('button');
+        kindBtn.className = 'history-edit-btn deposit-kind-edit-btn';
+        kindBtn.textContent = 'Tipo';
+        kindBtn.setAttribute('aria-label', 'Alterar o tipo deste depósito');
+        kindBtn.addEventListener('click', () => reclassifyDeposit(platform, dep));
+        item.appendChild(kindBtn);
 
         const editBtn = document.createElement('button');
         editBtn.className = 'history-edit-btn';
@@ -1222,6 +1345,58 @@ function showHistoryModal(platform) {
   }
 
   historyModal.style.display = 'flex';
+}
+
+// (7a) Visão "Todos": depositLog (permanente, inclui ciclos encerrados).
+// Só o tipo é editável aqui — valor e exclusão continuam exclusivos da
+// visão "Ciclo atual" (mesmas regras de sincronização de sempre).
+function renderAllDepositsHistory(platform) {
+  const note = document.createElement('p');
+  note.className = 'deposit-history-note';
+  note.textContent = 'Histórico permanente (inclui ciclos encerrados). Aqui só o TIPO pode ser alterado — valor e exclusão ficam em "Ciclo atual".';
+  historyList.appendChild(note);
+
+  const log = Array.isArray(platform.depositLog) ? platform.depositLog : [];
+  if (log.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'history-empty';
+    empty.textContent = 'Nenhum depósito registrado';
+    historyList.appendChild(empty);
+    return;
+  }
+
+  const sorted = log
+    .filter(d => d && d.date && !isNaN(new Date(d.date).getTime()))
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  sorted.forEach(dep => {
+    const item = document.createElement('div');
+    item.className = 'history-item';
+
+    const itemContent = document.createElement('div');
+    itemContent.className = 'history-item-content';
+
+    const dateSpan = document.createElement('span');
+    dateSpan.className = 'history-date';
+    dateSpan.textContent = formatDepositDateTime(dep.date);
+    itemContent.appendChild(dateSpan);
+    itemContent.appendChild(buildDepositKindTag(dep));
+
+    const valueSpan = document.createElement('span');
+    valueSpan.className = 'history-value';
+    valueSpan.textContent = formatCurrency(Number(dep.value) || 0);
+    itemContent.appendChild(valueSpan);
+    item.appendChild(itemContent);
+
+    const kindBtn = document.createElement('button');
+    kindBtn.className = 'history-edit-btn deposit-kind-edit-btn';
+    kindBtn.textContent = 'Tipo';
+    kindBtn.setAttribute('aria-label', 'Alterar o tipo deste depósito');
+    kindBtn.addEventListener('click', () => reclassifyDeposit(platform, dep));
+    item.appendChild(kindBtn);
+
+    historyList.appendChild(item);
+  });
 }
 
 // ---------- MODAL: REINÍCIO DE CICLO ----------

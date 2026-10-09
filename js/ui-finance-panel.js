@@ -72,6 +72,15 @@
 // (scrollLatestWeekIntoView) — resolve o problema de abrir sempre
 // mostrando a semana mais ANTIGA no topo da viewport.
 //
+// === (Sub-entrega 7a) TIPO DO DEPÓSITO ===
+// "Registrar depósito" abre o mini-contêiner centralizado de
+// deposit-kinds.js (🗓️ Ativação Semanal / 🎁 Ativação Mensal / 🎲 Depósito
+// de Aposta) antes de gravar; cancelar não grava nada. A entrada nasce com
+// `kind` em depositLog e — com o ciclo ativo — também em deposits (mesmo
+// `date`, mesma regra de sempre). Nenhuma soma do Financeiro muda: Saldo,
+// Rollover, semanas e Painel Geral ignoram `kind`. Reclassificar é feito no
+// Histórico de Depósitos da Edição.
+//
 // === CUIDADO SPA (Adendo K12) ===
 // `financeListEl`/`financeSearchEl` NÃO são resolvidos no topo do
 // módulo (isso quebraria, já que o router injeta o HTML da view DEPOIS
@@ -106,6 +115,7 @@ import {
 import { filterAndSortForManage } from './platform-sort.js';
 import { initSortMenu } from './ui-sort.js';
 import { scheduleDailySnapshot } from './daily-snapshot-store.js';
+import { pickDepositKind } from './deposit-kinds.js';
 
 const r2 = roundMoney;
 
@@ -970,7 +980,25 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
       await showAppAlert('Digite um valor válido');
       return;
     }
-    const entry = { date: new Date().toISOString(), value };
+    // (7a) Tipo do depósito — mesmo mini-contêiner centralizado da Edição.
+    // Cancelar não grava nada (o valor continua no campo). Botão travado
+    // enquanto o seletor está aberto, contra toque duplo.
+    depositBtn.disabled = true;
+    let kind = null;
+    try {
+      kind = await pickDepositKind({ subtitle: `${p.name} · ${formatCurrency(value)}` });
+    } finally {
+      depositBtn.disabled = false;
+    }
+    if (!kind) return;
+    // A semana pode ter sido fechada enquanto o seletor estava aberto
+    // (ex.: outra aba) — mesmo gate de quando o formulário é montado.
+    if (isCurrentWeekClosed(p)) {
+      await showAppAlert('A semana atual já foi fechada — o depósito não foi registrado.');
+      refreshRow(p.id);
+      return;
+    }
+    const entry = { date: new Date().toISOString(), value, kind };
     if (!p.depositLog) p.depositLog = [];
     p.depositLog.push({ ...entry });
     if (!p.cycleEnded) {
