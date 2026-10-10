@@ -115,15 +115,43 @@
 //     depósitos de ciclos já encerrados. Nessa visão só o TIPO é editável —
 //     valor/exclusão continuam só na visão "Ciclo atual", como sempre.
 // Nenhuma soma muda: Total, Saldo, Rollover e Misterioso ignoram `kind`.
+//
+// === (Sub-entrega 11a) 🧬 CARACTERÍSTICAS ===
+// Nova seção recolhível no fim do acordeão (ui-traits.js): etiquetas +
+// texto livre por plataforma, gravados em platformTraits/{id} — coleção
+// própria. Este arquivo só ganhou a chamada buildTraitsSection(p).
+//
+// === (Sub-entrega 11c) CICLO DO MISTERIOSO ===
+// a) Dados: "Ciclo do Misterioso" — ✅ Tem ciclo (padrão de toda plataforma
+//    antiga) / 🚫 Sem ciclo / ⚠️ Instável. Gravado no "Salvar" dos Dados
+//    (campo misteriosoCycle). Sem ciclo: fora do calendário e do
+//    Misterioso, campo de depósito SEMPRE liberado (mesmo com 🏁 Fim) e o
+//    total sem cor de patamar. O valor do bônus continua seguindo o
+//    template (nada muda sozinho).
+// b) 🏁 Fim e Reinício agora REGISTRAM no histórico (cycleHistory) no
+//    mesmo savePlatform — nada é sobrescrito.
+// c) Botão "📜 Ciclos": histórico, previsão, lançar à mão e reconstruir
+//    pelas fotos diárias (ui-cycle-history.js).
+
+// === (Sub-entrega 12) "JÁ RECEBEU O BÔNUS VIP DE HOJE?" ===
+// Dados → Salvar: se nível, grupo ou template VIP mudou (ou há troca já
+// agendada pra amanhã), pergunta antes de gravar (ui-vip-change.js). "Já
+// recebi" = a mudança vale a partir de amanhã (getVipChangeDate,
+// cycle-logic.js); "Ainda não" = desde hoje. Troca agendada aparece como
+// aviso ⏳ embaixo do template.
 
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
-import { getMonthStart, getCurrentCycleDay, getTotalDepositsSinceCycle, getDaysSinceLastDeposit, colorForLevel, getEffectiveBetDayKeys, recordLevelChange, getCurrentVipTemplateId } from './cycle-logic.js';
+import { getMonthStart, getCurrentCycleDay, getTotalDepositsSinceCycle, getDaysSinceLastDeposit, colorForLevel, getEffectiveBetDayKeys, recordLevelChange, getCurrentVipTemplateId, getVipChangeDate, getPendingLevelChange } from './cycle-logic.js';
+import { askVipChangeTiming } from './ui-vip-change.js'; // (Sub-entrega 12)
 import { savePlatform, deletePlatformDoc } from './platforms-store.js';
 import { filterAndSortForManage } from './platform-sort.js';
 import { initSortMenu } from './ui-sort.js';
 import { getCachedPreferences, saveManualOrder, saveBadgeVisibility } from './user-preferences-store.js';
 import { pickDepositKind, applyDepositKind, getDepositKindId, getDepositKindInfo, CLEAR_KIND } from './deposit-kinds.js';
+import { buildTraitsSection } from './ui-traits.js'; // (Sub-entrega 11a)
+import { recordCycleEvent, cycleState, CYCLE_STATES } from './cycle-history-logic.js'; // (11c)
+import { openCycleHistory } from './ui-cycle-history.js'; // (11c)
 
 // --- Referências de DOM do painel principal (busca + lista) ---
 // Resolvidas por initManageControls(), chamada pelo mount() da view
@@ -408,7 +436,11 @@ function buildRow(p) {
 
   const cycleBadge = document.createElement('span');
   const cycleDay = getCurrentCycleDay(p);
-  if (p.cycleEnded) {
+  const noCycle = cycleState(p) === 'no'; // (11c)
+  if (noCycle) {
+    cycleBadge.className = 'cycle-day no-cycle';
+    cycleBadge.textContent = '🚫 Sem ciclo';
+  } else if (p.cycleEnded) {
     cycleBadge.className = 'cycle-day cycle-ended';
     cycleBadge.textContent = '⏸ Encerrado';
   } else if (cycleDay === 0) {
@@ -422,7 +454,8 @@ function buildRow(p) {
   const total = getTotalDepositsSinceCycle(p);
   const totalBadge = document.createElement('span');
   totalBadge.className = 'platform-total-badge';
-  totalBadge.style.background = colorForLevel(total);
+  // (11c) Sem ciclo: sem cor de patamar (não muda de cor).
+  totalBadge.style.background = noCycle ? '#94a3b8' : colorForLevel(total);
   totalBadge.textContent = formatCurrency(total);
 
   // Item 25a: badge "Dia X"/ciclo pode ser escondido via preferência.
@@ -435,7 +468,7 @@ function buildRow(p) {
   // badge de Depósito (abaixo), que NUNCA é escondido junto — mede outra
   // coisa (tempo desde o último depósito em depositLog, que nunca é
   // zerado por Fim/Reinício).
-  if (!p.cycleEnded && badgeVisibility.totalBadge) {
+  if ((!p.cycleEnded || noCycle) && badgeVisibility.totalBadge) {
     badges.appendChild(totalBadge);
   }
 
@@ -531,6 +564,13 @@ function buildRow(p) {
 
   body.appendChild(buildDataSection(p));
 
+  // (Sub-entrega 11a) Características — coleção própria (platformTraits),
+  // nada aqui toca o documento da plataforma.
+  const divider2 = document.createElement('hr');
+  divider2.className = 'manage-section-divider';
+  body.appendChild(divider2);
+  body.appendChild(buildTraitsSection(p));
+
   row.appendChild(header);
   row.appendChild(body);
   return row;
@@ -560,7 +600,8 @@ function buildActionsSection(p) {
   section.appendChild(resetInfo);
 
   let input = null;
-  if (!p.cycleEnded) {
+  // (11c) Sem ciclo: campo de depósito sempre liberado.
+  if (!p.cycleEnded || cycleState(p) === 'no') {
     const form = document.createElement('div');
     form.className = 'platform-deposit-form';
 
@@ -631,6 +672,8 @@ function buildActionsSection(p) {
     if (!ok) return;
     p.deposits = [];
     p.cycleEnded = true;
+    // (11c) Registra o Fim no histórico de ciclos (mesma gravação).
+    recordCycleEvent(p, 'end', toLocalDateTimeSeconds(new Date()).slice(0, 10), 'auto');
     savePlatform(state.currentUid, p, { allowShrink: ['deposits'] });
     // cycleEnded pode afetar filtros de Ativas/Inativas — atualiza a
     // própria linha (badge "Encerrado") e reconcilia a lista visível.
@@ -647,6 +690,22 @@ function buildActionsSection(p) {
   actionButtons.appendChild(endBtn);
   actionButtons.appendChild(resetBtn);
   section.appendChild(actionButtons);
+
+  // (11c) Histórico e previsão de ciclos.
+  const cyclesBtn = document.createElement('button');
+  cyclesBtn.type = 'button';
+  cyclesBtn.className = 'bet-manage-btn manage-cycles-btn';
+  cyclesBtn.textContent = '📜 Ciclos';
+  cyclesBtn.addEventListener('click', async () => {
+    cyclesBtn.disabled = true;
+    try {
+      const r = await openCycleHistory({ platform: p });
+      if (r && r.changed) { openRowId = p.id; refreshRow(p.id); }
+    } finally {
+      cyclesBtn.disabled = false;
+    }
+  });
+  section.appendChild(cyclesBtn);
 
   if (p.group === 'com') {
     section.appendChild(buildBetSection(p));
@@ -960,6 +1019,30 @@ function buildDataSection(p) {
   fields.appendChild(groupSelect);
   fields.appendChild(templateLabel);
   fields.appendChild(templateSelect);
+
+  // (Sub-entrega 12) Troca de nível/grupo/template já agendada pra amanhã.
+  const pendingVip = getPendingLevelChange(p);
+  if (pendingVip) {
+    const [, pm, pd] = String(pendingVip.date).split('-');
+    const pendingNote = document.createElement('div');
+    pendingNote.className = 'reset-date';
+    pendingNote.textContent = `⏳ Nível/grupo/template novos valem a partir de ${pd}/${pm} — o bônus VIP de hoje segue o anterior. Salve de novo e responda "Ainda não recebi" se quiser que valha desde hoje.`;
+    fields.appendChild(pendingNote);
+  }
+
+  // (11c) Ciclo do Misterioso.
+  const cycleLabel = document.createElement('label');
+  cycleLabel.textContent = 'Ciclo do Misterioso';
+  const cycleSelect = document.createElement('select');
+  CYCLE_STATES.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.label;
+    cycleSelect.appendChild(opt);
+  });
+  cycleSelect.value = cycleState(p);
+  fields.appendChild(cycleLabel);
+  fields.appendChild(cycleSelect);
   section.appendChild(fields);
 
   // === BLOCO C — Gerador de Códigos (Item 11f + 11h/11i) ===
@@ -992,13 +1075,45 @@ function buildDataSection(p) {
       await showAppAlert('Já existe uma plataforma com esse código.');
       return;
     }
-    p.name = name;
+    // (11c) Troca do ciclo do Misterioso — confirma antes.
+    const newCycle = cycleSelect.value;
+    if (newCycle !== cycleState(p)) {
+      const msg = newCycle === 'no'
+        ? `Marcar ${p.name} como SEM ciclo do Misterioso? Ela sai do calendário e da estratégia do Misterioso, e o campo de depósito fica sempre liberado. O valor do bônus continua seguindo o template (se ela estiver num template de Misterioso, desvincule lá caso não receba).`
+        : newCycle === 'unstable'
+          ? `Marcar ${p.name} como INSTÁVEL? O Planejador evita planejar aposta/depósito perto da virada do mês.`
+          : `Marcar ${p.name} como TEM ciclo do Misterioso?`;
+      const okCycle = await showAppConfirm(msg);
+      if (!okCycle) return;
+    }
     const newLevel = levelSelect.value === '' ? null : Number(levelSelect.value);
     const newGroup = groupSelect.value === '' ? null : groupSelect.value;
-    // A0: registra a vigência ANTES de sobrescrever (lê o valor antigo).
-    // Vale a partir de hoje 00:00; o passado não é reescrito.
     const newTemplateId = templateSelect.value === '' ? null : templateSelect.value;
-    recordLevelChange(p, newLevel, newGroup, new Date(), newTemplateId);
+
+    // (Sub-entrega 12) Nível, grupo ou template mudou (ou há troca agendada
+    // pra amanhã)? Pergunta se o bônus VIP de hoje já foi recebido — define
+    // se a mudança vale desde hoje ou só a partir de amanhã. Cancelar = nada
+    // é gravado (a pergunta vem ANTES de qualquer alteração na memória).
+    const curLevel = (p.level === null || p.level === undefined || p.level === '') ? null : Number(p.level);
+    const vipChanged = newLevel !== curLevel
+      || newGroup !== (p.group || null)
+      || newTemplateId !== getCurrentVipTemplateId(p);
+    let vipChangeDate = new Date();
+    if (vipChanged || getPendingLevelChange(p)) {
+      const choice = await askVipChangeTiming({
+        subtitle: `${p.name} · nível, grupo ou template VIP`,
+        note: 'Se o bônus VIP de hoje já foi recebido nesta plataforma, a mudança só vale a partir de amanhã.'
+      });
+      if (!choice) return;
+      vipChangeDate = getVipChangeDate(choice === 'tomorrow');
+    }
+
+    p.misteriosoCycle = newCycle;
+    p.name = name;
+    // A0: registra a vigência ANTES de sobrescrever (lê o valor antigo).
+    // (Sub-entrega 12) Vale a partir de hoje 00:00 ou de amanhã 00:00
+    // (resposta acima); o passado não é reescrito.
+    recordLevelChange(p, newLevel, newGroup, vipChangeDate, newTemplateId);
     p.level = newLevel;
     p.group = newGroup;
 
@@ -1758,6 +1873,8 @@ export function initModalListeners() {
       }
       currentResetPlatform.lastResetDate = `${resetDateInput.value}T00:00:00`;
       currentResetPlatform.cycleEnded = false;
+      // (11c) Registra o Reinício no histórico de ciclos (mesma gravação).
+      recordCycleEvent(currentResetPlatform, 'reset', resetDateInput.value, 'auto');
       // Reinício também zera os depósitos — garantia extra caso alguém
       // clique direto em "Reinício" sem passar por "Fim" antes. NÃO mexe
       // em betDays de propósito: "Apostei hoje" é contado por mês
