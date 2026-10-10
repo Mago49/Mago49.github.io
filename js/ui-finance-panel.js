@@ -81,6 +81,27 @@
 // Rollover, semanas e Painel Geral ignoram `kind`. Reclassificar é feito no
 // Histórico de Depósitos da Edição.
 //
+// === (Sub-entrega 8a) SALDO REAL ===
+// a) Linha "Saldo real [ ] Atualizar" ACIMA de "Registrar aposta": confere
+//    o saldo da plataforma com o esperado (ui-balance-check.js). Diferença
+//    positiva vira Bônus Avulso (Rollover 1:1 ou escala R); negativa abre a
+//    escolha dos bônus esperados que não entraram. Botão "🧾 Bônus" abre o
+//    gerenciador da semana (Não recebi / Desfazer / Excluir avulso).
+// b) "Registrar aposta" exige UMA conferência no dia. Sem ela, abre o
+//    mini-contêiner fixo com o aviso e o campo do saldo (o formulário da
+//    aposta continua preenchido). Conferência + aposta vão no MESMO
+//    savePlatform. 2ª aposta do dia segue direto.
+//
+// === (Sub-entrega 9) JOGO NA APOSTA ===
+// Na tela fica só "🎯 Registrar aposta" (+ "🎲 Últimas apostas"). Os campos
+// moram no mini-contêiner de ui-bet-entry.js: Jogo (opcional, biblioteca
+// com busca — nome novo entra sozinho no gameCatalog) · Dia e hora (semana
+// aberta) · Valor apostado · Nº de apostas · R.B. Sem conferência no dia,
+// abre a do 8a em seguida; cancelar a conferência REABRE a aposta com tudo
+// preenchido. O lançamento continua UM só em betEntries, agora com cópia do
+// jogo (gameId/gameName/gameProvider) — Saldo, Rollover e bônus ignoram o
+// jogo. "Últimas apostas" ganha o seletor do jogo na edição.
+//
 // === CUIDADO SPA (Adendo K12) ===
 // `financeListEl`/`financeSearchEl` NÃO são resolvidos no topo do
 // módulo (isso quebraria, já que o router injeta o HTML da view DEPOIS
@@ -116,6 +137,13 @@ import { filterAndSortForManage } from './platform-sort.js';
 import { initSortMenu } from './ui-sort.js';
 import { scheduleDailySnapshot } from './daily-snapshot-store.js';
 import { pickDepositKind } from './deposit-kinds.js';
+import { openBalanceCheck } from './ui-balance-check.js';
+import { openBetEntry } from './ui-bet-entry.js';
+import { gameStamp, setEntryGame, searchGames } from './game-catalog-logic.js';
+import { loadGameCatalog, isGameCatalogLoaded, getGames } from './game-catalog-store.js';
+import { parseMoneyInput } from './wager-total-logic.js';
+import { openBonusManager } from './ui-bonus-manager.js';
+import { hasBalanceCheckToday, getLastBalanceCheck, parseRealBalance } from './balance-check-logic.js';
 
 const r2 = roundMoney;
 
@@ -1001,7 +1029,9 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
     const entry = { date: new Date().toISOString(), value, kind };
     if (!p.depositLog) p.depositLog = [];
     p.depositLog.push({ ...entry });
-    if (!p.cycleEnded) {
+    // (Auditoria) "🚫 Sem ciclo do Misterioso" segue a mesma regra da
+    // Edição: o depósito entra no ciclo mesmo com o ciclo encerrado.
+    if (!p.cycleEnded || p.misteriosoCycle === 'no') {
       if (!p.deposits) p.deposits = [];
       p.deposits.push({ ...entry });
     }
@@ -1053,43 +1083,53 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
   withdrawForm.appendChild(withdrawEditBtn);
   section.appendChild(withdrawForm);
 
+  // --- (8a) saldo real + Bônus da semana ---
+  section.appendChild(buildBalanceCheckRow(p, ctx));
+
   // --- registrar aposta + Últimas apostas (Bloco P) ---
+  // (Sub-entrega 9) Só o botão fica na tela: os campos (Jogo, dia e hora,
+  // valor apostado, nº de apostas, R.B.) moram no mini-contêiner
+  // ui-bet-entry.js. Cancelar a conferência de saldo reabre o contêiner com
+  // tudo que já tinha sido digitado.
   const betForm = document.createElement('div');
   betForm.className = 'finance-entry-form';
-  const wageredInput = document.createElement('input');
-  wageredInput.type = 'number';
-  wageredInput.min = '0';
-  wageredInput.step = '0.01';
-  wageredInput.placeholder = 'Valor apostado';
-  const betCountInput = document.createElement('input');
-  betCountInput.type = 'number';
-  betCountInput.min = '0';
-  betCountInput.step = '1';
-  betCountInput.placeholder = 'N° de apostas';
-  const rbInput = document.createElement('input');
-  rbInput.type = 'number';
-  rbInput.step = '0.01';
-  rbInput.placeholder = 'R.B. da aposta';
   const betBtn = document.createElement('button');
   betBtn.className = 'bet-manage-btn';
   betBtn.type = 'button';
-  betBtn.textContent = 'Registrar aposta';
+  betBtn.textContent = '🎯 Registrar aposta';
   betBtn.addEventListener('click', async () => {
-    const wageredRaw = parseFloat(wageredInput.value);
-    const betCount = parseInt(betCountInput.value, 10);
-    const rbRaw = parseFloat(rbInput.value);
-    if (isNaN(wageredRaw) || r2(wageredRaw) <= 0 || isNaN(betCount) || betCount <= 0 || isNaN(rbRaw)) {
-      await showAppAlert('Digite valor apostado, n° de apostas e R.B. válidos');
-      return;
+    betBtn.disabled = true;
+    try {
+      let initial = null;
+      for (;;) {
+        const entry = await openBetEntry({ platform: p, initial });
+        if (!entry || entry.status !== 'done') return;
+        const v = entry.values;
+        // (8a) Sem conferência de saldo hoje: pede antes de gravar.
+        if (!hasBalanceCheckToday(p)) {
+          const result = await openBalanceCheck({ platform: p, ctx, pendingRB: v.resultBetting, mode: 'bet', bonusBefore: v.date });
+          if (!result || result.status !== 'done') {
+            initial = v; // volta pro contêiner sem perder nada
+            continue;
+          }
+        }
+        if (!p.betEntries) p.betEntries = [];
+        p.betEntries.push({
+          date: v.date,
+          wagered: v.wagered,
+          betCount: v.betCount,
+          resultBetting: v.resultBetting,
+          ...gameStamp(v.game)
+        });
+        savePlatform(state.currentUid, p);
+        openRowId = p.id;
+        refreshRow(p.id);
+        renderFinanceList();
+        return;
+      }
+    } finally {
+      betBtn.disabled = false;
     }
-    const wagered = r2(wageredRaw);
-    const resultBetting = r2(rbRaw);
-    if (!p.betEntries) p.betEntries = [];
-    p.betEntries.push({ date: new Date().toISOString(), wagered, betCount, resultBetting });
-    savePlatform(state.currentUid, p);
-    openRowId = p.id;
-    refreshRow(p.id);
-    renderFinanceList();
   });
 
   // Bloco P — botão azul, mesmo padrão visual de betBtn, ao lado dele.
@@ -1099,9 +1139,6 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
   betHistoryBtn.textContent = '🎲 Últimas apostas';
   betHistoryBtn.addEventListener('click', () => showBetHistoryModal(p));
 
-  betForm.appendChild(wageredInput);
-  betForm.appendChild(betCountInput);
-  betForm.appendChild(rbInput);
   betForm.appendChild(betBtn);
   betForm.appendChild(betHistoryBtn);
   section.appendChild(betForm);
@@ -1174,6 +1211,89 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
   }
 
   return section;
+}
+
+// ---------- (Sub-entrega 8a) SALDO REAL ----------
+
+function describeLastCheck(p) {
+  const c = getLastBalanceCheck(p);
+  if (!c) return 'Nenhuma conferência ainda — ela é pedida na primeira aposta do dia.';
+  const when = new Date(c.date);
+  const today = new Date().toDateString() === when.toDateString();
+  const hhmm = when.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const label = today ? `hoje ${hhmm}` : when.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ` ${hhmm}`;
+  const res = {
+    match: '✓ conferido',
+    bonus: `bônus avulso de ${formatCurrency(c.bonusValue || c.diff)} lançado`,
+    excluded: `${formatCurrency(c.excludedTotal || 0)} marcado como não recebido`,
+    divergent: `⚠ divergência de ${formatCurrency(Math.abs(c.diff))}`
+  }[c.resolution] || '';
+  return `Última conferência: ${label} — ${formatCurrency(c.real)} · ${res}`;
+}
+
+function buildBalanceCheckRow(p, ctx) {
+  const wrap = document.createElement('div');
+  wrap.className = 'finance-balance-check';
+
+  const form = document.createElement('div');
+  form.className = 'finance-entry-form';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.inputMode = 'decimal';
+  input.autocomplete = 'off';
+  input.placeholder = 'Saldo real agora';
+  input.setAttribute('aria-label', 'Saldo real agora na plataforma');
+  const updateBtn = document.createElement('button');
+  updateBtn.type = 'button';
+  updateBtn.className = 'bet-manage-btn';
+  updateBtn.textContent = 'Atualizar';
+  updateBtn.addEventListener('click', async () => {
+    const value = parseRealBalance(parseMoneyInput(input.value));
+    if (value === null) {
+      await showAppAlert('Digite o saldo que aparece na plataforma (ex.: 1.250,00).');
+      return;
+    }
+    updateBtn.disabled = true;
+    let result;
+    try {
+      result = await openBalanceCheck({ platform: p, ctx, mode: 'standalone', value });
+    } finally {
+      updateBtn.disabled = false;
+    }
+    if (!result || result.status !== 'done') return;
+    savePlatform(state.currentUid, p);
+    openRowId = p.id;
+    refreshRow(p.id);
+    renderFinanceList();
+    if (result.resolution === 'match') await showAppAlert('Saldo conferido ✓ — bate com o sistema.');
+  });
+  const bonusBtn = document.createElement('button');
+  bonusBtn.type = 'button';
+  bonusBtn.className = 'bet-manage-btn';
+  bonusBtn.textContent = '🧾 Bônus';
+  bonusBtn.style.flex = '0 0 auto';
+  bonusBtn.setAttribute('aria-label', 'Bônus da semana — marcar não recebido, desfazer ou excluir avulso');
+  bonusBtn.addEventListener('click', () => openBonusManager({
+    resolveCtx: resolveCtxForPlatform,
+    focusPlatformId: p.id,
+    onChanged: () => {
+      openRowId = p.id;
+      refreshAllRows();
+      renderFinanceList();
+    }
+  }));
+  form.appendChild(input);
+  form.appendChild(updateBtn);
+  form.appendChild(bonusBtn);
+  wrap.appendChild(form);
+
+  const note = document.createElement('p');
+  note.className = 'finance-close-week-note';
+  note.textContent = describeLastCheck(p);
+  // Sem destaque de "falta conferir": a conferência só é exigida na hora de
+  // registrar uma aposta (o Planejador prevê dias sem aposta).
+  wrap.appendChild(note);
+  return wrap;
 }
 
 // ---------- Etapa 7, sub-entrega 3: "INSERIR BÔNUS HOJE" (Item 16.4/16.5) ----------
@@ -2312,6 +2432,52 @@ function getCurrentWeekBetEntries(platform, refDate = new Date()) {
   });
 }
 
+// (Sub-entrega 9) Seletor do jogo na edição de um lançamento.
+function buildGameSelect(entry) {
+  const select = document.createElement('select');
+  select.className = 'finance-game-select';
+  select.setAttribute('aria-label', 'Jogo deste lançamento');
+  const fill = () => {
+    select.replaceChildren();
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = 'Sem jogo';
+    select.appendChild(none);
+    if (!isGameCatalogLoaded(state.currentUid)) {
+      const keep = document.createElement('option');
+      keep.value = '__keep';
+      keep.textContent = entry.gameName ? `${entry.gameName} (biblioteca carregando…)` : 'Biblioteca carregando…';
+      select.appendChild(keep);
+      select.value = '__keep';
+      return;
+    }
+    searchGames(getGames(), '').forEach(g => {
+      const o = document.createElement('option');
+      o.value = g.id;
+      o.textContent = `${g.name}${g.provider ? ` · ${g.provider}` : ''}`;
+      select.appendChild(o);
+    });
+    if (entry.gameId && !getGames().some(g => g.id === entry.gameId)) {
+      const gone = document.createElement('option');
+      gone.value = '__keep';
+      gone.textContent = `${entry.gameName || 'Jogo'} (excluído da biblioteca)`;
+      select.appendChild(gone);
+      select.value = '__keep';
+      return;
+    }
+    select.value = entry.gameId || '';
+  };
+  fill();
+  if (!isGameCatalogLoaded(state.currentUid)) {
+    loadGameCatalog(state.currentUid).then(fill).catch(err => {
+      console.warn('Últimas apostas: biblioteca de jogos não carregada.', err);
+      const keep = select.querySelector('option[value="__keep"]');
+      if (keep) keep.textContent = entry.gameName ? `${entry.gameName} (mantém)` : 'Biblioteca indisponível (mantém)';
+    });
+  }
+  return select;
+}
+
 function showBetHistoryModal(platform) {
   currentBetHistoryPlatform = platform;
   editingBetEntry = null;
@@ -2365,6 +2531,9 @@ function renderBetHistoryList() {
       editWrap.appendChild(wageredInput);
       editWrap.appendChild(betCountInput);
       editWrap.appendChild(rbInput);
+      // (Sub-entrega 9) Jogo do lançamento (biblioteca).
+      const gameSelect = buildGameSelect(entry);
+      editWrap.appendChild(gameSelect);
       item.appendChild(editWrap);
 
       const saveBtn = document.createElement('button');
@@ -2381,6 +2550,11 @@ function renderBetHistoryList() {
         entry.wagered = r2(wageredRaw);
         entry.betCount = betCount;
         entry.resultBetting = r2(rbRaw);
+        // (9) jogo: '' = sem jogo; '__keep' = mantém (biblioteca indisponível).
+        if (gameSelect.value !== '__keep') {
+          const g = gameSelect.value ? getGames().find(x => x.id === gameSelect.value) : null;
+          setEntryGame(entry, g || null);
+        }
         savePlatform(state.currentUid, platform);
         editingBetEntry = null;
         renderBetHistoryList();
@@ -2410,7 +2584,7 @@ function renderBetHistoryList() {
 
       const valueSpan = document.createElement('span');
       valueSpan.className = 'history-value';
-      valueSpan.textContent = `Apostado ${formatCurrency(entry.wagered)} · ${entry.betCount} aposta(s) · R.B. ${formatCurrency(entry.resultBetting)}`;
+      valueSpan.textContent = `${entry.gameName ? `${entry.gameName} · ` : ''}Apostado ${formatCurrency(entry.wagered)} · ${entry.betCount} aposta(s) · R.B. ${formatCurrency(entry.resultBetting)}`;
       itemContent.appendChild(valueSpan);
 
       item.appendChild(itemContent);
