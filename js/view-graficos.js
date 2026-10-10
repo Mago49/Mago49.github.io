@@ -47,6 +47,39 @@
 // redesenhada a cada volta pra ela (os lançamentos podem ter mudado no
 // Financeiro) e na virada do dia. É a ÚNICA parte desta página que grava
 // no banco — sempre via savePlatform (platforms-store.js), nunca direto.
+//
+// === (Planejador — Sub-entrega 5) ===
+// Quarta aba, "Planejador" (ui-planejador.js + plan-logic.js +
+// plan-store.js). Usa Chart.js, então monta SOB DEMANDA como Análises
+// (depois do download e com o painel visível). Grava só nas coleções
+// betPlans/plannerConfig — nunca em plataformas.
+// No celular, a barra de abas vira uma faixa com rolagem lateral
+// (graficos.css) em vez de quebrar em duas linhas.
+//
+// === (Rotinas — Sub-entrega 6) ===
+// Quinta aba, "Rotinas" (ui-rotinas.js + routine-logic.js +
+// routine-store.js). Sem Chart.js: monta na primeira abertura; na volta e
+// na virada do dia, grava o histórico dos dias que fecharam e redesenha.
+// Grava só em routines/routineLog/routineMarks — nunca em plataformas.
+//
+// === (Misterioso — Sub-entrega 7b) ===
+// Sexta aba, "Misterioso" (ui-misterioso.js + strategy-logic.js): orçamento,
+// plano sugerido, ranking e contenção. Usa Chart.js (gráfico de contenção),
+// então monta SOB DEMANDA como Planejador. Grava só plannerConfig/strategy.
+// Rotinas passa a receber o contexto de bônus (Agenda do dia mostra as
+// emissões e a sugestão do Misterioso).
+//
+// === (Calendário — Sub-entrega 8b) ===
+// Sétima aba, "Calendário" (ui-calendario-analytics.js + calendar-logic.js
+// + plan-log-store.js): planejado × real, camadas e resultado real. Usa
+// Chart.js — monta SOB DEMANDA. Grava só planLog e plannerConfig/calendar.
+// A Página 2 (Calendário do Misterioso) não muda.
+//
+// === (Jogos — Sub-entrega 9) ===
+// Oitava aba, "Jogos" (ui-game-catalog.js + game-catalog-logic.js +
+// game-catalog-store.js): biblioteca de jogos, provedores e valores de
+// aposta. Sem Chart.js: monta na primeira abertura (como Rotinas). Grava só
+// gameCatalog/gameConfig — nunca em plataformas.
 
 import { state } from './state.js';
 import { formatCurrency } from './utils.js';
@@ -60,6 +93,13 @@ import { loadBonusContextStrict } from './bonus-context-store.js';
 import { scheduleDailySnapshot } from './daily-snapshot-store.js';
 import { mountAnalise, refreshAnalise, resizeAnaliseCharts, unmountAnalise } from './ui-graficos-analise.js';
 import { mountTotalApostado, refreshTotalApostado, unmountTotalApostado } from './ui-total-apostado.js';
+import { mountPlanejador, refreshPlanejador, resizePlanejador, unmountPlanejador } from './ui-planejador.js';
+import { mountRotinas, refreshRotinas, unmountRotinas } from './ui-rotinas.js';
+import { mountMisterioso, refreshMisterioso, resizeMisterioso, unmountMisterioso } from './ui-misterioso.js';
+import {
+  mountCalendarioAnalytics, refreshCalendarioAnalytics, resizeCalendarioAnalytics, unmountCalendarioAnalytics
+} from './ui-calendario-analytics.js';
+import { mountGameCatalog, refreshGameCatalog, unmountGameCatalog } from './ui-game-catalog.js';
 
 let dailyTimer = null;
 let chartJsLoadPromise = null;
@@ -81,11 +121,19 @@ let misteriosoTemplates = [];
 let bonusContextConfirmed = false; // (Sub-entrega E)
 
 // (Análises — Sub-entrega 1)
-const GRAFICOS_TABS = ['geral', 'analises', 'apostado'];
+const GRAFICOS_TABS = ['geral', 'analises', 'apostado', 'planejador', 'rotinas', 'misterioso', 'calendario', 'jogos'];
 let activeGraficosTab = 'geral'; // lembrada durante a sessão
 let analiseMounted = false;
 let analiseMountPromise = null;
 let apostadoMounted = false; // (Total Apostado — Sub-entrega 2)
+let planejadorMounted = false; // (Planejador — Sub-entrega 5)
+let planejadorMountPromise = null;
+let rotinasMounted = false; // (Rotinas — Sub-entrega 6)
+let misteriosoMounted = false; // (Misterioso — Sub-entrega 7b)
+let misteriosoMountPromise = null;
+let calendarioMounted = false; // (Calendário — Sub-entrega 8b)
+let calendarioMountPromise = null;
+let jogosMounted = false; // (Jogos — Sub-entrega 9)
 
 function loadChartJsScript() {
   if (window.Chart) return Promise.resolve();
@@ -510,6 +558,96 @@ function ensureAnaliseMounted(container, token) {
   return analiseMountPromise;
 }
 
+// (Planejador — Sub-entrega 5) Mesmo padrão de ensureAnaliseMounted.
+function ensurePlanejadorMounted(container, token) {
+  if (planejadorMounted) return Promise.resolve();
+  if (planejadorMountPromise) return planejadorMountPromise;
+
+  planejadorMountPromise = loadChartJsScript()
+    .then(() => {
+      if (token !== mountToken) return;
+      if (activeGraficosTab !== 'planejador') return;
+      const root = container.querySelector('#graficosPlanejadorRoot');
+      if (!root) return;
+      mountPlanejador(root, { resolveCtx: resolveCtxForPlatform, contextConfirmed: bonusContextConfirmed });
+      planejadorMounted = true;
+    })
+    .catch(err => {
+      console.error('Planejador: não foi possível carregar o Chart.js:', err);
+      if (token !== mountToken) return;
+      const root = container.querySelector('#graficosPlanejadorRoot');
+      if (root) {
+        root.innerHTML = '<p class="graficos-note graficos-note-warn"></p>';
+        root.firstElementChild.textContent = 'Não foi possível carregar a biblioteca de gráficos. Verifique a internet e abra a aba de novo.';
+      }
+    })
+    .finally(() => {
+      planejadorMountPromise = null;
+    });
+
+  return planejadorMountPromise;
+}
+
+// (Misterioso — Sub-entrega 7b) Mesmo padrão de ensurePlanejadorMounted.
+function ensureMisteriosoMounted(container, token) {
+  if (misteriosoMounted) return Promise.resolve();
+  if (misteriosoMountPromise) return misteriosoMountPromise;
+
+  misteriosoMountPromise = loadChartJsScript()
+    .then(() => {
+      if (token !== mountToken) return;
+      if (activeGraficosTab !== 'misterioso') return;
+      const root = container.querySelector('#graficosMisteriosoRoot');
+      if (!root) return;
+      mountMisterioso(root, { resolveCtx: resolveCtxForPlatform, contextConfirmed: bonusContextConfirmed });
+      misteriosoMounted = true;
+    })
+    .catch(err => {
+      console.error('Misterioso: não foi possível carregar o Chart.js:', err);
+      if (token !== mountToken) return;
+      const root = container.querySelector('#graficosMisteriosoRoot');
+      if (root) {
+        root.innerHTML = '<p class="graficos-note graficos-note-warn"></p>';
+        root.firstElementChild.textContent = 'Não foi possível carregar a biblioteca de gráficos. Verifique a internet e abra a aba de novo.';
+      }
+    })
+    .finally(() => {
+      misteriosoMountPromise = null;
+    });
+
+  return misteriosoMountPromise;
+}
+
+// (Calendário — Sub-entrega 8b) Mesmo padrão de ensurePlanejadorMounted.
+function ensureCalendarioMounted(container, token) {
+  if (calendarioMounted) return Promise.resolve();
+  if (calendarioMountPromise) return calendarioMountPromise;
+
+  calendarioMountPromise = loadChartJsScript()
+    .then(() => {
+      if (token !== mountToken) return;
+      if (activeGraficosTab !== 'calendario') return;
+      const root = container.querySelector('#graficosCalendarioRoot');
+      if (!root) return;
+      mountCalendarioAnalytics(root, { resolveCtx: resolveCtxForPlatform, contextConfirmed: bonusContextConfirmed });
+      calendarioMounted = true;
+    })
+    .catch(err => {
+      console.error('Calendário: não foi possível carregar o Chart.js:', err);
+      if (token !== mountToken) return;
+      const root = container.querySelector('#graficosCalendarioRoot');
+      if (root) {
+        root.innerHTML = '<p class="graficos-note graficos-note-warn"></p>';
+        root.firstElementChild.textContent = 'Não foi possível carregar a biblioteca de gráficos. Verifique a internet e abra a aba de novo.';
+      }
+    })
+    .finally(() => {
+      calendarioMountPromise = null;
+    });
+
+  return calendarioMountPromise;
+}
+
 function applyGraficosTab(container, token) {
   if (!GRAFICOS_TABS.includes(activeGraficosTab)) activeGraficosTab = 'geral';
 
@@ -540,6 +678,53 @@ function applyGraficosTab(container, token) {
         apostadoMounted = true;
       }
     }
+  } else if (activeGraficosTab === 'planejador') {
+    if (planejadorMounted) {
+      resizePlanejador();
+      refreshPlanejador();
+    } else {
+      ensurePlanejadorMounted(container, token);
+    }
+  } else if (activeGraficosTab === 'rotinas') {
+    if (rotinasMounted) {
+      refreshRotinas();
+    } else {
+      const root = container.querySelector('#graficosRotinasRoot');
+      if (root) {
+        mountRotinas(root, { resolveCtx: resolveCtxForPlatform, contextConfirmed: bonusContextConfirmed });
+        rotinasMounted = true;
+      }
+    }
+  } else if (activeGraficosTab === 'misterioso') {
+    if (misteriosoMounted) {
+      resizeMisterioso();
+      refreshMisterioso();
+    } else {
+      ensureMisteriosoMounted(container, token);
+    }
+  } else if (activeGraficosTab === 'calendario') {
+    if (calendarioMounted) {
+      resizeCalendarioAnalytics();
+      refreshCalendarioAnalytics();
+    } else {
+      ensureCalendarioMounted(container, token);
+    }
+  } else if (activeGraficosTab === 'jogos') {
+    if (jogosMounted) {
+      refreshGameCatalog();
+    } else {
+      const root = container.querySelector('#graficosJogosRoot');
+      if (root) {
+        mountGameCatalog(root);
+        jogosMounted = true;
+      }
+    }
+  }
+
+  // Aba ativa sempre visível na faixa rolável (celular).
+  const activeBtn = container.querySelector(`.graficos-tab-btn[data-tab="${activeGraficosTab}"]`);
+  if (activeBtn && typeof activeBtn.scrollIntoView === 'function') {
+    activeBtn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
 }
 
@@ -574,6 +759,10 @@ function scheduleDailyUpdate() {
     refreshPage();
     refreshAnalise(); // (Análises) não faz nada se a aba não foi aberta
     refreshTotalApostado(); // (Total Apostado) idem
+    refreshPlanejador(); // (Planejador) idem
+    refreshRotinas(); // (Rotinas) idem — grava o dia que fechou
+    refreshMisterioso(); // (Misterioso) idem
+    refreshCalendarioAnalytics(); // (Calendário) idem — guarda o dia que fechou
     scheduleDailyUpdate();
   }, nextMidnight - now);
 }
@@ -584,6 +773,14 @@ export async function mount(container) {
   analiseMounted = false;
   analiseMountPromise = null;
   apostadoMounted = false;
+  planejadorMounted = false;
+  planejadorMountPromise = null;
+  rotinasMounted = false;
+  misteriosoMounted = false;
+  misteriosoMountPromise = null;
+  calendarioMounted = false;
+  calendarioMountPromise = null;
+  jogosMounted = false;
   container.innerHTML = `
     <div class="page-header">
       <div class="page-header-text">
@@ -599,6 +796,11 @@ export async function mount(container) {
       <button type="button" class="vip-tab-btn graficos-tab-btn" role="tab" data-tab="geral">Visão Geral</button>
       <button type="button" class="vip-tab-btn graficos-tab-btn" role="tab" data-tab="analises">Análises</button>
       <button type="button" class="vip-tab-btn graficos-tab-btn" role="tab" data-tab="apostado">Total Apostado</button>
+      <button type="button" class="vip-tab-btn graficos-tab-btn" role="tab" data-tab="planejador">Planejador</button>
+      <button type="button" class="vip-tab-btn graficos-tab-btn" role="tab" data-tab="rotinas">Rotinas</button>
+      <button type="button" class="vip-tab-btn graficos-tab-btn" role="tab" data-tab="misterioso">Misterioso</button>
+      <button type="button" class="vip-tab-btn graficos-tab-btn" role="tab" data-tab="calendario">Calendário</button>
+      <button type="button" class="vip-tab-btn graficos-tab-btn" role="tab" data-tab="jogos">Jogos</button>
     </div>
 
     <div class="graficos-tab-panel" data-tab-panel="geral" role="tabpanel">
@@ -707,6 +909,26 @@ export async function mount(container) {
     <div class="graficos-tab-panel app-hidden" data-tab-panel="apostado" role="tabpanel">
       <div id="graficosApostadoRoot"></div>
     </div>
+
+    <div class="graficos-tab-panel app-hidden" data-tab-panel="planejador" role="tabpanel">
+      <div id="graficosPlanejadorRoot"></div>
+    </div>
+
+    <div class="graficos-tab-panel app-hidden" data-tab-panel="rotinas" role="tabpanel">
+      <div id="graficosRotinasRoot"></div>
+    </div>
+
+    <div class="graficos-tab-panel app-hidden" data-tab-panel="misterioso" role="tabpanel">
+      <div id="graficosMisteriosoRoot"></div>
+    </div>
+
+    <div class="graficos-tab-panel app-hidden" data-tab-panel="calendario" role="tabpanel">
+      <div id="graficosCalendarioRoot"></div>
+    </div>
+
+    <div class="graficos-tab-panel app-hidden" data-tab-panel="jogos" role="tabpanel">
+      <div id="graficosJogosRoot"></div>
+    </div>
   `;
 
   // (Sub-entrega E) Leitura estrita do contexto de bônus. Falha não impede
@@ -771,4 +993,22 @@ export function unmount() {
   // (Total Apostado)
   unmountTotalApostado();
   apostadoMounted = false;
+  // (Planejador)
+  unmountPlanejador();
+  planejadorMounted = false;
+  planejadorMountPromise = null;
+  // (Rotinas)
+  unmountRotinas();
+  rotinasMounted = false;
+  // (Misterioso)
+  unmountMisterioso();
+  misteriosoMounted = false;
+  misteriosoMountPromise = null;
+  // (Calendário)
+  unmountCalendarioAnalytics();
+  calendarioMounted = false;
+  calendarioMountPromise = null;
+  // (Jogos)
+  unmountGameCatalog();
+  jogosMounted = false;
 }
