@@ -25,13 +25,25 @@
 // b) Os valores só são aplicados DEPOIS de conferir o mountToken (antes eram
 //    atribuídos antes da checagem).
 // c) "Sair da conta": falha do signOut agora avisa em vez de ficar muda.
+//
+// === (Sub-entrega 10) BACKUP E TAMANHO DOS DADOS ===
+// O botão abre o mini-contêiner de ui-backup.js (Completo / Só o novo,
+// limite por arquivo, conferência, tamanho real no Firestore e partes).
+// Status: data do último backup lida do banco (meta/backupInfo, leitura
+// tolerante — falhou, usa a lembrança deste aparelho como antes).
+// Aviso de tamanho: estimativa LOCAL das plataformas em memória (sem
+// leitura extra) contra o limite de 1 MB por documento do Firestore.
+// Única gravação continua sendo a do backup (meta/backupInfo), no
+// próprio ui-backup/backup-store.
 
 import { auth, signOut } from './firebase-init.js';
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency, escapeHtml } from './utils.js';
 import { loadBonusContextStrict } from './bonus-context-store.js';
 import { buildDayFeed, toLocalDayKey, shiftDayKey } from './history-feed-logic.js';
-import { exportFullBackup } from './backup-store.js';
+import { loadBackupInfo } from './backup-store.js';
+import { openBackupPanel } from './ui-backup.js';
+import { estimatePlatformSizes, formatPct, formatBytes } from './backup-logic.js';
 
 // Último backup gerado NESTE navegador — só uma conveniência de tela
 // (lembrar a rotina semanal). localStorage pode falhar/estar vazio:
@@ -55,13 +67,38 @@ function writeLastBackupInfo(info) {
   }
 }
 
-function describeLastBackup() {
-  const info = readLastBackupInfo();
-  if (!info || !info.exportedAt) return 'Nenhum backup gerado neste aparelho ainda.';
-  const when = new Date(info.exportedAt).toLocaleString('pt-BR', {
+function fmtBackupWhen(iso) {
+  return new Date(iso).toLocaleString('pt-BR', {
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
   });
-  return `Último backup neste aparelho: ${when}.`;
+}
+
+function describeLastBackup(dbInfo = null) {
+  // (Sub-entrega 10) Registro do banco (vale pra qualquer aparelho).
+  if (dbInfo) {
+    if (!dbInfo.lastAt) return 'Nenhum backup registrado ainda.';
+    const parts = [`Último completo: ${dbInfo.lastFullAt ? fmtBackupWhen(dbInfo.lastFullAt) : 'nenhum'}.`];
+    if (dbInfo.lastMode === 'diff') parts.push(`Último "Só o novo": ${fmtBackupWhen(dbInfo.lastAt)}.`);
+    return parts.join(' ');
+  }
+  const info = readLastBackupInfo();
+  if (!info || !info.exportedAt) return 'Nenhum backup gerado neste aparelho ainda.';
+  return `Último backup neste aparelho: ${fmtBackupWhen(info.exportedAt)}.`;
+}
+
+// (Sub-entrega 10) Estimativa local do tamanho das plataformas.
+function renderSizeNote() {
+  const el = document.getElementById('perfilSizeNote');
+  if (!el) return;
+  const sizes = estimatePlatformSizes(state.currentUid, state.platforms);
+  if (!sizes.length) { el.textContent = ''; el.classList.add('app-hidden'); return; }
+  const top = sizes[0];
+  const risky = sizes.filter(x => x.level !== 'ok');
+  el.classList.remove('app-hidden');
+  el.classList.toggle('perfil-size-warn', risky.length > 0);
+  el.textContent = risky.length
+    ? `⚠ ${risky.length} plataforma(s) perto do limite de 1 MB do Firestore — maior: ${top.name} com ${formatPct(top.pct)} (estimativa). Gere o backup pra ver o tamanho exato.`
+    : `Maior plataforma: ${top.name} · ${formatBytes(top.bytes)} · ${formatPct(top.pct)} do limite de 1 MB por documento (estimativa).`;
 }
 
 let dailyTimer = null;
@@ -258,13 +295,14 @@ export async function mount(container) {
       <div class="section-heading" style="padding:0 0 0.8rem;">
         <div>
           <h2>🛡️ Backup dos dados</h2>
-          <p>Baixa um arquivo .json com todas as suas plataformas e configurações, direto no seu aparelho. Nada é enviado a servidor nenhum. Sugestão: fazer toda semana, junto do fechamento de domingo.</p>
+          <p>Baixa .json com todas as suas plataformas e configurações, direto no seu aparelho (em partes, se ficar grande), e mostra o tamanho real ocupado no Firestore. Antes de baixar, o arquivo é conferido documento por documento. Sugestão: Completo toda semana, junto do fechamento de domingo.</p>
         </div>
       </div>
       <div class="reset-modal-buttons" style="justify-content:flex-start; margin-top:0;">
-        <button type="button" id="perfilBackupBtn" class="btn-confirm">⬇️ Exportar backup (JSON)</button>
+        <button type="button" id="perfilBackupBtn" class="btn-confirm">🛡️ Backup e tamanho dos dados</button>
       </div>
       <p id="perfilBackupStatus" class="finance-close-week-note" style="margin-top:0.7rem;"></p>
+      <p id="perfilSizeNote" class="finance-close-week-note perfil-size-note app-hidden"></p>
     </section>
 
     <section class="card-shell" style="padding:2rem; display:flex; justify-content:center; margin-top:1.1rem;">
@@ -291,18 +329,24 @@ export async function mount(container) {
   const backupBtn = document.getElementById('perfilBackupBtn');
   const backupStatusEl = document.getElementById('perfilBackupStatus');
   backupStatusEl.textContent = describeLastBackup();
+  renderSizeNote();
+  // (Sub-entrega 10) Data do último backup no banco — tolerante.
+  loadBackupInfo(state.currentUid).then(info => {
+    if (token !== mountToken) return;
+    const statusEl = document.getElementById('perfilBackupStatus');
+    if (statusEl) statusEl.textContent = describeLastBackup(info);
+  }).catch(err => console.warn('Perfil: registro do último backup não lido (usa o deste aparelho).', err));
   backupBtn.addEventListener('click', async () => {
     backupBtn.disabled = true;
-    backupStatusEl.textContent = 'Gerando backup...';
     try {
-      const result = await exportFullBackup(state.currentUid);
-      writeLastBackupInfo({ exportedAt: result.exportedAt, filename: result.filename });
-      const c = result.counts;
-      backupStatusEl.textContent = `✓ Backup gerado: ${result.filename} — ${c.platforms} plataforma(s), ${c.dailySnapshots} dia(s) de snapshot, ${c.vipHistory} mês(es) de histórico. Confira na pasta Downloads do aparelho.`;
-    } catch (err) {
-      console.error('Erro ao gerar backup:', err);
-      backupStatusEl.textContent = describeLastBackup();
-      await showAppAlert(`Não foi possível gerar o backup: ${err && err.message ? err.message : 'erro desconhecido'}`);
+      await openBackupPanel({
+        onDone: (info, prepared) => {
+          writeLastBackupInfo({ exportedAt: prepared.now.toISOString(), filename: prepared.parts[0].filename });
+          if (token !== mountToken) return;
+          const statusEl = document.getElementById('perfilBackupStatus');
+          if (statusEl) statusEl.textContent = describeLastBackup(info);
+        }
+      });
     } finally {
       backupBtn.disabled = false;
     }
