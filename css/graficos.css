@@ -421,3 +421,1858 @@
     justify-self: stretch;
   }
 }
+
+/* =====================================================================
+   (Total Apostado — Sub-entrega 4) PROGRESSÃO VIP + TABELAS
+   Só acréscimos — nenhuma regra acima foi alterada.
+   ===================================================================== */
+
+.wager-level-badge {
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.wager-level-badge-up {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.wager-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.wager-level-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.88rem;
+  color: #334155;
+}
+
+.wager-level-arrow {
+  color: #94a3b8;
+}
+
+.wager-level-strong {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.wager-progress-track {
+  height: 10px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.wager-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2563eb, #15803d);
+  transition: width 0.3s ease;
+}
+
+.wager-promo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.3rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #fcd34d;
+  border-radius: 10px;
+  background: #fffbeb;
+}
+
+.wager-promo-text {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #92400e;
+}
+
+/* Editor das tabelas */
+.wager-tables {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0 1.1rem 0.4rem;
+}
+
+.wager-table-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.75rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.wager-table-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.6rem;
+}
+
+.wager-table-name {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.wager-table-tag {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.wager-table-tag-own {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.wager-table-count {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.wager-table-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.wager-table-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.wager-table-level {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #475569;
+}
+
+.wager-table-cell input {
+  min-width: 0;
+  padding: 0.5rem 0.55rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 10px;
+  outline: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.wager-table-cell input:disabled {
+  background: #f8fafc;
+  color: #94a3b8;
+}
+
+.wager-table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+@media (max-width: 640px) {
+  .wager-tables {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+  }
+  .wager-table-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* =====================================================================
+   (Planejador — Sub-entrega 5) MODULADOR DE APOSTAS + ABAS NO CELULAR
+   Só acréscimos — nenhuma regra acima foi alterada. Pensado primeiro pro
+   celular: uma coluna; a partir de 960px, controles | prévia lado a lado.
+   ===================================================================== */
+
+/* Abas: no celular viram faixa com rolagem lateral (4 abas não cabem). */
+@media (max-width: 640px) {
+  .graficos-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 0.2rem;
+  }
+  .graficos-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .graficos-tabs .vip-tab-btn {
+    flex: 0 0 auto;
+    min-width: 0;
+    padding: 0.6rem 0.9rem;
+    font-size: 0.84rem;
+  }
+}
+
+.plan-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.1rem;
+}
+
+@media (min-width: 960px) {
+  .plan-grid {
+    grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+    align-items: start;
+  }
+  .plan-preview {
+    position: sticky;
+    top: 0.8rem;
+  }
+}
+
+.plan-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0 1.1rem 1rem;
+}
+
+.plan-field label,
+.plan-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #334155;
+}
+
+.plan-field small {
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.plan-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  min-height: 42px;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 12px;
+  outline: none;
+  background: #fff;
+  font-size: 0.95rem;
+}
+
+.plan-input:focus {
+  border-color: #2563eb;
+}
+
+.plan-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.plan-row .plan-input {
+  flex: 1 1 0;
+}
+
+.plan-sep {
+  color: #94a3b8;
+  font-size: 0.82rem;
+  flex-shrink: 0;
+}
+
+.plan-btn-inline {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.plan-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.plan-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.plan-chip {
+  min-height: 36px;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 999px;
+  background: #fff;
+  color: #475569;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.plan-chip.active {
+  background: #1e3a8a;
+  border-color: #1e3a8a;
+  color: #fff;
+}
+
+.plan-chip-money {
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-chip-ghost {
+  border-style: dashed;
+  color: #64748b;
+}
+
+.plan-range {
+  width: 100%;
+  accent-color: #1e3a8a;
+  min-height: 28px;
+}
+
+.plan-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 36px;
+  cursor: pointer;
+}
+
+.plan-toggle input {
+  width: 20px;
+  height: 20px;
+}
+
+.plan-palette {
+  margin-top: 0.3rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px dashed rgba(15, 23, 42, 0.15);
+  border-radius: 12px;
+}
+
+.plan-palette summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #2563eb;
+}
+
+.plan-palette[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.plan-palette .btn-confirm {
+  align-self: flex-end;
+}
+
+/* Prévia */
+.plan-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.6rem;
+  padding: 0 1.1rem 0.8rem;
+}
+
+.plan-kpi .summary-value {
+  font-size: 1.05rem;
+}
+
+.plan-kpi-main {
+  border-color: #1e3a8a;
+}
+
+.plan-kpi-vip {
+  background: #fffbeb;
+  border-color: #fcd34d;
+}
+
+.plan-kpi-bonus {
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+
+.plan-chart {
+  height: 300px;
+}
+
+.plan-days {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0 1.1rem 0.6rem;
+}
+
+.plan-day {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-left: 4px solid #93c5fd;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.plan-day-medio {
+  border-left-color: #3b82f6;
+}
+
+.plan-day-alto {
+  border-left-color: #1e3a8a;
+}
+
+.plan-day-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+}
+
+.plan-day-date {
+  font-weight: 700;
+  color: #0f172a;
+  font-size: 0.88rem;
+}
+
+.plan-day-amount {
+  margin-left: auto;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-tier {
+  padding: 0.08rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.plan-tier-baixo {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.plan-tier-medio {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.plan-tier-alto {
+  background: #1e3a8a;
+  color: #fff;
+}
+
+.plan-tier-vip {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.plan-day-lines {
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  color: #475569;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.plan-more {
+  align-self: center;
+  margin-top: 0.3rem;
+}
+
+.plan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.4rem 1.1rem 0.2rem;
+}
+
+@media (max-width: 640px) {
+  .plan-field,
+  .plan-kpis,
+  .plan-days,
+  .plan-actions {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+  }
+  .plan-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .plan-chart {
+    height: 240px;
+  }
+  .plan-actions > button {
+    flex: 1 1 100%;
+  }
+  .plan-row {
+    flex-wrap: wrap;
+  }
+  .plan-row input[type="date"] {
+    flex: 1 1 40%;
+  }
+}
+
+/* =====================================================================
+   (Sub-entregas 5b e 6) RADAR DO PLANEJADOR + ABA ROTINAS
+   Só acréscimos — nenhuma regra acima foi alterada.
+   ===================================================================== */
+
+.plan-radar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0 1.1rem 0.8rem;
+}
+
+.plan-radar:empty {
+  display: none;
+}
+
+.plan-radar-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.plan-radar-caution {
+  background: #fff7ed;
+  border-color: #fdba74;
+}
+
+.plan-radar-goal-ok {
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+
+.plan-radar-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.3rem 0.6rem;
+  font-size: 0.9rem;
+}
+
+.plan-radar-value {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-radar-row {
+  flex-wrap: wrap;
+}
+
+.plan-radar-limit {
+  flex: 1 1 110px;
+  max-width: 160px;
+}
+
+/* Rotinas */
+.rt-views {
+  padding: 0 1.1rem 0.9rem;
+}
+
+.rt-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0 1.1rem 0.4rem;
+}
+
+.rt-kpis {
+  padding: 0;
+}
+
+.rt-kpi-bad {
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
+.rt-cta {
+  align-self: flex-start;
+}
+
+.rt-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-left: 5px solid #2563eb;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.rt-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.rt-emoji {
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.rt-name {
+  font-weight: 800;
+  color: #0f172a;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rt-count {
+  margin-left: auto;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: #f1f5f9;
+  font-size: 0.78rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.rt-count-ok {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.rt-count-bad {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.rt-notes {
+  font-style: italic;
+}
+
+.rt-items {
+  list-style: none;
+  margin: 0.2rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.rt-item {
+  display: grid;
+  grid-template-columns: 1.6rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 36px;
+  padding: 0.3rem 0.5rem;
+  border-radius: 10px;
+  background: #f8fafc;
+  font-size: 0.86rem;
+}
+
+.rt-item-name {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rt-item-detail {
+  color: #64748b;
+  font-size: 0.76rem;
+  text-align: right;
+}
+
+.rt-item-broken,
+.rt-item-missed {
+  background: #fef2f2;
+}
+
+.rt-item-done,
+.rt-item-ok {
+  background: #f0fdf4;
+}
+
+.rt-item-click {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.rt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.rt-not-today summary {
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #475569;
+}
+
+/* Editor */
+.rt-editor-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.rt-field {
+  padding: 0;
+}
+
+.rt-emoji-input {
+  max-width: 90px;
+  font-size: 1.2rem;
+  text-align: center;
+}
+
+.rt-swatch {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.15);
+  cursor: pointer;
+}
+
+.rt-swatch.active {
+  box-shadow: 0 0 0 3px #0f172a;
+}
+
+.rt-color-input {
+  width: 40px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.rt-notes-input {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.rt-date-chips {
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.rt-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.rt-picker-list {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.rt-pick {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 42px;
+  padding: 0.3rem 0.65rem;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.05);
+  cursor: pointer;
+}
+
+.rt-pick:last-child {
+  border-bottom: none;
+}
+
+.rt-pick.on {
+  background: #eff6ff;
+}
+
+.rt-pick input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.rt-pick-name {
+  flex: 1 1 auto;
+  font-weight: 700;
+  min-width: 0;
+}
+
+.rt-pick-own {
+  flex: 0 0 110px;
+  min-height: 34px;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.82rem;
+}
+
+/* Histórico */
+.rt-strip {
+  display: grid;
+  grid-template-columns: repeat(14, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.rt-cell {
+  aspect-ratio: 1;
+  border-radius: 4px;
+  background: #f1f5f9;
+}
+
+.rt-cell-full { background: #22c55e; }
+.rt-cell-part { background: #fbbf24; }
+.rt-cell-fail { background: #ef4444; }
+.rt-cell-none { background: #f1f5f9; }
+.rt-cell-unknown { background: repeating-linear-gradient(45deg, #f1f5f9, #f1f5f9 3px, #e2e8f0 3px, #e2e8f0 6px); }
+
+.rt-cell-today {
+  outline: 2px solid #0f172a;
+  outline-offset: 1px;
+}
+
+@media (max-width: 640px) {
+  .plan-radar,
+  .rt-views,
+  .rt-body {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+  }
+  .rt-item {
+    grid-template-columns: 1.4rem minmax(0, 1fr);
+  }
+  .rt-item-detail {
+    grid-column: 2;
+    text-align: left;
+  }
+  .rt-pick-own {
+    flex-basis: 96px;
+  }
+}
+
+/* =====================================================================
+   (Sub-entrega 7b) ABA MISTERIOSO + AGENDA DO DIA (Rotinas)
+   Só acréscimos — nenhuma regra acima foi alterada.
+   ===================================================================== */
+
+.ms-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0 1.1rem 0.8rem;
+}
+
+.ms-body:empty {
+  display: none;
+}
+
+.ms-kpis {
+  padding: 0;
+}
+
+.ms-kpi-bad {
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
+.ms-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.ms-track {
+  height: 10px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.ms-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #7c3aed, #2563eb);
+  transition: width 0.3s ease;
+}
+
+.ms-track-warn .ms-fill {
+  background: #f59e0b;
+}
+
+.ms-track-bad .ms-fill {
+  background: #dc2626;
+}
+
+.ms-today {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #c4b5fd;
+  border-radius: 12px;
+  background: #f5f3ff;
+  color: #4c1d95;
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+
+.ms-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-left: 4px solid #c4b5fd;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.ms-pick-plan,
+.ms-pick-best {
+  border-left-color: #7c3aed;
+}
+
+.ms-pick-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.5rem;
+}
+
+.ms-pick-name {
+  font-weight: 800;
+  color: #0f172a;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ms-pick-amount {
+  margin-left: auto;
+  font-weight: 800;
+  color: #15803d;
+  font-variant-numeric: tabular-nums;
+}
+
+.ms-pick-line {
+  margin: 0;
+  font-size: 0.84rem;
+  color: #334155;
+  font-variant-numeric: tabular-nums;
+}
+
+.ms-tag {
+  padding: 0.08rem 0.45rem;
+  border-radius: 999px;
+  background: #ede9fe;
+  color: #5b21b6;
+  font-size: 0.7rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.ms-rank {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.ms-rank-sum {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.ms-rank-sum::-webkit-details-marker {
+  display: none;
+}
+
+.ms-rank-pos {
+  flex: 0 0 auto;
+  width: 2rem;
+  font-weight: 800;
+  color: #7c3aed;
+}
+
+.ms-rank-eff {
+  margin-left: auto;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #15803d;
+}
+
+.ms-rank[open] .ms-rank-sum {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.ms-rank-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem 0.75rem;
+}
+
+.ms-details summary {
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #2563eb;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+}
+
+.ms-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.05);
+  font-size: 0.86rem;
+}
+
+.ms-line-name {
+  font-weight: 700;
+  color: #0f172a;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ms-line-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ms-chart {
+  height: 280px;
+  margin: 0 1.1rem 0.8rem;
+}
+
+.ms-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.9rem;
+  font-size: 0.82rem;
+  color: #334155;
+}
+
+.ms-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.ms-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: 0 0 auto;
+}
+
+/* Agenda do dia (Rotinas → Hoje) */
+.rt-agenda {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #c7d2fe;
+  border-radius: 14px;
+  background: #eef2ff;
+}
+
+.rt-agenda-title {
+  font-weight: 800;
+  color: #1e1b4b;
+  font-size: 0.92rem;
+}
+
+.rt-agenda-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.rt-agenda-item {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  padding: 0.5rem 0.6rem;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.rt-agenda-done {
+  opacity: 0.75;
+}
+
+.rt-agenda-warn {
+  background: #fff7ed;
+}
+
+.rt-agenda-icon {
+  flex: 0 0 1.4rem;
+  text-align: center;
+}
+
+.rt-agenda-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.rt-agenda-main {
+  font-weight: 700;
+  font-size: 0.86rem;
+  color: #0f172a;
+  overflow-wrap: anywhere;
+}
+
+.rt-agenda-detail {
+  font-size: 0.78rem;
+  color: #475569;
+  overflow-wrap: anywhere;
+}
+
+.rt-agenda-empty {
+  font-size: 0.82rem;
+  color: #64748b;
+}
+
+@media (max-width: 640px) {
+  .ms-body {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+  }
+  .ms-chart {
+    height: 240px;
+    margin-left: 0.6rem;
+    margin-right: 0.6rem;
+  }
+}
+
+/* =====================================================================
+   (Sub-entrega 8b) ABA CALENDÁRIO (Analytics) + ADERÊNCIA NO PLANEJADOR
+   Só acréscimos — nenhuma regra acima foi alterada.
+   ===================================================================== */
+
+.cal-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 1.1rem 0.7rem;
+}
+
+.cal-title {
+  flex: 1;
+  text-align: center;
+  font-size: 1.05rem;
+  color: #0f172a;
+}
+
+.cal-nav {
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 12px;
+  background: #fff;
+  font-size: 1.3rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.cal-today {
+  flex: 0 0 auto;
+}
+
+.cal-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0 1.1rem 0.8rem;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  padding: 0 1.1rem 0.6rem;
+}
+
+.cal-head {
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #64748b;
+  text-transform: uppercase;
+  padding-bottom: 2px;
+}
+
+.cal-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-width: 0;
+  min-height: 66px;
+  padding: 4px 4px 6px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 10px;
+  background: #fff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cal-cell::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: transparent;
+}
+
+.cal-out {
+  background: transparent;
+  border-color: transparent;
+  cursor: default;
+}
+
+.cal-out .cal-num {
+  color: #cbd5e1;
+}
+
+.cal-is-today {
+  border-color: #0f172a;
+  border-width: 2px;
+}
+
+.cal-selected {
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.35);
+}
+
+.cal-num {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.cal-plan,
+.cal-pct,
+.cal-icons,
+.cal-rt {
+  max-width: 100%;
+  font-size: 0.66rem;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-plan {
+  font-weight: 800;
+}
+
+.cal-pct {
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 1.1;
+  color: #334155;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-rt {
+  color: #475569;
+  font-weight: 700;
+}
+
+.cal-rt-bad {
+  color: #b91c1c;
+}
+
+.cal-st-done::after { background: #22c55e; }
+.cal-st-partial::after { background: #f59e0b; }
+.cal-st-miss::after { background: #ef4444; }
+.cal-st-today::after { background: #60a5fa; }
+.cal-st-future::after { background: #cbd5e1; }
+
+.cal-st-done { background: #f0fdf4; }
+.cal-st-partial { background: #fffbeb; }
+.cal-st-miss { background: #fef2f2; }
+
+.cal-legend {
+  padding: 0 1.1rem 0.4rem;
+}
+
+.cal-chart {
+  height: 260px;
+  margin: 0 1.1rem 0.8rem;
+}
+
+.cal-kpi-bad {
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
+.cal-period {
+  align-items: center;
+  padding: 0 1.1rem 0.8rem;
+}
+
+.cal-period-label {
+  margin-left: auto;
+}
+
+.cal-settings {
+  padding: 0 1.1rem;
+}
+
+.cal-settings summary {
+  cursor: pointer;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+  color: #2563eb;
+}
+
+.cal-settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 0.4rem 0 0.6rem;
+}
+
+.cal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.cal-field .plan-input {
+  max-width: 120px;
+}
+
+/* Detalhe do dia (mini-contêiner centralizado) */
+.cal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(1rem, env(safe-area-inset-top)) 1rem max(1rem, env(safe-area-inset-bottom));
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  overscroll-behavior: contain;
+}
+
+.cal-box {
+  width: min(100%, 420px);
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1rem;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.22);
+}
+
+.cal-box-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cal-box-title {
+  flex: 1;
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.cal-box-close {
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 12px;
+  background: #f1f5f9;
+  cursor: pointer;
+}
+
+.cal-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.cal-sec-title {
+  font-weight: 800;
+  font-size: 0.86rem;
+  color: #0f172a;
+}
+
+.cal-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-size: 0.84rem;
+}
+
+.cal-line-l {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cal-line-r {
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-line-muted { color: #64748b; }
+.cal-line-bad { color: #b91c1c; }
+
+.cal-text {
+  margin: 0;
+  font-size: 0.84rem;
+  color: #334155;
+  overflow-wrap: anywhere;
+}
+
+.plan-adherence-strip {
+  letter-spacing: 1px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .cal-toolbar,
+  .cal-filters,
+  .cal-legend,
+  .cal-period,
+  .cal-settings {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+  }
+  .cal-grid {
+    gap: 3px;
+    padding-left: 0.4rem;
+    padding-right: 0.4rem;
+  }
+  .cal-chart {
+    height: 220px;
+    margin-left: 0.6rem;
+    margin-right: 0.6rem;
+  }
+  .cal-cell {
+    min-height: 60px;
+    padding: 3px 3px 6px;
+  }
+}
+
+/* ============================================================
+   (Sub-entrega 9) Calendário — "Por jogo / Por provedor" (Resultado real)
+   ============================================================ */
+.cal-games {
+  padding: 0.2rem 1.1rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cal-games-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.cal-games-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.cal-game-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  min-width: 0;
+}
+
+.cal-game-row.bad {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.cal-game-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.cal-game-name {
+  font-weight: 700;
+  color: #0f172a;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cal-game-prov {
+  font-weight: 500;
+  color: #64748b;
+}
+
+.cal-game-rb {
+  font-weight: 800;
+  color: #15803d;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-game-rb.bad { color: #b91c1c; }
+
+.cal-game-meta {
+  font-size: 0.78rem;
+  color: #475569;
+  line-height: 1.35;
+}
+
+/* ============================================================
+   (Sub-entrega 9) Aba "Jogos" — Biblioteca (.gc-*)
+   ============================================================ */
+.gc-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr) auto;
+  gap: 0.5rem;
+  padding: 0 1.1rem 0.8rem;
+}
+
+.gc-toolbar .btn-confirm {
+  min-height: 42px;
+  white-space: nowrap;
+}
+
+.gc-editor {
+  margin: 0 1.1rem 0.9rem;
+  padding: 0.9rem;
+  border-radius: 16px;
+  border: 1.5px solid #93c5fd;
+  background: #f8fbff;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.gc-editor-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.gc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.gc-field textarea.plan-input {
+  resize: vertical;
+  min-height: 60px;
+  font-family: inherit;
+}
+
+.gc-prov {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.gc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0 1.1rem 0.8rem;
+}
+
+.gc-group {
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.gc-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+}
+
+.gc-row-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.gc-row-name {
+  font-weight: 700;
+  color: #0f172a;
+  overflow-wrap: anywhere;
+}
+
+.gc-row-meta {
+  font-size: 0.78rem;
+  color: #64748b;
+  overflow-wrap: anywhere;
+}
+
+.gc-row .bet-manage-btn {
+  flex-shrink: 0;
+}
+
+.gc-details {
+  margin: 0 1.1rem 0.6rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.gc-details summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+  color: #2563eb;
+}
+
+.gc-details-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding-bottom: 0.6rem;
+}
+
+.gc-suggest-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.3rem 0.6rem;
+}
+
+.gc-suggest {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 36px;
+  font-size: 0.88rem;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.gc-suggest input {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .cal-games,
+  .gc-toolbar,
+  .gc-list {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+  }
+  .gc-editor,
+  .gc-details {
+    margin-left: 0.6rem;
+    margin-right: 0.6rem;
+  }
+  .gc-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .gc-toolbar #gcSearch {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ============================================================
+   (Sub-entrega 11a) Planejador — velocidade; Jogos — características;
+   Misterioso — etiqueta de peso
+   ============================================================ */
+.plan-speed-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.gc-traits {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.ms-tag-speed {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+/* ============================================================
+   (Sub-entrega 11b) 💼 Caixa do período (Planejador) + aviso nas Rotinas
+   ============================================================ */
+.plan-cash { grid-column: 1 / -1; }
+
+.cash-periods { padding: 0 1.1rem 0.7rem; }
+
+.cash-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0 1.1rem;
+}
+
+.cash-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  min-width: 0;
+}
+
+.cash-row-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.cash-row-label { font-weight: 700; color: #0f172a; min-width: 0; }
+.cash-row-value { font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cash-row-note { font-size: 0.76rem; color: #64748b; line-height: 1.35; }
+
+.cash-details summary {
+  cursor: pointer;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #2563eb;
+}
+
+.cash-sub {
+  display: block;
+  font-size: 0.76rem;
+  color: #475569;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.cash-warn { color: #b45309; font-weight: 700; }
+
+.cash-np { display: flex; flex-direction: column; gap: 0.35rem; }
+.cash-np-btn { align-self: flex-start; }
+
+.cash-bet-edit .plan-input { max-width: 180px; }
+
+.cash-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin: 0.7rem 1.1rem 0;
+  padding: 0.75rem 0.85rem;
+  border-radius: 14px;
+  background: #1e3a8a;
+  color: #fff;
+  font-weight: 700;
+}
+
+.cash-total strong { font-size: 1.15rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.rt-weekly-warn {
+  margin: 0.6rem 0;
+  padding: 0.5rem 0.7rem;
+  border-radius: 12px;
+  border: 1px solid #fdba74;
+  background: #fff7ed;
+}
+
+.rt-weekly-warn summary {
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #9a3412;
+}
+
+@media (max-width: 640px) {
+  .cash-periods, .cash-list { padding-left: 0.6rem; padding-right: 0.6rem; }
+  .cash-total { margin-left: 0.6rem; margin-right: 0.6rem; }
+}
+
+/* (Sub-entrega 11c) Planejador — "Não depositar agora" */
+.cycle-row-ended { background: #fff7ed; border-color: #fdba74; }
+.cycle-row-unstable { background: #fffbeb; border-color: #fde68a; }
+.cycle-actions { padding: 0.6rem 1.1rem 0; }
+@media (max-width: 640px) { .cycle-actions { padding-left: 0.6rem; padding-right: 0.6rem; } }
