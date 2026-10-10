@@ -74,9 +74,14 @@
 // computeObrigadoMonthlyTotals agora recebe o mês ('AAAA-MM'); sem ele,
 // usa o mês atual. Retratos já gravados NÃO mudam (vipHistory é
 // create-only).
+//
+// (Sub-entrega 8a) getObrigadoDaysInMonth ignora os dias marcados como
+// "não recebido" (platform.bonusExclusions) — a aba Obrigado e o retrato
+// do mês contam igual ao Saldo/Rollover. getVipBonus (cycle-logic.js) já
+// ignora os VIP marcados. Só dias da semana aberta podem ser marcados.
 
 import { db, doc, getDoc, getDocs, collection, writeBatch } from './firebase-init.js';
-import { getVipBonus, computeEmissionDates } from './cycle-logic.js';
+import { getVipBonus, computeEmissionDates, getBonusExclusionSet } from './cycle-logic.js';
 import { getEffectiveMisteriosoValue } from './misterioso-logic.js';
 import { loadObrigadoValuePerAppearanceStrict } from './vip-obrigado-store.js';
 import { loadMisteriosoTemplatesStrict } from './vip-misterioso-store.js';
@@ -170,10 +175,15 @@ export function computeVipMonthlyTotals(platforms, refDate) {
 export function getObrigadoDaysInMonth(platform, yearMonth) {
   const [y, m] = String(yearMonth).split('-').map(Number);
   const daysInMonth = new Date(y, m, 0).getDate();
+  // (Sub-entrega 8a) dia marcado como "não recebido" não conta.
+  const excluded = getBonusExclusionSet(platform);
   const valid = new Set();
   (platform.obrigadoDays || []).forEach(d => {
     const day = Number(d);
-    if (Number.isInteger(day) && day >= 1 && day <= daysInMonth) valid.add(day);
+    if (!Number.isInteger(day) || day < 1 || day > daysInMonth) return;
+    const key = `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    if (excluded.has(`${key}|obrigado`)) return;
+    valid.add(day);
   });
   return [...valid].sort((a, b) => a - b);
 }

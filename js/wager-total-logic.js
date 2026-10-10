@@ -13,7 +13,8 @@
 //     value — total apostado real informado pelo usuário nesse instante
 //   Total real = value da referência VIGENTE (a de `at` mais recente que
 //              não está no futuro)
-//            + Σ betEntries[].wagered com data DEPOIS de `at` (e até agora).
+//            + Σ betEntries[].wagered com data DEPOIS de `at` (e até agora)
+//            + semanas antigas (backfill) DEPOIS de `at` — ver Sub-entrega 4.
 //   Apostas antigas (antes da referência) ficam de fora por construção —
 //   nenhum lançamento é apagado nem alterado. Editar/excluir uma aposta no
 //   Financeiro recalcula o total sozinho (nada é congelado).
@@ -29,8 +30,25 @@
 //                           depois de salvar, no mesmo minuto, ainda somam);
 //   - minuto futuro      -> recusado.
 //
-// NÍVEL VIP: esta etapa NÃO muda a lógica de nível (decisão do usuário).
-// O total real calculado aqui é só informativo por enquanto.
+// === (Sub-entrega 4) SEMANAS ANTIGAS (backfill) — nunca contam 2x ===
+// "Adicionar semana antiga" (addHistoricalWeek, finance-logic.js) grava só o
+// TOTAL da semana em financeWeeks[] (backfilled:true) — não cria apostas
+// individuais em betEntries. Regra, por semana de backfill:
+//   - inteira ANTES/NO instante da referência -> fora (já está no valor da
+//     referência);
+//   - inteira DEPOIS da referência (ou sem referência):
+//       * a semana NÃO tem apostas lançadas  -> conta o total da semana;
+//       * a semana TEM apostas lançadas      -> contam só os lançamentos
+//         (já somados acima). Nunca os dois.
+//   - CONTÉM o instante da referência -> não dá pra dividir uma semana ao
+//     meio: fica fora e entra em `straddleWeeks` (a tela avisa).
+//
+// === (Sub-entrega 4) NÍVEL PELO APOSTADO ===
+// Tabela "Aposta Necessária" (V0..V5) por template VIP — ver
+// wager-requirements-store.js. Aqui só as contas puras: nível alcançado,
+// progresso até o próximo e se dá pra promover. QUEM PROMOVE é a tela, com
+// 1 clique + confirmação, pelo MESMO caminho da Edição (recordLevelChange
+// de cycle-logic.js + savePlatform). Nunca rebaixa: o total só cresce.
 
 import { toLocalDateTimeString, roundMoney } from './finance-logic.js';
 
@@ -44,7 +62,13 @@ export const WAGER_ANCHOR_MAX = 200;
 // grosseiro (ex.: colar um número de outro campo).
 export const WAGER_VALUE_MAX = 1e9;
 
+// (Sub-entrega 4) Níveis VIP e tabela "Aposta Necessária" padrão inicial
+// (decisão do usuário). Índice = nível. V0 é sempre 0.
+export const WAGER_LEVELS = [0, 1, 2, 3, 4, 5];
+export const DEFAULT_WAGER_THRESHOLDS = Object.freeze([0, 100, 1000, 3000, 10000, 30000]);
+
 const DATETIME_LOCAL_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function isValidDate(d) {
   return d instanceof Date && !isNaN(d.getTime());
@@ -58,6 +82,16 @@ function isValidAnchor(a) {
 
 function minuteKey(date) {
   return toLocalDateTimeString(date); // 'AAAA-MM-DDTHH:mm' local
+}
+
+// Segunda 00:00 e domingo 23:59:59.999 LOCAIS de uma semana 'AAAA-MM-DD'.
+function weekBounds(weekStartKey) {
+  if (typeof weekStartKey !== 'string' || !DATE_KEY_RE.test(weekStartKey)) return null;
+  const [y, m, d] = weekStartKey.split('-').map(Number);
+  const start = new Date(y, m - 1, d, 0, 0, 0, 0);
+  const end = new Date(y, m - 1, d + 6, 23, 59, 59, 999);
+  if (!isValidDate(start)) return null;
+  return { start: start.getTime(), end: end.getTime() };
 }
 
 // ---------- ENTRADA DO USUÁRIO ----------
@@ -127,11 +161,14 @@ export function computeWagerTotal(platform, refDate = new Date()) {
   let wageredAfter = 0;
   let betsAfter = 0;
   let wageredBefore = 0; // só informativo: o que a referência substituiu
+  const betTimes = [];   // instantes válidos de todas as apostas (regra do backfill)
 
   (platform.betEntries || []).forEach(e => {
     if (!e || !e.date) return;
     const t = new Date(e.date).getTime();
-    if (isNaN(t) || t > nowTime) return;
+    if (isNaN(t)) return;
+    betTimes.push(t);
+    if (t > nowTime) return;
     const v = Number(e.wagered) || 0;
     if (anchorTime === null || t > anchorTime) {
       wageredAfter += v;
@@ -141,6 +178,26 @@ export function computeWagerTotal(platform, refDate = new Date()) {
     }
   });
 
+  // (Sub-entrega 4) Semanas antigas (backfill) — ver nota no topo.
+  let backfillAfter = 0;
+  let backfillWeeksAfter = 0;
+  const straddleWeeks = [];
+  (platform.financeWeeks || []).forEach(w => {
+    if (!w || w.backfilled !== true) return;
+    const b = weekBounds(w.weekStart);
+    if (!b || b.start > nowTime) return;
+    if (anchorTime !== null && b.end <= anchorTime) return;     // inteira antes: já na referência
+    if (anchorTime !== null && b.start <= anchorTime) {         // contém a referência
+      straddleWeeks.push(w.weekStart);
+      return;
+    }
+    const hasRawBets = betTimes.some(t => t >= b.start && t <= b.end);
+    if (hasRawBets) return;                                      // lançamentos já somados
+    backfillAfter += Number(w.wagered) || 0;
+    backfillWeeksAfter++;
+  });
+  straddleWeeks.sort();
+
   const anchorValue = anchor ? anchor.value : 0;
   return {
     hasAnchor: !!anchor,
@@ -149,7 +206,10 @@ export function computeWagerTotal(platform, refDate = new Date()) {
     wageredAfter: r2(wageredAfter),
     betsAfter,
     wageredBefore: r2(wageredBefore),
-    total: r2(anchorValue + wageredAfter)
+    backfillAfter: r2(backfillAfter),
+    backfillWeeksAfter,
+    straddleWeeks,
+    total: r2(anchorValue + wageredAfter + backfillAfter)
   };
 }
 
@@ -165,6 +225,76 @@ export function computeAllWagerTotals(platforms, refDate = new Date()) {
     withAnchor: rows.filter(r => r.hasAnchor).length,
     count: rows.length
   };
+}
+
+// ---------- (Sub-entrega 4) APOSTA NECESSÁRIA / NÍVEL ----------
+
+// Tabela válida: 6 números finitos, V0 = 0, cada nível MAIOR que o anterior,
+// nenhum acima do teto de valor. Nunca "conserta" — só aprova ou recusa.
+export function validateWagerThresholds(thresholds) {
+  if (!Array.isArray(thresholds) || thresholds.length !== WAGER_LEVELS.length) {
+    return { ok: false, error: 'A tabela precisa ter os 6 níveis (V0 a V5).' };
+  }
+  for (let i = 0; i < thresholds.length; i++) {
+    const v = thresholds[i];
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) {
+      return { ok: false, error: `V${i}: valor inválido.` };
+    }
+    if (v > WAGER_VALUE_MAX) return { ok: false, error: `V${i}: valor alto demais.` };
+  }
+  if (thresholds[0] !== 0) return { ok: false, error: 'O V0 é sempre R$ 0,00.' };
+  for (let i = 1; i < thresholds.length; i++) {
+    if (!(thresholds[i] > thresholds[i - 1])) {
+      return { ok: false, error: `O V${i} precisa ser maior que o V${i - 1}.` };
+    }
+  }
+  return { ok: true };
+}
+
+// Nível alcançado pelo total e progresso até o próximo.
+export function computeWagerLevel(total, thresholds) {
+  const t = validateWagerThresholds(thresholds).ok ? thresholds : DEFAULT_WAGER_THRESHOLDS;
+  const value = Math.max(0, Number(total) || 0);
+  let level = 0;
+  for (let i = 0; i < t.length; i++) if (value >= t[i]) level = i;
+
+  const maxed = level === t.length - 1;
+  if (maxed) {
+    return { level, maxed: true, nextLevel: null, nextThreshold: null, missing: 0, progress: 1 };
+  }
+  const from = t[level];
+  const to = t[level + 1];
+  return {
+    level,
+    maxed: false,
+    nextLevel: level + 1,
+    nextThreshold: to,
+    missing: r2(to - value),
+    progress: Math.max(0, Math.min(1, (value - from) / (to - from)))
+  };
+}
+
+// Pode promover? Nunca rebaixa. Precisa de grupo definido (sem grupo a
+// plataforma não recebe Bônus VIP — a promoção não teria efeito real).
+//   status: 'promote'      -> nível pelo apostado > cadastrado
+//           'ok'           -> iguais
+//           'above'        -> cadastrado acima do apostado (só aviso)
+//           'no-group'     -> sem grupo definido na Edição
+//           'unset'        -> sem nível cadastrado e apostado ainda no V0
+export function getPromotionInfo(platform, wagerLevel) {
+  const raw = platform ? platform.level : null;
+  const current = (raw === null || raw === undefined || raw === '') ? null : Number(raw);
+  const group = platform ? platform.group : null;
+  const hasGroup = group === 'com' || group === 'sem';
+  const currentKnown = Number.isInteger(current) && WAGER_LEVELS.includes(current);
+
+  if (!hasGroup) return { status: 'no-group', current: currentKnown ? current : null, target: wagerLevel };
+  if (!currentKnown && wagerLevel === 0) return { status: 'unset', current: null, target: 0 };
+  if (!currentKnown || wagerLevel > current) {
+    return { status: 'promote', current: currentKnown ? current : null, target: wagerLevel };
+  }
+  if (wagerLevel === current) return { status: 'ok', current, target: wagerLevel };
+  return { status: 'above', current, target: wagerLevel };
 }
 
 // ---------- ESCRITA (em memória — quem chama grava com savePlatform) ----------

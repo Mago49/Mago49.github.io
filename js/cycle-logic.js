@@ -20,6 +20,32 @@ export const vipBonusTable = {
 // é por nível VIP (0-5). Abaixo do mínimo do dia, "Apostei hoje" não conta.
 export const BET_MINIMUM_BY_LEVEL = { 0: 0, 1: 0, 2: 10, 3: 12, 4: 16, 5: 20 };
 
+// === (Sub-entrega 8a) BÔNUS ESPERADO MARCADO COMO "NÃO RECEBIDO" ===
+// platform.bonusExclusions: [{ id, dayKey:'AAAA-MM-DD', type, value,
+// prevLog, checkId, createdAt }] — gravado por balance-check-logic.js
+// (conferência de saldo ou gerenciador "Bônus da semana"). Só dias da
+// semana ABERTA podem ser marcados (semana fechada fica travada).
+// FONTE ÚNICA: getVipBonus (aqui — aba VIP, Histórico Mensal, Gráficos) e
+// getExpectedBonusBreakdownForDate (bonus-ledger-logic.js — Saldo,
+// Rollover, Perfil, Análises) leem a MESMA lista, então nenhum lugar
+// mostra um bônus que o outro já tirou. Obrigado do mês:
+// getObrigadoDaysInMonth (vip-history-store.js). Misterioso: a exclusão
+// grava valor 0 em misteriosoBonusLog (mesmo campo da edição de 7 dias),
+// então toda leitura do Misterioso já enxerga sem mudança nenhuma.
+export const EXCLUDABLE_BONUS_TYPES = Object.freeze(['vipDaily', 'vipWeekly', 'vipMonthly', 'obrigado', 'misterioso']);
+
+export function getBonusExclusionSet(platform) {
+  const set = new Set();
+  (platform && Array.isArray(platform.bonusExclusions) ? platform.bonusExclusions : []).forEach(e => {
+    if (e && typeof e.dayKey === 'string' && typeof e.type === 'string') set.add(`${e.dayKey}|${e.type}`);
+  });
+  return set;
+}
+
+export function isBonusExcluded(platform, dayKey, type) {
+  return getBonusExclusionSet(platform).has(`${dayKey}|${type}`);
+}
+
 function toLocalDayKey(dateInput) {
   const d = new Date(dateInput);
   const y = d.getFullYear();
@@ -294,8 +320,9 @@ export function getEventsForDate(targetDate, platforms = state.platforms) {
   const target = new Date(targetDate);
   target.setHours(0, 0, 0, 0);
   const targetTime = target.getTime();
+  // (Sub-entrega 11c) "🚫 Sem ciclo do Misterioso" não conta emissão.
   return platforms.filter(platform =>
-    !platform.cycleEnded &&
+    !platform.cycleEnded && platform.misteriosoCycle !== 'no' &&
     computeEmissionDates(platform, target).some(date => date.getTime() === targetTime)
   );
 }
@@ -343,6 +370,8 @@ export function getVipBonus(platform, refDate = new Date()) {
   // é sempre igual a daily/weekly/monthly — nenhum valor existente muda.
   let dailyTotal = 0;
   let weeklyTotal = 0;
+  // (8a) bônus marcados como não recebidos ficam de fora.
+  const excluded = getBonusExclusionSet(platform);
   const byGroup = {
     com: { daily: 0, weekly: 0, monthly: 0 },
     sem: { daily: 0, weekly: 0, monthly: 0 }
@@ -350,14 +379,16 @@ export function getVipBonus(platform, refDate = new Date()) {
   for (let d = 1; d <= diasNoMes; d++) {
     const day = new Date(ano, mes, d);
     const { group, cfg } = getVipConfigAt(platform, day);
-    if (group === 'sem') {
+    const dayKey = toLocalDayKey(day);
+    const dailyOff = excluded.has(`${dayKey}|vipDaily`);
+    if (group === 'sem' && !dailyOff) {
       dailyTotal += cfg.daily;
       byGroup.sem.daily += cfg.daily;
-    } else if (group === 'com' && day <= hoje && betKeys.has(toLocalDayKey(day))) {
+    } else if (group === 'com' && !dailyOff && day <= hoje && betKeys.has(dayKey)) {
       dailyTotal += cfg.daily;
       byGroup.com.daily += cfg.daily;
     }
-    if (day.getDay() === 1) {
+    if (day.getDay() === 1 && !excluded.has(`${dayKey}|vipWeekly`)) {
       weeklyTotal += cfg.weekly;
       if (group === 'com' || group === 'sem') byGroup[group].weekly += cfg.weekly;
     }
@@ -365,7 +396,7 @@ export function getVipBonus(platform, refDate = new Date()) {
 
   // Mensal: creditado no dia 1, com o nível vigente no dia 1.
   const monthStartCfg = getVipConfigAt(platform, new Date(ano, mes, 1));
-  const monthlyTotal = monthStartCfg.cfg.monthly;
+  const monthlyTotal = excluded.has(`${toLocalDayKey(new Date(ano, mes, 1))}|vipMonthly`) ? 0 : monthStartCfg.cfg.monthly;
   if (monthStartCfg.group === 'com' || monthStartCfg.group === 'sem') {
     byGroup[monthStartCfg.group].monthly += monthlyTotal;
   }

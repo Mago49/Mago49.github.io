@@ -68,6 +68,21 @@ export function normalizePlatformData(parsed) {
       levelHistory: Array.isArray(p.levelHistory) ? p.levelHistory : [],
       // (Total Apostado — Sub-entrega 2) ver nota no topo do arquivo.
       wagerAnchors: Array.isArray(p.wagerAnchors) ? p.wagerAnchors : [],
+      // (Sub-entrega 8a) Conferências de saldo real e bônus esperados
+      // marcados como NÃO recebidos — ver balance-check-logic.js. Mesma
+      // regra do wagerAnchors: precisam estar aqui, senão a próxima
+      // gravação apagaria os dois campos.
+      balanceChecks: Array.isArray(p.balanceChecks) ? p.balanceChecks : [],
+      bonusExclusions: Array.isArray(p.bonusExclusions) ? p.bonusExclusions : [],
+      // (Sub-entrega 11c) Ciclo do Misterioso: 'yes' (padrão — toda
+      // plataforma antiga), 'no' (sem ciclo: fora do calendário/Misterioso,
+      // depósito sempre liberado) ou 'unstable' (aparece e some — cuidado
+      // na virada do mês). cycleHistory: TODO Fim/Reinício a partir de
+      // agora + os reconstruídos pelas fotos diárias ({ type:'reset'|'end',
+      // date:'AAAA-MM-DD', at, source }). Mesma regra dos outros campos:
+      // precisam estar aqui, senão a próxima gravação apagaria.
+      misteriosoCycle: ['yes', 'no', 'unstable'].includes(p.misteriosoCycle) ? p.misteriosoCycle : 'yes',
+      cycleHistory: Array.isArray(p.cycleHistory) ? p.cycleHistory : [],
       codigoConfig: (p.codigoConfig && typeof p.codigoConfig === 'object')
         ? p.codigoConfig : { tipo: null, fixo: '', baseDate: null, variavelInicio: 0 },
       codigoDeposito: (p.codigoDeposito && typeof p.codigoDeposito === 'object')
@@ -193,6 +208,9 @@ export async function loadPlatformsFromFirestore(uid) {
 //     gravação bem-sucedida (o documento é gravado inteiro). O aviso
 //     genérico de firebase-init.js (showSaveFailureToast) já aparece.
 //
+// (Sub-entrega 8a) 'balanceChecks' e 'bonusExclusions' entram na mesma
+// trava e na mesma regra do Firestore (campo nunca pode sumir).
+//
 // (Total Apostado — Sub-entrega 2) 'wagerAnchors' entra na trava de
 // encolhimento: só a exclusão deliberada de uma referência (que passa
 // allowShrink: ['wagerAnchors']) pode diminuir a lista. A segunda barreira
@@ -202,7 +220,12 @@ export async function loadPlatformsFromFirestore(uid) {
 const GUARDED_FIELDS = [
   'depositLog', 'deposits', 'withdrawals', 'betEntries', 'financeWeeks',
   'otherBonusLog', 'balancePhases', 'betDays', 'misteriosoBonusLog',
-  'obrigadoDays', 'levelHistory', 'wagerAnchors'
+  'obrigadoDays', 'levelHistory', 'wagerAnchors',
+  // (Sub-entrega 8a) só o "Desfazer" (allowShrink) pode diminuir.
+  'balanceChecks', 'bonusExclusions',
+  // (Sub-entrega 11c) histórico de ciclos: só a exclusão deliberada de um
+  // registro (allowShrink) pode diminuir.
+  'cycleHistory'
 ];
 
 // id da plataforma -> { campo: quantidade de itens } (carga ou última gravação)

@@ -54,8 +54,21 @@
 // O Rollover do avulso acompanha na mesma proporção (preserva a escala do
 // botão R de cada lançamento). Nada é regravado no Firestore: o efetivo é
 // sempre recalculado na leitura.
+//
+// === (Sub-entrega 8a) CONFERÊNCIA DE SALDO + BÔNUS NÃO RECEBIDO ===
+// a) EXCLUSÕES: getExpectedBonusBreakdownForDate zera os tipos marcados
+//    como não recebidos em platform.bonusExclusions (VIP diário/semanal/
+//    mensal e Obrigado). Misterioso excluído já chega 0 pelo
+//    misteriosoBonusLog. Como Saldo, Rollover, fechamento de semana, Perfil
+//    e Análises passam todos por aqui, todos enxergam a mesma coisa.
+// b) AVULSO DA CONFERÊNCIA (otherBonusLog com source:'balance-check'):
+//    é a diferença POSITIVA entre o saldo real informado e o esperado. Conta
+//    SEMPRE inteiro (é um valor medido, não um "total do dia"). A regra do
+//    total do dia informado ("Inserir bônus hoje") passa a descontar também
+//    esse avulso: total do dia = max(fórmula + conferência, total
+//    informado). Sem conferência no dia, nada muda em relação a antes.
 
-import { getVipConfigAt, computeEmissionDates, isBetDayEffective } from './cycle-logic.js';
+import { getVipConfigAt, computeEmissionDates, isBetDayEffective, getBonusExclusionSet } from './cycle-logic.js';
 import { getEffectiveMisteriosoValue } from './misterioso-logic.js';
 
 function startOfDay(date) {
@@ -157,6 +170,15 @@ export function getExpectedBonusBreakdownForDate(platform, date, ctx = {}) {
     }
   }
 
+  // (8a) Bônus marcados como NÃO recebidos ficam de fora.
+  if (Array.isArray(platform.bonusExclusions) && platform.bonusExclusions.length) {
+    const excluded = getBonusExclusionSet(platform);
+    const key = toLocalDateKey(d);
+    ['vipDaily', 'vipWeekly', 'vipMonthly', 'obrigado'].forEach(type => {
+      if (excluded.has(`${key}|${type}`)) out[type] = 0;
+    });
+  }
+
   return out;
 }
 
@@ -186,6 +208,11 @@ function hasClaim(e) {
   return !!e && typeof e.claimedTotal === 'number' && Number.isFinite(e.claimedTotal);
 }
 
+// (8a) Avulso medido pela conferência de saldo — conta sempre inteiro.
+export function isFixedOtherBonus(e) {
+  return !!e && e.source === 'balance-check';
+}
+
 // Avulso efetivo de UM dia (todas as entradas daquele dia local).
 // Retorna:
 //   raw       — o que entra no Saldo (1:1), em centavos
@@ -198,32 +225,40 @@ function hasClaim(e) {
 export function getEffectiveOtherBonusForDay(platform, date, ctx = {}) {
   const key = toLocalDateKey(date);
   const entries = (platform.otherBonusLog || []).filter(e => isValidEntryDate(e) && toLocalDateKey(e.date) === key);
-  const rawSum = entries.reduce((s, e) => s + (Number(e.rawValue) || 0), 0);
-  const rolloverSum = entries.reduce((s, e) => s + (Number(e.rolloverValue) || 0), 0);
+  // (8a) Avulso da conferência: sempre inteiro, fora da regra do total.
+  const fixed = entries.filter(isFixedOtherBonus);
+  const flex = entries.filter(e => !isFixedOtherBonus(e));
+  const fixedRaw = r2(fixed.reduce((s, e) => s + (Number(e.rawValue) || 0), 0));
+  const fixedRollover = r2(fixed.reduce((s, e) => s + (Number(e.rolloverValue) || 0), 0));
+  const rawSum = flex.reduce((s, e) => s + (Number(e.rawValue) || 0), 0);
+  const rolloverSum = flex.reduce((s, e) => s + (Number(e.rolloverValue) || 0), 0);
 
-  const base = { dayKey: key, entries, rawSum: r2(rawSum), rolloverSum: r2(rolloverSum) };
+  const base = { dayKey: key, entries, rawSum: r2(rawSum), rolloverSum: r2(rolloverSum), fixedRaw, fixedRollover };
 
   if (entries.length === 0) {
     return { ...base, raw: 0, rollover: 0, ratio: 1, claimed: null, formula: null, formulaAtLog: null };
   }
 
-  const claims = entries.filter(hasClaim);
+  const claims = flex.filter(hasClaim);
   if (claims.length === 0) {
-    // Só lançamentos antigos: comportamento de sempre (Σ rawValue).
-    return { ...base, raw: r2(rawSum), rollover: r2(rolloverSum), ratio: 1, claimed: null, formula: null, formulaAtLog: null };
+    // Só lançamentos antigos (+ conferência): comportamento de sempre (Σ rawValue).
+    return { ...base, raw: r2(rawSum + fixedRaw), rollover: r2(rolloverSum + fixedRollover), ratio: 1, claimed: null, formula: null, formulaAtLog: null };
   }
 
   const claimed = claims.reduce((max, e) => Math.max(max, e.claimedTotal), -Infinity);
   const latestClaim = [...claims].sort((a, b) => new Date(a.date) - new Date(b.date))[claims.length - 1];
   const formula = getExpectedBonusForDate(platform, dayKeyToDate(key), ctx);
-  const raw = r2(Math.max(0, claimed - formula));
-  const ratio = rawSum > 0 ? raw / rawSum : 0;
-  const rollover = rawSum > 0 ? r2(rolloverSum * ratio) : raw;
+  // Total do dia = max(fórmula + conferência, total informado).
+  const flexRaw = r2(Math.max(0, claimed - formula - fixedRaw));
+  const ratio = rawSum > 0 ? flexRaw / rawSum : 0;
+  const flexRollover = rawSum > 0 ? r2(rolloverSum * ratio) : flexRaw;
 
   return {
     ...base,
-    raw,
-    rollover,
+    raw: r2(flexRaw + fixedRaw),
+    rollover: r2(flexRollover + fixedRollover),
+    flexRaw,
+    flexRollover,
     ratio,
     claimed: r2(claimed),
     formula: r2(formula),
@@ -265,15 +300,22 @@ export function getEffectiveOtherBonusEntries(platform, entryFilter = () => true
     const day = dayCache.get(key);
     let raw;
     let rollover;
-    if (day.rawSum > 0) {
+    if (isFixedOtherBonus(e)) {
+      // (8a) conferência de saldo: sempre inteiro.
+      raw = Number(e.rawValue) || 0;
+      rollover = Number(e.rolloverValue) || 0;
+    } else if (day.rawSum > 0) {
       raw = (Number(e.rawValue) || 0) * day.ratio;
       rollover = (Number(e.rolloverValue) || 0) * day.ratio;
     } else {
-      // Caso degenerado (entradas sem rawValue): o efetivo do dia vai
-      // inteiro pro último lançamento do dia.
-      const last = [...day.entries].sort((a, b) => new Date(a.date) - new Date(b.date))[day.entries.length - 1];
-      raw = e === last ? day.raw : 0;
-      rollover = e === last ? day.rollover : 0;
+      // Caso degenerado (entradas sem rawValue): o efetivo flexível do dia
+      // vai inteiro pro último lançamento (não-conferência) do dia.
+      const flex = day.entries.filter(x => !isFixedOtherBonus(x));
+      const last = [...flex].sort((a, b) => new Date(a.date) - new Date(b.date))[flex.length - 1];
+      const flexRaw = day.flexRaw !== undefined ? day.flexRaw : r2(day.raw - day.fixedRaw);
+      const flexRollover = day.flexRollover !== undefined ? day.flexRollover : r2(day.rollover - day.fixedRollover);
+      raw = e === last ? flexRaw : 0;
+      rollover = e === last ? flexRollover : 0;
     }
     result.push({ entry: e, raw, rollover, day });
   });
