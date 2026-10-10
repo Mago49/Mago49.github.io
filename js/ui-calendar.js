@@ -12,6 +12,9 @@
 // misterioso-logic.js) conta até 23:59:59 do mesmo dia. Um depósito feito
 // no próprio dia da emissão mudava o patamar na aba Misterioso mas não a
 // cor no calendário. Agora os dois contam até o fim do dia.
+//
+// (Sub-entrega 11c) Plataforma marcada "🚫 Sem ciclo do Misterioso"
+// (misteriosoCycle === 'no') fica fora do calendário.
 import { state } from './state.js';
 import { computeEmissionDates, sumDepositsUpTo, colorForLevel } from './cycle-logic.js';
 
@@ -124,7 +127,9 @@ export function updateCalendarEvents(onDone) {
   const windowTo = new Date(now); windowTo.setDate(windowTo.getDate() + 40);
 
   state.platforms.forEach(platform => {
-    if (platform.cycleEnded) return;
+    // (Sub-entrega 11c) "🚫 Sem ciclo do Misterioso" (Edição → Dados) não
+    // aparece no calendário.
+    if (platform.cycleEnded || platform.misteriosoCycle === 'no') return;
     const emissionDates = computeEmissionDates(platform, now);
     emissionDates.forEach((emDate, emIndex) => {
       if (emDate >= windowFrom && emDate <= windowTo) {
