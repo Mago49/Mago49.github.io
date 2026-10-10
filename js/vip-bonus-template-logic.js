@@ -13,6 +13,8 @@
 // os valores de um template NUNCA sobrescreve uma versão antiga: cria uma
 // versão nova a partir de hoje (ou, se a última versão já é de hoje,
 // troca só ela). Mesmo princípio de levelHistory (cycle-logic.js).
+// (Sub-entrega 12) A versão nova também pode começar AMANHÃ, quando o bônus
+// VIP de hoje já foi recebido — ver addVipTemplateVersion.
 //
 // ATRIBUIÇÃO template<->plataforma: não mora aqui nem no documento da
 // plataforma como campo solto — mora em platform.levelHistory[].vipTemplateId
@@ -144,10 +146,15 @@ export function createVipTemplate(name, levels) {
   return { ok: true, template };
 }
 
-// Nova versão de valores a partir de HOJE. Nunca altera versão antiga:
-//  - valores iguais à última versão -> nada muda (changed:false);
-//  - última versão é de hoje        -> troca só os valores dela;
-//  - última versão é anterior       -> acrescenta versão com from = hoje.
+// Nova versão de valores a partir do dia de refDate (HOJE, ou AMANHÃ quando
+// o bônus de hoje já foi recebido — Sub-entrega 12, ver getVipChangeDate em
+// cycle-logic.js). Nunca altera versão do passado:
+//  - valores iguais ao que já vale no dia (e depois dele) -> nada muda
+//    (changed:false);
+//  - já existe versão começando nesse dia -> troca só os valores dela;
+//  - não existe -> insere versão nova com from = o dia (em ordem de data);
+//  - versão já agendada DEPOIS do dia recebe os mesmos valores (nunca é
+//    apagada: as Regras do Firestore não deixam a lista de versões diminuir).
 export function addVipTemplateVersion(template, levels, refDate = new Date()) {
   const check = validateVipLevels(levels);
   if (!check.ok) return check;
@@ -155,27 +162,32 @@ export function addVipTemplateVersion(template, levels, refDate = new Date()) {
     return { ok: false, error: 'Template inválido.' };
   }
 
-  const todayKey = toDayKey(refDate);
+  const dayKey = toDayKey(refDate);
   const clean = cleanVipLevels(levels);
   const versions = template.versions.map(v => ({ from: v.from, levels: cleanVipLevels(v.levels) }));
-  const last = versions[versions.length - 1];
+  const atDay = getVipTemplateVersionAt({ versions }, dayKey);
+  const later = versions.filter(v => v.from > dayKey);
 
-  if (levelsEqual(last.levels, clean)) {
+  if (atDay && levelsEqual(atDay.levels, clean) && later.every(v => levelsEqual(v.levels, clean))) {
     return { ok: true, changed: false, template: { ...template, versions } };
   }
-  if (last.from === todayKey) {
-    last.levels = clean;
-  } else if (last.from > todayKey) {
-    return { ok: false, error: 'Este template já tem uma versão com data futura.' };
+
+  const idx = versions.findIndex(v => v.from === dayKey);
+  if (idx !== -1) {
+    versions[idx].levels = clean;
   } else {
-    versions.push({ from: todayKey, levels: clean });
+    let pos = versions.findIndex(v => v.from > dayKey);
+    if (pos === -1) pos = versions.length;
+    versions.splice(pos, 0, { from: dayKey, levels: clean });
   }
+  versions.forEach(v => { if (v.from > dayKey) v.levels = cleanVipLevels(clean); });
   return { ok: true, changed: true, template: { ...template, versions } };
 }
 
 // Trava de encolhimento: o template novo precisa conter TODAS as versões
-// antigas, e só a versão de HOJE pode ter valores diferentes. Impede que
-// um bug ou memória velha reescreva o passado.
+// antigas, e só a versão de HOJE (ou uma já agendada pra depois de hoje —
+// Sub-entrega 12) pode ter valores diferentes. Impede que um bug ou memória
+// velha reescreva o passado.
 export function isVipTemplateUpdateSafe(oldTemplate, newTemplate, refDate = new Date()) {
   const todayKey = toDayKey(refDate);
   const newVersions = Array.isArray(newTemplate?.versions) ? newTemplate.versions : [];
@@ -184,7 +196,7 @@ export function isVipTemplateUpdateSafe(oldTemplate, newTemplate, refDate = new 
     if (!match) {
       return { ok: false, error: `A versão de ${oldVersion.from} sumiria do template.` };
     }
-    if (!levelsEqual(oldVersion.levels, match.levels) && oldVersion.from !== todayKey) {
+    if (!levelsEqual(oldVersion.levels, match.levels) && oldVersion.from < todayKey) {
       return { ok: false, error: `A versão de ${oldVersion.from} é do passado e não pode ser alterada.` };
     }
   }

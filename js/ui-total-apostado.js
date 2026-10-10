@@ -33,11 +33,15 @@
 //   do dia no lugar). Nunca rebaixa.
 // - Editor das tabelas no fim da aba (Padrão + cada template VIP).
 
+// (Sub-entrega 12) "Promover" pergunta se o bônus VIP de hoje já foi
+// recebido (ui-vip-change.js): já recebeu = vale a partir de amanhã.
+
 import { state } from './state.js';
 import { formatCurrency, showAppAlert, showAppConfirm } from './utils.js';
 import { savePlatform } from './platforms-store.js';
 import { toLocalDateTimeString } from './finance-logic.js';
-import { getCurrentVipTemplateId, recordLevelChange, BET_MINIMUM_BY_LEVEL } from './cycle-logic.js';
+import { getCurrentVipTemplateId, recordLevelChange, BET_MINIMUM_BY_LEVEL, getVipChangeDate } from './cycle-logic.js';
+import { askVipChangeTiming, describeVipChangeDay } from './ui-vip-change.js'; // (Sub-entrega 12)
 import {
   computeAllWagerTotals, computeWagerTotal, getSortedAnchors, getEffectiveAnchor,
   buildWagerAnchor, addWagerAnchor, removeWagerAnchor,
@@ -749,16 +753,22 @@ async function onPromote(platformId, targetLevel, btn) {
       return;
     }
 
-    const today = new Date().toLocaleDateString('pt-BR');
     const minimo = BET_MINIMUM_BY_LEVEL[targetLevel] || 0;
     const fromText = info.promo.current === null ? 'sem nível' : `V${info.promo.current}`;
+    // (Sub-entrega 12) Já recebeu o bônus VIP de hoje? Define se a promoção
+    // vale desde hoje ou só a partir de amanhã. Cancelar = nada muda.
+    const choice = await askVipChangeTiming({
+      title: `Promover ${platform.name} para V${targetLevel}?`,
+      subtitle: `De ${fromText} para V${targetLevel} — já recebeu o bônus VIP de hoje nesta plataforma?`,
+      note: 'O passado não muda. Semanal segue o nível da segunda-feira; mensal, o do dia 1.' +
+        (platform.group === 'com' && minimo > 0
+          ? ` Grupo COM: o Bônus Diário passa a exigir aposta mínima de ${formatCurrency(minimo)} no dia.`
+          : '')
+    });
+    if (!choice || !mounted) return;
+    const changeDate = getVipChangeDate(choice === 'tomorrow');
     const ok = await showAppConfirm(
-      `${platform.name}: promover de ${fromText} para V${targetLevel}? ` +
-      `Vale a partir de hoje (${today}) — o passado não muda. O Bônus VIP passa a usar o V${targetLevel} a partir de hoje ` +
-      `(semanal pelo nível da segunda-feira, mensal pelo nível do dia 1).` +
-      (platform.group === 'com' && minimo > 0
-        ? ` Grupo COM: o Bônus Diário passa a exigir aposta mínima de ${formatCurrency(minimo)} no dia.`
-        : '')
+      `${platform.name}: V${targetLevel} passa a valer a partir de ${describeVipChangeDay(choice)}. Confirmar?`
     );
     if (!ok || !mounted) return;
 
@@ -773,7 +783,7 @@ async function onPromote(platformId, targetLevel, btn) {
     const prevLevel = target.level;
     const prevHistory = Array.isArray(target.levelHistory) ? target.levelHistory.map(e => ({ ...e })) : target.levelHistory;
 
-    recordLevelChange(target, targetLevel, target.group, new Date()); // template omitido = mantém o atual
+    recordLevelChange(target, targetLevel, target.group, changeDate); // template omitido = mantém o atual
     target.level = targetLevel;
 
     const sent = savePlatform(state.currentUid, target);

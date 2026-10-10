@@ -105,11 +105,40 @@ export function getVipConfigAt(platform, refDate = new Date()) {
   };
 }
 
-// Template VIP vigente HOJE (última entrada do histórico) — null = padrão.
+// Template VIP mais recente do histórico (inclui uma troca já agendada pra
+// amanhã — ver Sub-entrega 12) — null = padrão. É o valor que a tela mostra
+// como "atual" no seletor; o CÁLCULO de cada dia usa getLevelAt.
 export function getCurrentVipTemplateId(platform) {
   const hist = platform.levelHistory;
   if (!Array.isArray(hist) || hist.length === 0) return null;
   return hist[hist.length - 1].vipTemplateId ?? null;
+}
+
+// === (Sub-entrega 12) "JÁ RECEBI O BÔNUS VIP DE HOJE?" ===
+// Promoção de nível, troca de grupo/template na Edição e edição dos valores
+// de um template VIP perguntam se o bônus VIP de hoje já foi recebido na
+// plataforma:
+//   - não  -> a mudança vale desde as 00:00 de HOJE (o bônus de hoje já
+//             sai no valor novo — comportamento de sempre);
+//   - sim  -> vale a partir das 00:00 de AMANHÃ (hoje continua no antigo).
+// Vale pros 3 VIP (diário, semanal na segunda, mensal no dia 1). Obrigado e
+// Misterioso não dependem de nível/template e continuam editáveis ao vivo.
+export function getVipChangeDate(receivedToday, now = new Date()) {
+  if (!receivedToday) return new Date(now);
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+}
+
+// Existe troca de nível/grupo/template agendada pra depois de hoje (e
+// diferente do que vale hoje)? Entrada futura igual à de hoje não conta.
+export function getPendingLevelChange(platform, refDate = new Date()) {
+  const hist = Array.isArray(platform && platform.levelHistory) ? platform.levelHistory : [];
+  const key = toLocalDayKey(refDate);
+  const now = getLevelAt(platform, refDate);
+  return hist.find(e => e && e.date > key && (
+    (e.level ?? null) !== (now.level ?? null)
+    || (e.group ?? null) !== (now.group ?? null)
+    || (e.vipTemplateId ?? null) !== (now.vipTemplateId ?? null)
+  )) || null;
 }
 
 // Registra a troca de nível/grupo/template. CHAMAR ANTES de atribuir p.level/
@@ -118,23 +147,45 @@ export function getCurrentVipTemplateId(platform) {
 // trocas no mesmo dia substituem a entrada do dia.
 // newTemplateId: id do template VIP, null = padrão, undefined (omitido) =
 // mantém o template atual — assim trocar só nível/grupo nunca solta o template.
+//
+// (Sub-entrega 12) refDate pode ser AMANHÃ (getVipChangeDate). Regras:
+//   - o histórico fica SEMPRE em ordem de data (getLevelAt depende disso);
+//   - uma troca que vale a partir do dia D vale também pra qualquer entrada
+//     já agendada DEPOIS de D (ela é reescrita com os mesmos valores, nunca
+//     apagada — levelHistory tem trava de encolhimento em platforms-store.js);
+//   - "mudou?" compara com o que vale NO DIA D e depois dele — assim dá pra
+//     trazer pra hoje uma troca que estava agendada pra amanhã.
 export function recordLevelChange(platform, newLevel, newGroup, refDate = new Date(), newTemplateId = undefined) {
-  const oldLevel = platform.level ?? null;
-  const oldGroup = platform.group ?? null;
-  const oldTemplate = getCurrentVipTemplateId(platform);
   const nl = newLevel ?? null;
   const ng = newGroup ?? null;
-  const nt = newTemplateId === undefined ? oldTemplate : (newTemplateId || null);
-  if (oldLevel === nl && oldGroup === ng && oldTemplate === nt) return false;
+  const nt = newTemplateId === undefined ? getCurrentVipTemplateId(platform) : (newTemplateId || null);
+  const key = toLocalDayKey(refDate);
+  const same = e => (e.level ?? null) === nl && (e.group ?? null) === ng && (e.vipTemplateId ?? null) === nt;
+
+  const existing = Array.isArray(platform.levelHistory) ? platform.levelHistory : [];
+  if (existing.length === 0) {
+    if (same({ level: platform.level, group: platform.group, vipTemplateId: null })) return false;
+  } else if (same(getLevelAt(platform, refDate)) && existing.filter(e => e.date > key).every(same)) {
+    return false;
+  }
 
   if (!Array.isArray(platform.levelHistory)) platform.levelHistory = [];
   const hist = platform.levelHistory;
-  if (hist.length === 0) hist.push({ date: '1970-01-01', level: oldLevel, group: oldGroup, vipTemplateId: oldTemplate });
+  if (hist.length === 0) {
+    hist.push({ date: '1970-01-01', level: platform.level ?? null, group: platform.group ?? null, vipTemplateId: null });
+  }
 
-  const key = toLocalDayKey(refDate);
-  const last = hist[hist.length - 1];
-  if (last.date === key) { last.level = nl; last.group = ng; last.vipTemplateId = nt; }
-  else hist.push({ date: key, level: nl, group: ng, vipTemplateId: nt });
+  const idx = hist.findIndex(e => e.date === key);
+  if (idx !== -1) {
+    hist[idx].level = nl; hist[idx].group = ng; hist[idx].vipTemplateId = nt;
+  } else {
+    let pos = hist.findIndex(e => e.date > key);
+    if (pos === -1) pos = hist.length;
+    hist.splice(pos, 0, { date: key, level: nl, group: ng, vipTemplateId: nt });
+  }
+  hist.forEach(e => {
+    if (e.date > key) { e.level = nl; e.group = ng; e.vipTemplateId = nt; }
+  });
   return true;
 }
 

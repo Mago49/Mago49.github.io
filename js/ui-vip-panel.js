@@ -16,15 +16,24 @@
 // ou misterioso-logic.js nesta sub-entrega — só entram junto com a lógica
 // das respectivas abas.
 //
+// (Sub-entrega 8a) refreshMisteriosoPanel exportada: o gerenciador "Bônus
+// da semana" (aberto pelo botão no topo do Painel VIP) redesenha as abas
+// depois de marcar/desfazer um bônus. Nenhuma lógica existente mudou.
+//
 // (Sub-entrega G2) Aba Obrigado: o total do mês conta só os dias que
 // EXISTEM no mês atual (mesma regra do calendário e do Saldo/Rollover —
 // getObrigadoDaysInMonth, vip-history-store.js). O card de um dia que não
 // existe neste mês (ex.: 31 em abril) continua aparecendo, pra edição, mas
 // marcado "não existe neste mês — não conta".
 
+// (Sub-entrega 12) Salvar novos valores de um template VIP pergunta se o
+// bônus VIP de hoje já foi recebido (ui-vip-change.js): já recebeu = a
+// versão nova começa amanhã (aparece como "⏳ A partir de").
+
 import { state } from './state.js';
 import { formatCurrency, escapeHtml, showAppAlert, showAppConfirm } from './utils.js';
-import { getVipBonus, computeEmissionDates, getCurrentVipTemplateId } from './cycle-logic.js';
+import { getVipBonus, computeEmissionDates, getCurrentVipTemplateId, getVipChangeDate } from './cycle-logic.js';
+import { askVipChangeTiming, describeVipChangeDay } from './ui-vip-change.js'; // (Sub-entrega 12)
 import { DEFAULT_VIP_LEVELS, findVipTemplateById, createVipTemplate, addVipTemplateVersion, VIP_TEMPLATE_NAME_MAX, collectReferencedTemplateIds } from './vip-bonus-template-logic.js';
 import { saveVipBonusTemplate, deleteVipBonusTemplate, restoreMissingVipBonusTemplate } from './vip-bonus-template-store.js';
 import { parseVipTemplatePaste, formatVipLevelsAsPasteText } from './vip-bonus-template-import.js';
@@ -526,6 +535,14 @@ function initMisteriosoControls() {
 
 function renderMisteriosoPanel() {
   misteriosoVisibleCount = 4;
+  renderMisteriosoForecast();
+  renderMisteriosoEditableEvents();
+}
+
+// (Sub-entrega 8a) Redesenha a aba Misterioso por fora (gerenciador "Bônus
+// da semana" mudou um valor). Não faz nada antes da aba ser iniciada.
+export function refreshMisteriosoPanel() {
+  if (!document.getElementById('misteriosoEventsList')) return;
   renderMisteriosoForecast();
   renderMisteriosoEditableEvents();
 }
@@ -1124,6 +1141,10 @@ function getVipTemplates() {
 function formatVipTemplateFrom(from) {
   if (from === '1970-01-01') return 'Desde o início';
   const [y, m, d] = String(from).split('-');
+  // (Sub-entrega 12) Versão agendada (começa depois de hoje).
+  const now = new Date();
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  if (String(from) > todayKey) return `⏳ A partir de ${d}/${m}/${y}`;
   return `Desde ${d}/${m}/${y}`;
 }
 
@@ -1478,20 +1499,37 @@ function buildVipTemplateForm(wrap) {
       }
       result = saveVipBonusTemplate(state.currentUid, created.template, { onFailure: refreshAfterVipTemplateFailure });
     } else {
-      const versioned = addVipTemplateVersion(editing, parsed.levels);
-      if (!versioned.ok) {
-        await showAppAlert(versioned.error);
+      // (Sub-entrega 12) Os valores novos valem desde hoje ou só a partir de
+      // amanhã (bônus VIP de hoje já recebido). Primeiro confere se algo
+      // muda em algum dos dois casos; só então pergunta.
+      const asToday = addVipTemplateVersion(editing, parsed.levels, getVipChangeDate(false));
+      if (!asToday.ok) {
+        await showAppAlert(asToday.error);
         return;
       }
-      if (!versioned.changed && name === editing.name) {
+      const asTomorrow = addVipTemplateVersion(editing, parsed.levels, getVipChangeDate(true));
+      const valuesChange = asToday.changed || (asTomorrow.ok && asTomorrow.changed);
+      if (!valuesChange && name === editing.name) {
         await showAppAlert('Nada mudou — os valores e o nome são os mesmos de antes.');
         return;
       }
-      if (versioned.changed) {
+      let versioned = asToday;
+      if (valuesChange) {
         const using = getPlatformsUsingTemplate(editing.id).length;
+        const choice = await askVipChangeTiming({
+          title: `Novos valores de "${name}"`,
+          subtitle: `${using} plataforma(s) usam este template — já recebeu o bônus VIP de hoje nelas?`,
+          note: 'O que já passou não muda. Saldo e Rollover passam a usar os valores novos a partir do dia escolhido.'
+        });
+        if (!choice) return;
+        versioned = choice === 'tomorrow' ? asTomorrow : asToday;
+        if (!versioned.ok) {
+          await showAppAlert(versioned.error);
+          return;
+        }
         const ok = await showAppConfirm(
-          `Salvar os novos valores de "${name}" a partir de hoje (${new Date().toLocaleDateString('pt-BR')})? ` +
-          `${using} plataforma(s) usam este template. O que já passou não muda; Saldo e Rollover de hoje em diante já usam os valores novos.`
+          `Salvar os novos valores de "${name}" valendo a partir de ${describeVipChangeDay(choice)}? ` +
+          `${using} plataforma(s) usam este template.`
         );
         if (!ok) return;
       }

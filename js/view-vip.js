@@ -43,11 +43,23 @@
 // pelas outras abas: o fechamento do mês lê os próprios dados, de forma
 // estrita (ver checkAndCloseMonthlyHistory em vip-history-store.js).
 // (Sub-entrega D) Só este comentário mudou — nenhuma linha de código.
+//
+// (Sub-entrega 8a) Botão "🧾 Bônus da semana" acima das abas (vale pra
+// todas): abre o gerenciador (ui-bonus-manager.js) — marcar bônus esperado
+// como não recebido, desfazer, excluir avulso. Lê o contexto de bônus de
+// forma ESTRITA na hora do clique (sem ele, não abre — os valores do
+// Misterioso/Obrigado sairiam errados). Depois de cada ação, as abas são
+// redesenhadas.
 
 import {
   renderVipPanel, refreshVipPanelKeepingFilters, initVipFilters, initVipTabs,
-  initObrigadoPanel, initMisteriosoPanel, initHistoryTab, initVipBonusTemplatePanel
+  initObrigadoPanel, initMisteriosoPanel, initHistoryTab, initVipBonusTemplatePanel,
+  renderObrigadoPanel, refreshMisteriosoPanel
 } from './ui-vip-panel.js';
+import { state } from './state.js';
+import { showAppAlert } from './utils.js';
+import { loadBonusContextStrict } from './bonus-context-store.js';
+import { openBonusManager } from './ui-bonus-manager.js';
 
 let dailyTimer = null;
 let mountToken = 0;
@@ -76,6 +88,9 @@ export async function mount(container) {
     </div>
 
     <section class="card-shell vip-card" aria-label="Bônus">
+      <div class="vip-week-bar">
+        <button type="button" id="vipWeekBonusBtn" class="bet-manage-btn">🧾 Bônus da semana</button>
+      </div>
       <div class="vip-tabs" role="tablist" aria-label="Tipo de bônus">
         <button type="button" class="vip-tab-btn active" data-tab="vip">Bônus VIP</button>
         <button type="button" class="vip-tab-btn" data-tab="obrigado">Bônus Obrigado</button>
@@ -162,6 +177,7 @@ export async function mount(container) {
 
   initVipTabs();
   initVipFilters();
+  initWeekBonusButton(isStale);
   initVipBonusTemplatePanel();
   renderVipPanel();
   scheduleDailyUpdate();
@@ -171,6 +187,35 @@ export async function mount(container) {
   await initMisteriosoPanel(isStale);
   if (isStale()) return;
   await initHistoryTab(isStale);
+}
+
+// (8a) Gerenciador "Bônus da semana".
+function initWeekBonusButton(isStale) {
+  const btn = document.getElementById('vipWeekBonusBtn');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    let context;
+    try {
+      context = await loadBonusContextStrict(state.currentUid);
+    } catch (err) {
+      console.error('Bônus da semana: contexto de bônus não confirmado:', err);
+      if (!isStale()) await showAppAlert('Não foi possível carregar o Obrigado e os templates do Misterioso. Verifique a internet e tente de novo.');
+      return;
+    } finally {
+      btn.disabled = false;
+    }
+    if (isStale()) return;
+    openBonusManager({
+      resolveCtx: context.resolveCtx,
+      onChanged: () => {
+        if (isStale()) return;
+        refreshVipPanelKeepingFilters();
+        renderObrigadoPanel();
+        refreshMisteriosoPanel();
+      }
+    });
+  });
 }
 
 export function unmount() {
