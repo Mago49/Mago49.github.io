@@ -67,6 +67,19 @@
 //    total do dia informado ("Inserir bônus hoje") passa a descontar também
 //    esse avulso: total do dia = max(fórmula + conferência, total
 //    informado). Sem conferência no dia, nada muda em relação a antes.
+//
+// === (Correção 12b) ORDEM ENTRE "INSERIR BÔNUS HOJE" E A CONFERÊNCIA ===
+// PROBLEMA: o total informado descontava TODA conferência do dia, inclusive
+// a feita DEPOIS dele. Mas a conferência feita depois mede o saldo real
+// contra um esperado que JÁ incluía o avulso informado — ela é um valor
+// A MAIS, não parte daquele total. Resultado: o avulso informado zerava e
+// Saldo/Rollover ficavam abaixo do real exatamente nesse valor (ex.: total
+// 7,00 → avulso 6,40; conferência +34,61; o 6,40 sumia e o Saldo ficava
+// 33,60 em vez de 40,00).
+// CORREÇÃO: o total informado só desconta as conferências REGISTRADAS
+// ANTES dele (createdAt; sem createdAt, a data do lançamento). A que vem
+// depois soma inteira, por cima. Nenhum dado é regravado — o efetivo é
+// recalculado na leitura, então os dias afetados se corrigem sozinhos.
 
 import { getVipConfigAt, computeEmissionDates, isBetDayEffective, getBonusExclusionSet } from './cycle-logic.js';
 import { getEffectiveMisteriosoValue } from './misterioso-logic.js';
@@ -213,6 +226,13 @@ export function isFixedOtherBonus(e) {
   return !!e && e.source === 'balance-check';
 }
 
+// (12b) Instante em que o lançamento foi REGISTRADO (createdAt); entradas
+// antigas sem createdAt usam a própria data.
+function recordedAt(e) {
+  const t = new Date(e && e.createdAt ? e.createdAt : e && e.date).getTime();
+  return Number.isFinite(t) ? t : new Date(e.date).getTime();
+}
+
 // Avulso efetivo de UM dia (todas as entradas daquele dia local).
 // Retorna:
 //   raw       — o que entra no Saldo (1:1), em centavos
@@ -245,11 +265,23 @@ export function getEffectiveOtherBonusForDay(platform, date, ctx = {}) {
     return { ...base, raw: r2(rawSum + fixedRaw), rollover: r2(rolloverSum + fixedRollover), ratio: 1, claimed: null, formula: null, formulaAtLog: null };
   }
 
-  const claimed = claims.reduce((max, e) => Math.max(max, e.claimedTotal), -Infinity);
+  // (12b) Total que vale = o maior informado (empate: o registrado por
+  // último). Ele só desconta as conferências registradas ANTES dele.
+  const governing = claims.reduce((best, e) => (
+    !best || e.claimedTotal > best.claimedTotal
+      || (e.claimedTotal === best.claimedTotal && recordedAt(e) >= recordedAt(best))
+      ? e : best
+  ), null);
+  const claimed = governing.claimedTotal;
+  const claimAt = recordedAt(governing);
+  const fixedBeforeClaim = r2(fixed
+    .filter(e => recordedAt(e) <= claimAt)
+    .reduce((s, e) => s + (Number(e.rawValue) || 0), 0));
   const latestClaim = [...claims].sort((a, b) => new Date(a.date) - new Date(b.date))[claims.length - 1];
   const formula = getExpectedBonusForDate(platform, dayKeyToDate(key), ctx);
-  // Total do dia = max(fórmula + conferência, total informado).
-  const flexRaw = r2(Math.max(0, claimed - formula - fixedRaw));
+  // Total do dia = max(fórmula + conferências anteriores, total informado)
+  // + conferências posteriores (estas entram inteiras via fixedRaw).
+  const flexRaw = r2(Math.max(0, claimed - formula - fixedBeforeClaim));
   const ratio = rawSum > 0 ? flexRaw / rawSum : 0;
   const flexRollover = rawSum > 0 ? r2(rolloverSum * ratio) : flexRaw;
 
