@@ -80,6 +80,23 @@
 // ANTES dele (createdAt; sem createdAt, a data do lançamento). A que vem
 // depois soma inteira, por cima. Nenhum dado é regravado — o efetivo é
 // recalculado na leitura, então os dias afetados se corrigem sozinhos.
+//
+// === (Sub-entrega 13) 💎 BÔNUS ALTO ===
+// Bônus alto coletado junto com um depósito do tipo 💎 (deposit-kinds.js).
+// Mora em platform.highBonusLog:
+//   { id, date, value, scale, rolloverValue, depositDate, createdAt }
+// É um bônus CONHECIDO (valor exato informado na hora), então entra no
+// ESPERADO do dia — getExpectedBonusBreakdownForDate(...).alto — junto com
+// VIP/Obrigado/Misterioso. Consequências (todas automáticas, mesma fonte):
+//   - Saldo ao vivo, fechamento de semana, Painel, Perfil: 1:1 pelo esperado;
+//   - "Inserir bônus hoje": o total do dia já inclui o bônus alto (ele é
+//     descontado como fórmula — o avulso nunca o conta de novo);
+//   - conferência de saldo: o esperado já o inclui.
+// ROLLOVER: o esperado entra no Rollover 1:1 no início do dia; o bônus
+// alto NÃO — ele entra no horário dele, com a escala escolhida
+// (rolloverValue). Por isso finance-logic.js tira `alto` do lote do dia e
+// usa getHighBonusEntries / sumHighBonusForWeek. NÃO é afetado por "Não
+// recebi" (é lançamento real — corrige-se editando ou excluindo).
 
 import { getVipConfigAt, computeEmissionDates, isBetDayEffective, getBonusExclusionSet } from './cycle-logic.js';
 import { getEffectiveMisteriosoValue } from './misterioso-logic.js';
@@ -151,7 +168,7 @@ function hasBetOnDate(platform, date) {
 export function getExpectedBonusBreakdownForDate(platform, date, ctx = {}) {
   const d = startOfDay(date);
   const { group, cfg } = getVipConfigAt(platform, d);
-  const out = { vipDaily: 0, vipWeekly: 0, vipMonthly: 0, obrigado: 0, misterioso: 0 };
+  const out = { vipDaily: 0, vipWeekly: 0, vipMonthly: 0, obrigado: 0, misterioso: 0, alto: 0 };
 
   // Diário — 'sem' recebe todo dia; 'com' só nos dias liberados (manual
   // ou automático via mínimo do nível vigente no dia).
@@ -192,7 +209,69 @@ export function getExpectedBonusBreakdownForDate(platform, date, ctx = {}) {
     });
   }
 
+  // (13) Bônus alto lançado nesse dia (valor exato, 1:1 no Saldo).
+  out.alto = sumHighBonusOnDay(platform, d);
+
   return out;
+}
+
+// ============================================================
+// (Sub-entrega 13) BÔNUS ALTO — ver nota no topo do arquivo
+// ============================================================
+
+export function getHighBonusEntries(platform) {
+  return (platform && Array.isArray(platform.highBonusLog) ? platform.highBonusLog : [])
+    .filter(e => isValidEntryDate(e) && Number(e.value) > 0);
+}
+
+export function highBonusRollover(e) {
+  const rv = Number(e && e.rolloverValue);
+  if (Number.isFinite(rv) && rv >= 0) return rv;
+  const scale = Math.max(1, Number(e && e.scale) || 1);
+  return (Number(e && e.value) || 0) * scale;
+}
+
+// Monta a entrada de highBonusLog. O bônus nasce 1 s DEPOIS do depósito
+// (o depósito libera o bônus) — no Rollover, entra logo após ele.
+export function buildHighBonusEntry({ depositDate, value, scale = 1, now = new Date() }) {
+  const v = r2(value);
+  const s = Math.max(1, Math.min(100, Math.round(Number(scale) || 1)));
+  const base = depositDate && !isNaN(new Date(depositDate).getTime()) ? new Date(depositDate).getTime() : now.getTime();
+  return {
+    id: `hb${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`,
+    date: new Date(base + 1000).toISOString(),
+    value: v,
+    scale: s,
+    rolloverValue: r2(v * s),
+    depositDate: depositDate || null,
+    createdAt: now.toISOString()
+  };
+}
+
+function sumHighBonusOnDay(platform, date) {
+  const key = toLocalDateKey(date);
+  return r2(getHighBonusEntries(platform)
+    .filter(e => toLocalDateKey(e.date) === key)
+    .reduce((s, e) => s + (Number(e.value) || 0), 0));
+}
+
+// Bônus alto da semana de refDate, de segunda até o FIM do dia de refDate
+// (mesmo intervalo de computeAutoAccruedBonusForWeek).
+export function sumHighBonusForWeek(platform, refDate = new Date()) {
+  const weekStart = getWeekStartLocal(refDate);
+  const weekEnd = getWeekEndLocal(weekStart);
+  const dayEnd = new Date(refDate);
+  dayEnd.setHours(23, 59, 59, 999);
+  const last = dayEnd < weekEnd ? dayEnd : weekEnd;
+  let raw = 0;
+  let rollover = 0;
+  getHighBonusEntries(platform).forEach(e => {
+    const d = new Date(e.date);
+    if (d < weekStart || d > last) return;
+    raw += Number(e.value) || 0;
+    rollover += highBonusRollover(e);
+  });
+  return { raw: r2(raw), rollover: r2(rollover) };
 }
 
 // Total esperado do dia — soma do detalhamento, na mesma ordem de sempre.
@@ -204,6 +283,7 @@ export function getExpectedBonusForDate(platform, date, ctx = {}) {
   total += b.vipMonthly;
   total += b.obrigado;
   total += b.misterioso;
+  total += b.alto;
   return total;
 }
 

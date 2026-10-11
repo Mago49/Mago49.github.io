@@ -143,7 +143,8 @@ export function buildCalendarMonth(ym, world) {
       isFuture: k > world.todayKey,
       plan: { plannedC: 0, realC: 0, rows: [], status: null },
       offPlan: [],
-      deposits: { semanal: 0, mensal: 0, aposta: 0, none: 0, totalC: 0, rows: [] },
+      // (Sub-entrega 13) inclui 💎 alto.
+      deposits: { semanal: 0, mensal: 0, aposta: 0, alto: 0, none: 0, totalC: 0, rows: [] },
       emissions: [],
       routines: null,
       forbidden: []
@@ -173,7 +174,7 @@ export function buildCalendarMonth(ym, world) {
       const d = days.get(k);
       const kind = getDepositKindId(e) || 'none';
       const c = toC(e.value);
-      d.deposits[kind] += c;
+      d.deposits[kind] = (d.deposits[kind] || 0) + c;
       d.deposits.totalC += c;
       d.deposits.rows.push({ platformId: p.id, name: String(p.name || ''), kind, valueC: c });
     });

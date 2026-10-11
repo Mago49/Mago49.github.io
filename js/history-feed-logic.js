@@ -22,8 +22,12 @@
 // ficou totalmente coberto pela fórmula some do feed (valor 0). Semana
 // fechada mostra também a diferença informada no fechamento
 // (bonusAdjustment), quando existir.
+//
+// (Sub-entrega 13) "💎 Bônus alto" aparece no horário em que foi coletado
+// (highBonusLog). O detalhamento da fórmula nunca o mostra de novo (os
+// tipos de fórmula listados abaixo são só VIP/Obrigado/Misterioso).
 
-import { getExpectedBonusBreakdownForDate, getEffectiveOtherBonusEntries } from './bonus-ledger-logic.js';
+import { getExpectedBonusBreakdownForDate, getEffectiveOtherBonusEntries, getHighBonusEntries, highBonusRollover } from './bonus-ledger-logic.js';
 import { getLevelAt, BET_MINIMUM_BY_LEVEL } from './cycle-logic.js';
 
 // Cópia intencional do algoritmo de toLocalDateString (finance-logic.js).
@@ -158,6 +162,16 @@ export function buildDayFeed(platforms, dayKey, resolveCtx = () => ({}), refDate
       events.push({
         ...base, ts: new Date(e.date).getTime(), kind: 'bonus-avulso', icon: '🎁', label: 'Bônus avulso',
         value: v, detail: parts.join(' · ')
+      });
+    });
+
+    // (Sub-entrega 13) 💎 bônus alto, no horário em que foi coletado.
+    getHighBonusEntries(p).forEach(e => {
+      if (!isOnDay(e.date, dayKey)) return;
+      const scale = Number(e.scale) || 1;
+      events.push({
+        ...base, ts: new Date(e.date).getTime(), kind: 'bonus-alto', icon: '💎', label: 'Bônus alto',
+        value: r2(e.value), detail: scale !== 1 ? `Rollover ${scale}x (${money(highBonusRollover(e))})` : ''
       });
     });
 

@@ -83,6 +83,10 @@ export function normalizePlatformData(parsed) {
       // precisam estar aqui, senão a próxima gravação apagaria.
       misteriosoCycle: ['yes', 'no', 'unstable'].includes(p.misteriosoCycle) ? p.misteriosoCycle : 'yes',
       cycleHistory: Array.isArray(p.cycleHistory) ? p.cycleHistory : [],
+      // (Sub-entrega 13) 💎 Bônus alto coletado junto com o depósito 💎 —
+      // ver bonus-ledger-logic.js. Mesma regra: precisa estar aqui, senão a
+      // próxima gravação apagaria o campo.
+      highBonusLog: Array.isArray(p.highBonusLog) ? p.highBonusLog : [],
       codigoConfig: (p.codigoConfig && typeof p.codigoConfig === 'object')
         ? p.codigoConfig : { tipo: null, fixo: '', baseDate: null, variavelInicio: 0 },
       codigoDeposito: (p.codigoDeposito && typeof p.codigoDeposito === 'object')
@@ -225,7 +229,9 @@ const GUARDED_FIELDS = [
   'balanceChecks', 'bonusExclusions',
   // (Sub-entrega 11c) histórico de ciclos: só a exclusão deliberada de um
   // registro (allowShrink) pode diminuir.
-  'cycleHistory'
+  'cycleHistory',
+  // (Sub-entrega 13) bônus alto: só o "Excluir" do 🧾 Bônus (allowShrink).
+  'highBonusLog'
 ];
 
 // id da plataforma -> { campo: quantidade de itens } (carga ou última gravação)

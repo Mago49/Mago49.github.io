@@ -133,6 +133,12 @@
 // c) Botão "📜 Ciclos": histórico, previsão, lançar à mão e reconstruir
 //    pelas fotos diárias (ui-cycle-history.js).
 
+// === (Sub-entrega 13) 💎 COLETAR BÔNUS ALTO ===
+// "Adicionar" usa pickDepositKindAndBonus: 💎 pede o valor do bônus alto e
+// grava depósito + highBonusLog no mesmo savePlatform. Com a semana atual
+// já fechada, o depósito 💎 com bônus é recusado (nada gravado).
+// Reclassificar no Histórico continua só trocando o tipo.
+
 // === (Sub-entrega 12) "JÁ RECEBEU O BÔNUS VIP DE HOJE?" ===
 // Dados → Salvar: se nível, grupo ou template VIP mudou (ou há troca já
 // agendada pra amanhã), pergunta antes de gravar (ui-vip-change.js). "Já
@@ -148,7 +154,9 @@ import { savePlatform, deletePlatformDoc } from './platforms-store.js';
 import { filterAndSortForManage } from './platform-sort.js';
 import { initSortMenu } from './ui-sort.js';
 import { getCachedPreferences, saveManualOrder, saveBadgeVisibility } from './user-preferences-store.js';
-import { pickDepositKind, applyDepositKind, getDepositKindId, getDepositKindInfo, CLEAR_KIND } from './deposit-kinds.js';
+import { pickDepositKind, pickDepositKindAndBonus, applyDepositKind, getDepositKindId, getDepositKindInfo, CLEAR_KIND } from './deposit-kinds.js';
+import { buildHighBonusEntry } from './bonus-ledger-logic.js'; // (Sub-entrega 13)
+import { isCurrentWeekClosed } from './finance-logic.js'; // (Sub-entrega 13)
 import { buildTraitsSection } from './ui-traits.js'; // (Sub-entrega 11a)
 import { recordCycleEvent, cycleState, CYCLE_STATES } from './cycle-history-logic.js'; // (11c)
 import { openCycleHistory } from './ui-cycle-history.js'; // (11c)
@@ -624,13 +632,21 @@ function buildActionsSection(p) {
       // grava nada (o valor digitado continua no campo). O botão fica
       // travado enquanto o seletor está aberto, contra toque duplo.
       addBtn.disabled = true;
-      let kind = null;
+      let picked = null;
       try {
-        kind = await pickDepositKind({ subtitle: `${p.name} · ${formatCurrency(value)}` });
+        // (Sub-entrega 13) 💎 abre a 2ª página (valor do bônus alto).
+        picked = await pickDepositKindAndBonus({ subtitle: `${p.name} · ${formatCurrency(value)}` });
       } finally {
         addBtn.disabled = false;
       }
-      if (!kind) return;
+      if (!picked) return;
+      const kind = picked.kind;
+      // (13) Semana já fechada: o bônus alto não entraria em lugar nenhum
+      // (a semana fechada fica congelada). Nada é gravado.
+      if (picked.highBonus && isCurrentWeekClosed(p)) {
+        await showAppAlert('A semana atual já foi fechada — o depósito com bônus alto não foi registrado. Some o bônus no bônus real da semana (Financeiro → Editar).');
+        return;
+      }
       // A data é carimbada DEPOIS da escolha — é o instante real do registro.
       const entry = { date: new Date().toISOString(), value, kind };
       if (!Array.isArray(p.deposits)) p.deposits = [];
@@ -640,6 +656,11 @@ function buildActionsSection(p) {
       // p.deposits, Fim/Reinício (mais abaixo) NUNCA apagam este array.
       if (!p.depositLog) p.depositLog = [];
       p.depositLog.push({ ...entry });
+      // (Sub-entrega 13) bônus alto — mesmo savePlatform do depósito.
+      if (picked.highBonus) {
+        if (!Array.isArray(p.highBonusLog)) p.highBonusLog = [];
+        p.highBonusLog.push(buildHighBonusEntry({ depositDate: entry.date, value: picked.highBonus.value, scale: picked.highBonus.scale }));
+      }
       savePlatform(state.currentUid, p);
       // Só o conteúdo desta linha muda (total/badge) — depósito não afeta
       // nenhum filtro/ordenação ativo, então basta atualizar esta linha.

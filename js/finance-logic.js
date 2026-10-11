@@ -91,9 +91,23 @@
 //    soma de valores em centavos nunca muda o valor real — só remove o
 //    resíduo de ponto flutuante.
 
+// === (Sub-entrega 13) 💎 BÔNUS ALTO ===
+// O bônus alto entra no ESPERADO do dia (bonus-ledger-logic.js), então o
+// Saldo, o fechamento e os totais já o somam 1:1 sem nada novo aqui. Só o
+// ROLLOVER precisa de cuidado, porque o bônus alto tem horário e escala
+// próprios:
+//   - simulateRollover: o lote do início do dia passa a ser esperado −
+//     bônus alto; cada bônus alto entra como evento no horário dele, com o
+//     rolloverValue (escala escolhida);
+//   - closeWeek / computePhaseHistory: bonusRollover troca a parte 1:1 do
+//     bônus alto pelo rolloverValue (+ rollover − valor).
+// computeLiveBalanceRaw: Saldo SEM o piso em zero — usado só pela
+// conferência de saldo pra avisar quando falta lançamento na fase.
+
 import {
   computeAutoAccruedBonusForWeek, getAccumulatedBonusThisWeek, getExpectedBonusForDate,
-  sumEffectiveOtherBonus, getEffectiveOtherBonusEntries
+  sumEffectiveOtherBonus, getEffectiveOtherBonusEntries,
+  getExpectedBonusBreakdownForDate, getHighBonusEntries, highBonusRollover, sumHighBonusForWeek
 } from './bonus-ledger-logic.js';
 
 // (Sub-entrega G) arredonda em centavos.
@@ -317,6 +331,13 @@ export function removeLastPhase(platform) {
 //
 // PISO EM ZERO: saldo nunca é negativo na prática — trava em R$ 0,00.
 export function computeLiveBalance(platform, refDate = new Date(), ctx = {}) {
+  return r2(Math.max(0, computeLiveBalanceRaw(platform, refDate, ctx)));
+}
+
+// (Sub-entrega 13) Mesma conta, SEM o piso em zero. Negativo = falta
+// lançamento na fase (ou o Saldo Inicial dela está errado) — a plataforma
+// real nunca fica negativa.
+export function computeLiveBalanceRaw(platform, refDate = new Date(), ctx = {}) {
   const phaseStart = getCurrentPhaseStartDate(platform, refDate);
   const phaseStartDate = phaseStart ? new Date(phaseStart) : null;
   // SUB-ENTREGA 3: teto = domingo 23:59:59.999 da semana de refDate. Nada
@@ -372,7 +393,7 @@ export function computeLiveBalance(platform, refDate = new Date(), ctx = {}) {
     + closedResultBetting + currentWeekResultBetting
     + bonusTotal + autoAccruedThisWeek + currentWeekOtherBonusRaw;
 
-  return r2(Math.max(0, balance));
+  return r2(balance);
 }
 
 // ============================================================
@@ -472,10 +493,21 @@ function simulateRollover(platform, { initialRollover = 0, windowStart = null, w
     const lastDay = today < weekEnd ? today : weekEnd;
     const cursor = new Date(weekStart);
     while (cursor <= lastDay) {
-      const v = getExpectedBonusForDate(platform, cursor, ctx) || 0;
-      if (v) events.push({ t: cursor.getTime(), p: 0, v });
+      // (13) lote do dia SEM o bônus alto — ele entra no horário dele.
+      const b = getExpectedBonusBreakdownForDate(platform, cursor, ctx);
+      const v = (getExpectedBonusForDate(platform, cursor, ctx) || 0) - (Number(b.alto) || 0);
+      if (v > 0.0000001) events.push({ t: cursor.getTime(), p: 0, v });
       cursor.setDate(cursor.getDate() + 1);
     }
+    const dayEnd = new Date(lastDay);
+    dayEnd.setHours(23, 59, 59, 999);
+    getHighBonusEntries(platform).forEach(e => {
+      if (!inOpenWeek(e)) return;
+      const d = new Date(e.date);
+      if (d > dayEnd) return;
+      const v = highBonusRollover(e);
+      if (v) events.push({ t: d.getTime(), p: 1, v });
+    });
   }
 
   events.sort((a, b) => (a.t - b.t) || (a.p - b.p));
@@ -585,7 +617,9 @@ export function computePhaseHistory(platform, refDate = new Date(), ctx = {}) {
       // computeLiveBalance/computeRolloverLive, 1:1 nos dois.
       const autoAccruedThisWeek = computeAutoAccruedBonusForWeek(platform, refDate, ctx);
       bonus += autoAccruedThisWeek;
-      bonusRollover += autoAccruedThisWeek;
+      // (13) bônus alto: no Rollover pela escala dele, não 1:1.
+      const high = sumHighBonusForWeek(platform, refDate);
+      bonusRollover += autoAccruedThisWeek - high.raw + high.rollover;
     }
 
     results.push({
@@ -681,7 +715,10 @@ export function closeWeek(platform, bonus, refDate = new Date(), ctx = {}) {
   // sobrar segue pra semana seguinte porque o Rollover é acumulado por
   // fase (initialRollover + depósitos + bonusRollover - apostado).
   const bonusDiff = r2(bonusNum - autoAccruedThisWeek - otherBonusRawThisWeek);
-  const bonusRollover = r2(autoAccruedThisWeek + otherBonusRolloverThisWeek + bonusDiff);
+  // (13) bônus alto: a parte dele em autoAccruedThisWeek é 1:1 — troca
+  // pela escala escolhida (rolloverValue).
+  const highThisWeek = sumHighBonusForWeek(platform, refDate);
+  const bonusRollover = r2(autoAccruedThisWeek - highThisWeek.raw + highThisWeek.rollover + otherBonusRolloverThisWeek + bonusDiff);
 
   const entry = {
     weekStart: toLocalDateString(live.weekStart),

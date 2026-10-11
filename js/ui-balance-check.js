@@ -17,6 +17,10 @@
 //      (padrão 1:1, botão R) → Confirmar;
 //   C) diferença negativa → "Saldo divergente" → escolher os bônus
 //      esperados da semana que NÃO entraram, ou registrar assim mesmo.
+//   (Sub-entrega 13) Antes de B/C: se a soma da fase está NEGATIVA (o Saldo
+//      exibido mostra 0,00 pelo piso), aviso "falta lançamento nesta fase".
+//      Cancelar / Voltar não gravam nada; "Continuar mesmo assim" compara
+//      com o valor sem piso, pra o Saldo ficar igual ao real.
 //
 // Segurança: tudo por textContent.
 
@@ -145,6 +149,23 @@ export function openBalanceCheck({ platform, ctx = {}, pendingRB = 0, mode = 'st
     // ---- comparar ----
     function stepCompare(real) {
       const gap = computeBalanceGap(platform, real, ctx, at(), pendingRB);
+      if (gap.negative) { stepNegative(gap); return; }
+      proceed(gap);
+    }
+
+    // (13) soma da fase negativa — avisa antes de seguir.
+    function stepNegative(gap) {
+      header('⚠️ Falta lançamento nesta fase', platform.name);
+      box.appendChild(el('p', 'bc-warn', `O Saldo do sistema está ${formatCurrency(Math.abs(gap.raw))} abaixo de zero — na tela aparece R$ 0,00, porque o saldo nunca fica negativo. A plataforma real também não fica: isso quer dizer que falta algum lançamento nesta fase (depósito, bônus, semana) ou que o Saldo Inicial da fase está errado.`));
+      box.appendChild(summaryLines(gap));
+      box.appendChild(el('p', 'bc-note', 'O ideal é cancelar e lançar o que falta. Se continuar, a diferença é calculada sobre o valor real do sistema e o Saldo fica igual ao informado.'));
+      footer(
+        btn('Cancelar', 'bc-cancel', () => close({ status: 'cancelled' })),
+        btn('Continuar mesmo assim', 'bet-manage-btn', () => proceed(gap))
+      );
+    }
+
+    function proceed(gap) {
       if (gap.kind === 'match') {
         recordBalanceCheck(platform, gap, 'match', at());
         close({ status: 'done', resolution: 'match', gap });
@@ -161,6 +182,7 @@ export function openBalanceCheck({ platform, ctx = {}, pendingRB = 0, mode = 'st
         grid.appendChild(el('span', `bc-v${cls ? ` ${cls}` : ''}`, v));
       };
       row('Saldo informado', formatCurrency(gap.real));
+      if (gap.negative) row('Saldo do sistema (sem piso)', formatCurrency(gap.raw), 'bc-neg');
       row('Esperado pelo sistema', formatCurrency(gap.expected));
       if (gap.pendingRB) row('(inclui R.B. desta sessão)', formatCurrency(gap.pendingRB));
       row('Diferença', `${gap.diff > 0 ? '+' : ''}${formatCurrency(gap.diff)}`, gap.diff > 0 ? 'bc-pos' : 'bc-neg');

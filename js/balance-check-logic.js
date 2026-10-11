@@ -38,10 +38,21 @@
 //                       bonusValue, scale, excludedTotal }]
 //   bonusExclusions: [{ id, dayKey, type, value, prevLog, checkId, createdAt }]
 
+// === (Sub-entrega 13) ===
+// a) SALDO DO SISTEMA NEGATIVO: o Saldo exibido tem piso em zero, mas a
+//    soma da fase pode ficar negativa quando falta lançamento (ou o Saldo
+//    Inicial da fase está errado). Antes a conferência comparava com o
+//    zero exibido e o negativo escondido "comia" o bônus lançado (o Saldo
+//    não batia com o real depois). Agora computeBalanceGap compara com o
+//    valor SEM piso e marca `negative` — a tela avisa antes de seguir. Se
+//    o usuário continuar, o Saldo fica igual ao real.
+// b) 💎 BÔNUS ALTO na lista "Bônus da semana": tipo 'alto', com Editar
+//    (valor + escala) e Excluir. Não tem "Não recebi" (é valor real).
+
 import {
-  computeLiveBalance, getWeekStart, getWeekEnd, toLocalDateString, isCurrentWeekClosed, roundMoney
+  computeLiveBalance, computeLiveBalanceRaw, getWeekStart, getWeekEnd, toLocalDateString, isCurrentWeekClosed, roundMoney
 } from './finance-logic.js';
-import { getExpectedBonusBreakdownForDate, getEffectiveOtherBonusEntries, isFixedOtherBonus } from './bonus-ledger-logic.js';
+import { getExpectedBonusBreakdownForDate, getEffectiveOtherBonusEntries, isFixedOtherBonus, getHighBonusEntries, highBonusRollover } from './bonus-ledger-logic.js';
 
 const r2 = roundMoney;
 
@@ -54,6 +65,7 @@ export const BONUS_TYPE_LABELS = Object.freeze({
   vipMonthly: 'VIP mensal',
   obrigado: 'Obrigado',
   misterioso: 'Misterioso',
+  alto: 'Bônus Alto',
   avulso: 'Avulso'
 });
 
@@ -112,10 +124,14 @@ export function parseRealBalance(value) {
 export function computeBalanceGap(platform, realBalance, ctx = {}, now = new Date(), pendingRB = 0) {
   const real = r2(realBalance);
   const live = computeLiveBalance(platform, now, ctx);
-  const expected = r2(live + (Number(pendingRB) || 0));
+  // (13) soma SEM o piso: negativa = falta lançamento na fase.
+  const raw = computeLiveBalanceRaw(platform, now, ctx);
+  const negative = raw < -BALANCE_TOLERANCE;
+  const base = negative ? raw : live;
+  const expected = r2(base + (Number(pendingRB) || 0));
   const diff = r2(real - expected);
   const kind = Math.abs(diff) <= BALANCE_TOLERANCE ? 'match' : (diff > 0 ? 'over' : 'under');
-  return { real, expected, live, pendingRB: r2(pendingRB), diff, kind };
+  return { real, expected, live, raw: r2(raw), negative, pendingRB: r2(pendingRB), diff, kind };
 }
 
 function pushCheck(platform, gap, now, extra) {
@@ -214,6 +230,25 @@ export function listOpenWeekBonusItems(platform, ctx = {}, now = new Date()) {
 
   const weekStart = getWeekStart(now);
   const weekEnd = getWeekEnd(weekStart);
+
+  // (13) 💎 bônus alto da semana aberta (até hoje — o bônus nasce 1 s
+  // depois do depósito, então não se compara com o instante exato).
+  getHighBonusEntries(platform).forEach(e => {
+    const d = new Date(e.date);
+    if (d < weekStart || d > weekEnd || !inOpenWeek(toLocalDateString(d), now)) return;
+    items.push({
+      id: `h|${e.id || e.date}`,
+      kind: 'alto',
+      dayKey: toLocalDateString(d),
+      type: 'alto',
+      value: r2(e.value),
+      scale: Math.max(1, Number(e.scale) || 1),
+      rollover: r2(highBonusRollover(e)),
+      entry: e,
+      sortKey: e.date
+    });
+  });
+
   getEffectiveOtherBonusEntries(platform, e => {
     const d = new Date(e.date);
     return d >= weekStart && d <= weekEnd;
@@ -306,5 +341,49 @@ export function removeAvulsoEntry(platform, entry) {
   const idx = list.indexOf(entry);
   if (idx === -1) return false;
   list.splice(idx, 1);
+  return true;
+}
+
+// ---------- (Sub-entrega 13) 💎 bônus alto ----------
+
+// O "Inserir bônus hoje" lançado DEPOIS do bônus alto já incluía o valor
+// antigo dele no total informado. Ao editar/excluir o bônus alto, esse
+// total acompanha a diferença — senão o avulso "cobriria" a mudança e o
+// Saldo não mudaria.
+function shiftLaterClaims(platform, entry, delta) {
+  if (!delta) return;
+  const key = toLocalDateString(new Date(entry.date));
+  const since = new Date(entry.createdAt || entry.date).getTime();
+  (platform.otherBonusLog || []).forEach(e => {
+    if (!e || typeof e.claimedTotal !== 'number' || !Number.isFinite(e.claimedTotal)) return;
+    if (e.source === 'balance-check') return;
+    if (toLocalDateString(new Date(e.date)) !== key) return;
+    if (new Date(e.createdAt || e.date).getTime() < since) return;
+    e.claimedTotal = r2(Math.max(0, e.claimedTotal + delta));
+  });
+}
+
+/** Remove um bônus alto (highBonusLog). true se removeu. */
+export function removeHighBonusEntry(platform, entry) {
+  const list = Array.isArray(platform.highBonusLog) ? platform.highBonusLog : [];
+  const idx = list.indexOf(entry);
+  if (idx === -1) return false;
+  shiftLaterClaims(platform, entry, -r2(entry.value));
+  list.splice(idx, 1);
+  return true;
+}
+
+/** Edita valor e escala de um bônus alto. true se mudou. */
+export function updateHighBonusEntry(platform, entry, { value, scale }) {
+  const list = Array.isArray(platform.highBonusLog) ? platform.highBonusLog : [];
+  if (!list.includes(entry)) return false;
+  const v = r2(value);
+  if (!(v > 0) || v > BALANCE_MAX) return false;
+  const s = Math.max(1, Math.min(100, Math.round(Number(scale) || 1)));
+  shiftLaterClaims(platform, entry, r2(v - (Number(entry.value) || 0)));
+  entry.value = v;
+  entry.scale = s;
+  entry.rolloverValue = r2(v * s);
+  entry.editedAt = new Date().toISOString();
   return true;
 }

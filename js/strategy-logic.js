@@ -347,7 +347,9 @@ export function computeDepositKindMonthly(platforms, months = CONTENTION_MONTHS,
   const n = Math.max(1, Math.min(24, Math.round(Number(months) || CONTENTION_MONTHS)));
   const keys = [];
   for (let i = n - 1; i >= 0; i--) keys.push(monthKeyOf(new Date(now.getFullYear(), now.getMonth() - i, 1)));
-  const rows = new Map(keys.map(k => [k, { monthKey: k, label: monthLabel(k), semanal: 0, mensal: 0, aposta: 0, none: 0, total: 0 }]));
+  // (Sub-entrega 13) uma coluna por tipo (inclui 💎 alto) — nunca fixa.
+  const emptyKinds = () => Object.fromEntries([...KIND_IDS, 'none'].map(id => [id, 0]));
+  const rows = new Map(keys.map(k => [k, { monthKey: k, label: monthLabel(k), ...emptyKinds(), total: 0 }]));
   (platforms || []).forEach(p => (p.depositLog || []).forEach(e => {
     const d = entryDate(e);
     if (!d || d > now) return;
@@ -355,7 +357,7 @@ export function computeDepositKindMonthly(platforms, months = CONTENTION_MONTHS,
     if (!row) return;
     const kind = getDepositKindId(e) || 'none';
     const c = toC(e.value);
-    row[kind] += c;
+    row[kind] = (row[kind] || 0) + c;
     row.total += c;
   }));
   return keys.map(k => rows.get(k));

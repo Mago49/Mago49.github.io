@@ -15,6 +15,11 @@
 //   avulso          → "Excluir" (lançamento de "Inserir bônus hoje" ou da
 //                     conferência de saldo)
 //
+//
+// (Sub-entrega 13) 💎 Bônus Alto: filtro/chip "Alto"; cada lançamento tem
+// "Editar" (valor + escala do Rollover, no próprio item) e "Excluir"
+// (allowShrink: ['highBonusLog']). Sem "Não recebi" — é valor real.
+//
 // Segurança: nomes por textContent.
 
 import { state } from './state.js';
@@ -22,8 +27,10 @@ import { formatCurrency, showAppConfirm } from './utils.js';
 import { savePlatform } from './platforms-store.js';
 import {
   listOpenWeekBonusItems, excludeBonusItems, restoreExclusion, removeAvulsoEntry,
-  getOpenWeekRange, BONUS_TYPE_LABELS, bonusTypeGroup
+  getOpenWeekRange, BONUS_TYPE_LABELS, bonusTypeGroup,
+  removeHighBonusEntry, updateHighBonusEntry, BALANCE_MAX
 } from './balance-check-logic.js';
+import { parseMoneyInput } from './wager-total-logic.js';
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const PAGE = 7;
@@ -32,6 +39,7 @@ const GROUPS = [
   { id: 'vip', label: 'VIP' },
   { id: 'misterioso', label: 'Misterioso' },
   { id: 'obrigado', label: 'Obrigado' },
+  { id: 'alto', label: '💎 Alto' },
   { id: 'avulso', label: 'Avulso' }
 ];
 
@@ -72,6 +80,7 @@ export function openBonusManager({ resolveCtx = () => ({}), focusPlatformId = nu
     openId: focusPlatformId,
     chip: new Map(),     // platformId -> grupo
     shown: new Map(),    // platformId -> quantos visíveis
+    editing: null,       // (13) entrada de bônus alto em edição
     busy: false
   };
   const previousOverflow = document.body.style.overflow;
@@ -102,7 +111,7 @@ export function openBonusManager({ resolveCtx = () => ({}), focusPlatformId = nu
   search.setAttribute('aria-label', 'Buscar plataforma');
   const type = el('select', 'bm-input');
   type.setAttribute('aria-label', 'Tipo de bônus');
-  [['all', 'Todos os bônus'], ['vip', 'Bônus VIP'], ['misterioso', 'Bônus Misterioso'], ['obrigado', 'Bônus Obrigado'], ['avulso', 'Bônus Avulso']].forEach(([v, l]) => {
+  [['all', 'Todos os bônus'], ['vip', 'Bônus VIP'], ['misterioso', 'Bônus Misterioso'], ['obrigado', 'Bônus Obrigado'], ['alto', '💎 Bônus Alto'], ['avulso', 'Bônus Avulso']].forEach(([v, l]) => {
     const o = el('option', '', l);
     o.value = v;
     type.appendChild(o);
@@ -180,7 +189,60 @@ export function openBonusManager({ resolveCtx = () => ({}), focusPlatformId = nu
     }
   }
 
+  // (13) 💎 bônus alto: Editar (no próprio item) e Excluir.
+  function highBonusRow(p, it) {
+    const row = el('div', 'bm-item bm-item-alto');
+    row.style.background = '#ecfeff';
+    const info = el('div', 'bm-item-info');
+    info.appendChild(el('span', 'bm-item-day', fmtDay(it.dayKey)));
+    info.appendChild(el('span', 'bm-item-type', `💎 Bônus Alto${it.scale > 1 ? ` · Rollover ${it.scale}:1 (${formatCurrency(it.rollover)})` : ''}`));
+    row.appendChild(info);
+
+    if (ui.editing !== it.entry) {
+      row.appendChild(el('span', 'bm-item-value', formatCurrency(it.value)));
+      row.appendChild(btn('Editar', 'bm-act', () => { ui.editing = it.entry; render(); }));
+      const del = btn('Excluir', 'bm-act bm-act-del', () => act(p,
+        () => (removeHighBonusEntry(p, it.entry) ? { allowShrink: ['highBonusLog'] } : false),
+        `Excluir o bônus alto de ${formatCurrency(it.value)} (${fmtDay(it.dayKey)}) de ${p.name}? Sai do Saldo, do Rollover e do bônus da semana. O depósito continua.`));
+      del.style.marginLeft = '0';
+      row.appendChild(del);
+      return row;
+    }
+
+    const input = el('input', 'bm-input');
+    input.type = 'text';
+    input.inputMode = 'decimal';
+    input.autocomplete = 'off';
+    input.value = String(it.value).replace('.', ',');
+    input.setAttribute('aria-label', 'Valor do bônus alto');
+    let scale = it.scale;
+    const val = el('span', 'bm-item-value', `${scale}:1`);
+    const minus = btn('−', 'bc-step', () => { scale = Math.max(1, scale - 1); val.textContent = `${scale}:1`; minus.disabled = scale <= 1; });
+    const plus = btn('+', 'bc-step', () => { scale = Math.min(100, scale + 1); val.textContent = `${scale}:1`; minus.disabled = false; });
+    minus.disabled = scale <= 1;
+    minus.setAttribute('aria-label', 'Diminuir escala do Rollover');
+    plus.setAttribute('aria-label', 'Aumentar escala do Rollover');
+    input.style.flex = '1 1 100%';
+    input.style.maxWidth = 'none';
+    row.appendChild(input);
+    const edit = el('div', 'bc-scale');
+    edit.style.flexBasis = '100%';
+    edit.append(el('span', 'bm-item-type', 'Rollover'), minus, val, plus);
+    row.appendChild(edit);
+    row.appendChild(btn('Cancelar', 'bm-act bm-act-off', () => { ui.editing = null; render(); }));
+    const save = btn('Salvar', 'bm-act', () => {
+      const v = parseMoneyInput(input.value);
+      if (!Number.isFinite(v) || v <= 0 || v > BALANCE_MAX) { input.focus(); return; }
+      ui.editing = null;
+      act(p, () => (updateHighBonusEntry(p, it.entry, { value: v, scale }) ? {} : false));
+    });
+    save.style.marginLeft = '0';
+    row.appendChild(save);
+    return row;
+  }
+
   function itemRow(p, it) {
+    if (it.kind === 'alto') return highBonusRow(p, it);
     const row = el('div', `bm-item bm-item-${it.kind}`);
     const info = el('div', 'bm-item-info');
     info.appendChild(el('span', 'bm-item-day', fmtDay(it.dayKey)));

@@ -102,6 +102,12 @@
 // jogo (gameId/gameName/gameProvider) — Saldo, Rollover e bônus ignoram o
 // jogo. "Últimas apostas" ganha o seletor do jogo na edição.
 //
+// === (Sub-entrega 13) 💎 BÔNUS ALTO + SALDO NEGATIVO ===
+// "Registrar depósito" usa pickDepositKindAndBonus: 💎 Coletar Bônus Alto
+// pede o valor do bônus (2ª página) e grava depósito + highBonusLog no
+// mesmo savePlatform. O bônus alto entra no esperado do dia (fórmula) —
+// "Inserir bônus hoje" e "Bônus Acumulado" já o incluem.
+//
 // === CUIDADO SPA (Adendo K12) ===
 // `financeListEl`/`financeSearchEl` NÃO são resolvidos no topo do
 // módulo (isso quebraria, já que o router injeta o HTML da view DEPOIS
@@ -126,7 +132,7 @@ import {
 } from './finance-logic.js';
 import {
   getExpectedBonusToday, computeBonusDiffToday, getEffectiveOtherBonusForDay,
-  getAccumulatedBonusThisWeek, computeAutoAccruedBonusForWeek
+  getAccumulatedBonusThisWeek, computeAutoAccruedBonusForWeek, buildHighBonusEntry
 } from './bonus-ledger-logic.js';
 import { getCachedPreferences, saveManualOrder, saveBadgeVisibility } from './user-preferences-store.js';
 import { savePlatform } from './platforms-store.js';
@@ -136,7 +142,7 @@ import {
 import { filterAndSortForManage } from './platform-sort.js';
 import { initSortMenu } from './ui-sort.js';
 import { scheduleDailySnapshot } from './daily-snapshot-store.js';
-import { pickDepositKind } from './deposit-kinds.js';
+import { pickDepositKindAndBonus } from './deposit-kinds.js';
 import { openBalanceCheck } from './ui-balance-check.js';
 import { openBetEntry } from './ui-bet-entry.js';
 import { gameStamp, setEntryGame, searchGames } from './game-catalog-logic.js';
@@ -885,7 +891,7 @@ function buildPendingBonusPanels(p) {
 
     const stat = document.createElement('div');
     stat.className = 'finance-stats-grid';
-    stat.innerHTML = statBox('Bônus Acumulado (fórmula + avulso)', formatCurrency(w.bonus), 'positive');
+    stat.innerHTML = statBox('Bônus Acumulado (fórmula + bônus alto + avulso)', formatCurrency(w.bonus), 'positive');
     wrap.appendChild(stat);
 
     const form = document.createElement('div');
@@ -1012,13 +1018,15 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
     // Cancelar não grava nada (o valor continua no campo). Botão travado
     // enquanto o seletor está aberto, contra toque duplo.
     depositBtn.disabled = true;
-    let kind = null;
+    let picked = null;
     try {
-      kind = await pickDepositKind({ subtitle: `${p.name} · ${formatCurrency(value)}` });
+      // (Sub-entrega 13) 💎 abre a 2ª página (valor do bônus alto).
+      picked = await pickDepositKindAndBonus({ subtitle: `${p.name} · ${formatCurrency(value)}` });
     } finally {
       depositBtn.disabled = false;
     }
-    if (!kind) return;
+    if (!picked) return;
+    const kind = picked.kind;
     // A semana pode ter sido fechada enquanto o seletor estava aberto
     // (ex.: outra aba) — mesmo gate de quando o formulário é montado.
     if (isCurrentWeekClosed(p)) {
@@ -1034,6 +1042,11 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
     if (!p.cycleEnded || p.misteriosoCycle === 'no') {
       if (!p.deposits) p.deposits = [];
       p.deposits.push({ ...entry });
+    }
+    // (Sub-entrega 13) bônus alto — mesmo savePlatform do depósito.
+    if (picked.highBonus) {
+      if (!Array.isArray(p.highBonusLog)) p.highBonusLog = [];
+      p.highBonusLog.push(buildHighBonusEntry({ depositDate: entry.date, value: picked.highBonus.value, scale: picked.highBonus.scale }));
     }
     savePlatform(state.currentUid, p);
     openRowId = p.id;
@@ -1172,7 +1185,7 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
     const accumulatedManual = getAccumulatedBonusThisWeek(p, new Date(), ctx);
     const accumulatedStat = document.createElement('div');
     accumulatedStat.className = 'finance-stats-grid';
-    accumulatedStat.innerHTML = statBox('Bônus Acumulado (fórmula + avulso)', formatCurrency(r2(accumulatedAuto + accumulatedManual)), 'positive');
+    accumulatedStat.innerHTML = statBox('Bônus Acumulado (fórmula + bônus alto + avulso)', formatCurrency(r2(accumulatedAuto + accumulatedManual)), 'positive');
     closeSection.appendChild(accumulatedStat);
 
     const closeForm = document.createElement('div');

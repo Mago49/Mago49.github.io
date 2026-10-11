@@ -468,7 +468,8 @@ function renderRanking({ strategy }) {
 
 // ---------- 4) contenção ----------
 
-const KIND_COLORS = { semanal: '#2563eb', mensal: '#7c3aed', aposta: '#ea580c', none: '#94a3b8' };
+// (Sub-entrega 13) + 💎 alto.
+const KIND_COLORS = { semanal: '#2563eb', mensal: '#7c3aed', aposta: '#ea580c', alto: '#0891b2', none: '#94a3b8' };
 
 function renderContention({ settings, contention, monthly }) {
   const box = $('msContention');

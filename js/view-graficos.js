@@ -75,6 +75,8 @@
 // Chart.js — monta SOB DEMANDA. Grava só planLog e plannerConfig/calendar.
 // A Página 2 (Calendário do Misterioso) não muda.
 //
+// === (Sub-entrega 13) "Bônus por Tipo" ganha a fatia 💎 Bônus Alto. ===
+//
 // === (Jogos — Sub-entrega 9) ===
 // Oitava aba, "Jogos" (ui-game-catalog.js + game-catalog-logic.js +
 // game-catalog-store.js): biblioteca de jogos, provedores e valores de
@@ -255,10 +257,10 @@ function renderBonusTypeChart() {
   bonusTypeChart = new window.Chart(canvas, {
     type: 'doughnut',
     data: {
-      labels: ['VIP', 'Obrigado', 'Misterioso', 'Avulso'],
+      labels: ['VIP', 'Obrigado', 'Misterioso', 'Bônus Alto', 'Avulso'],
       datasets: [{
-        data: [bonus.vip, bonus.obrigado, bonus.misterioso, bonus.avulso],
-        backgroundColor: ['#2563eb', '#15803d', '#7c3aed', '#f59e0b']
+        data: [bonus.vip, bonus.obrigado, bonus.misterioso, bonus.alto || 0, bonus.avulso],
+        backgroundColor: ['#2563eb', '#15803d', '#7c3aed', '#0891b2', '#f59e0b']
       }]
     },
     options: { responsive: true, maintainAspectRatio: false }
@@ -833,7 +835,7 @@ export async function mount(container) {
       <div class="section-heading" style="padding:0 0 0.9rem;">
         <div><h2>Bônus por Tipo</h2></div>
       </div>
-      <p class="graficos-note">VIP/Obrigado/Misterioso são a PROJEÇÃO do mês atual (mesma fórmula da aba VIP); Avulso = valor real lançado via "Inserir bônus hoje" neste mês (sem repetir o que a fórmula já conta) + a diferença informada ao fechar as semanas que terminam neste mês (bônus real − contabilizado; diferença negativa abate, total nunca abaixo de zero).</p>
+      <p class="graficos-note">VIP/Obrigado/Misterioso são a PROJEÇÃO do mês atual (mesma fórmula da aba VIP); Bônus Alto = valor real lançado com os depósitos 💎 neste mês; Avulso = valor real lançado via "Inserir bônus hoje" neste mês (sem repetir o que a fórmula já conta) + a diferença informada ao fechar as semanas que terminam neste mês (bônus real − contabilizado; diferença negativa abate, total nunca abaixo de zero).</p>
       <div class="chart-wrap" style="height:280px;"><canvas id="graficoBonusTipo"></canvas></div>
     </section>
 

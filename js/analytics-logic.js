@@ -102,6 +102,7 @@ export function computeWeeklyDepositWithdrawal(platforms) {
 }
 
 // --- Bônus por Tipo (Donut) — PROJEÇÃO do mês de refDate ---
+// (Sub-entrega 13) + Bônus Alto (valor real, highBonusLog).
 // VIP/Obrigado/Misterioso: mesma fórmula/projeção já usada na aba VIP
 // (reaproveitada, nunca recalculada do zero aqui). Avulso: dado REAL —
 // ver nota (Sub-entrega G) no topo do arquivo.
@@ -138,7 +139,15 @@ export function computeBonusByTypeCurrentMonth(platforms, obrigadoValuePerAppear
     });
   });
 
-  return { vip, obrigado, misterioso, avulso: r2(Math.max(0, avulso)) };
+  // (Sub-entrega 13) 💎 Bônus Alto: valor REAL lançado no mês (highBonusLog).
+  let alto = 0;
+  (platforms || []).forEach(p => {
+    (Array.isArray(p.highBonusLog) ? p.highBonusLog : []).forEach(e => {
+      if (e && inMonth(e)) alto += Number(e.value) || 0;
+    });
+  });
+
+  return { vip, obrigado, misterioso, alto: r2(alto), avulso: r2(Math.max(0, avulso)) };
 }
 
 // --- Ranking de Plataformas (Top 10, por 3 critérios) ---
