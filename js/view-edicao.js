@@ -39,6 +39,9 @@
 // 10a-10d/22/25a do menu Ordenar, Item 26f-i/27 seguem pendentes pra
 // sub-entregas seguintes desta mesma Etapa 5.
 //
+// (Sub-entrega 15) O modal de apostas (#betModal, aberto pelo antigo
+// "Gerenciar") saiu — sobram 2 modais (Reinício/Histórico).
+//
 // === SUB-ENTREGA 3 — Editor do Bloco G (aviso interno) ===
 // announcement-store.js expõe a leitura/gravação do aviso. O editor mora
 // AQUI, na view — não em ui-platform-manage.js — de propósito: é um dado
@@ -132,20 +135,6 @@ function createModals() {
         <button class="history-close" id="historyCloseBtn">Fechar</button>
       </div>
     </div>
-
-    <div class="bet-modal" id="betModal">
-      <div class="bet-modal-content">
-        <div class="bet-modal-header">
-          <h2 id="betModalTitle">Apostas — Plataforma</h2>
-          <button class="bet-modal-close" id="betModalClose">Fechar</button>
-        </div>
-        <div class="bet-add-row">
-          <input type="date" id="betDateInput" />
-          <button class="bet-add-confirm" id="betAddConfirm">+ Adicionar</button>
-        </div>
-        <div class="bet-list" id="betList"></div>
-      </div>
-    </div>
   `;
   document.body.appendChild(modalsContainerEl);
 }
@@ -226,7 +215,7 @@ export async function mount(container) {
           <button type="button" id="manageReorderBtn" class="btn-neutral" title="Só funciona com 'Padrão' selecionado no Ordenar">⚙️ Reordenar</button>
           <div class="sort-menu">
             <button type="button" id="manageBadgeVisibilityBtn" class="sort-menu-toggle" aria-expanded="false">👁 Badges</button>
-            <div class="sort-menu-dropdown" id="manageBadgeVisibilityDropdown">
+            <div class="sort-menu-dropdown" id="manageBadgeVisibilityDropdown" style="grid-template-columns:1fr; left:50%; right:auto; transform:translateX(-50%); min-width:210px; width:max-content; max-width:calc(100vw - 2rem);">
               <label style="display:flex; align-items:center; gap:0.4rem; padding:0.5rem 0.7rem; cursor:pointer;">
                 <input type="checkbox" id="badgeVisibilityTotal" style="width:auto;" /> Total (Soma depositada)
               </label>
@@ -235,6 +224,9 @@ export async function mount(container) {
               </label>
               <label style="display:flex; align-items:center; gap:0.4rem; padding:0.5rem 0.7rem; cursor:pointer;">
                 <input type="checkbox" id="badgeVisibilityCycleDay" style="width:auto;" /> Dia do ciclo
+              </label>
+              <label style="display:flex; align-items:center; gap:0.4rem; padding:0.5rem 0.7rem; cursor:pointer;">
+                <input type="checkbox" id="badgeVisibilityBetDays" style="width:auto;" /> 🎲 Dias de aposta
               </label>
             </div>
           </div>

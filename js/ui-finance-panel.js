@@ -115,6 +115,20 @@
 // fechamento de domingo e no "Bônus real da semana passada" (diferença
 // positiva × R; negativa sai 1:1 — finance-logic.js).
 //
+// === (Sub-entrega 16) ➗ DIVIDIR ===
+// "Inserir bônus hoje", fechamento de domingo, "Bônus real da semana
+// passada" e o 💎 do "Registrar depósito": o valor pode ser dividido em
+// partes com R diferente (ui-bonus-split.js). Cada parte vira um lançamento
+// próprio (mesmo savePlatform); no fechamento, a diferença positiva entra
+// no Rollover parte a parte (finance-logic.js — diffParts).
+//
+// === (Sub-entrega 15) VIP DIÁRIO "COM APOSTA" — PERGUNTA DA COLETA ===
+// "Registrar aposta": se o VIP diário de hoje (grupo 'com') já foi liberado
+// por aposta anterior e ainda não foi marcado como coletado, abre antes do
+// formulário a pergunta de ui-vip-collect.js. SIM grava a aposta com
+// vipCollectedBefore:true (o bônus entra no Rollover 1 s antes dela —
+// finance-logic.js); NÃO deixa o bônus no fim do dia. Mesmo savePlatform.
+//
 // === CUIDADO SPA (Adendo K12) ===
 // `financeListEl`/`financeSearchEl` NÃO são resolvidos no topo do
 // módulo (isso quebraria, já que o router injeta o HTML da view DEPOIS
@@ -139,7 +153,8 @@ import {
 } from './finance-logic.js';
 import {
   getExpectedBonusToday, computeBonusDiffToday, getEffectiveOtherBonusForDay,
-  getAccumulatedBonusThisWeek, computeAutoAccruedBonusForWeek, buildHighBonusEntry
+  getAccumulatedBonusThisWeek, computeAutoAccruedBonusForWeek, buildHighBonusEntry,
+  getVipCollectPrompt
 } from './bonus-ledger-logic.js';
 import { getCachedPreferences, saveManualOrder, saveBadgeVisibility } from './user-preferences-store.js';
 import { savePlatform } from './platforms-store.js';
@@ -150,6 +165,8 @@ import { filterAndSortForManage } from './platform-sort.js';
 import { initSortMenu } from './ui-sort.js';
 import { scheduleDailySnapshot } from './daily-snapshot-store.js';
 import { pickDepositKindAndBonus } from './deposit-kinds.js';
+import { askVipCollect, vipCollectQuestion } from './ui-vip-collect.js'; // (Sub-entrega 15)
+import { createBonusSplit } from './ui-bonus-split.js'; // (Sub-entrega 16)
 import { openBalanceCheck } from './ui-balance-check.js';
 import { openBetEntry } from './ui-bet-entry.js';
 import { gameStamp, setEntryGame, searchGames } from './game-catalog-logic.js';
@@ -915,6 +932,13 @@ function buildPendingBonusPanels(p) {
     form.appendChild(pendScale.button);
     form.appendChild(pendScale.input);
     wrap.appendChild(form);
+    // (Sub-entrega 16) ➗ Dividir a diferença (real − contado).
+    const pendSplit = attachSplit(pendScale, () => {
+      const v = parseFloat(input.value);
+      return isNaN(v) ? NaN : r2(r2(v) - (Number(w.bonus) || 0));
+    });
+    input.addEventListener('input', () => pendSplit.refresh());
+    wrap.appendChild(pendSplit.el);
 
     const actions = document.createElement('div');
     actions.className = 'reset-modal-buttons';
@@ -933,13 +957,20 @@ function buildPendingBonusPanels(p) {
         }
         realBonus = r2(realBonus);
       }
+      // (16) partes do ➗ Dividir — só quando a diferença é positiva.
+      let pendParts = null;
+      if (pendSplit.isActive() && realBonus !== null && realBonus > w.bonus + 0.004) {
+        const res = pendSplit.getParts();
+        if (!res.ok) { await showAppAlert(res.error); return; }
+        pendParts = res.parts;
+      }
       const ok = await showAppConfirm(realBonus === null
         ? `Manter o bônus contabilizado de ${formatCurrency(w.bonus)} na semana ${range}?`
         : `Gravar ${formatCurrency(realBonus)} como bônus real da semana ${range}? (contabilizado pelo sistema: ${formatCurrency(w.bonus)})` +
-          (realBonus > w.bonus + 0.004 ? ` A diferença entra no Rollover (${describeScale(pendScale.get())}).` : ''));
+          (realBonus > w.bonus + 0.004 ? ` A diferença entra no Rollover (${pendParts ? describeParts(pendParts) : describeScale(pendScale.get())}).` : ''));
       if (!ok) return;
 
-      const updated = setClosedWeekRealBonus(p, w.weekStart, realBonus, { diffScale: pendScale.get() });
+      const updated = setClosedWeekRealBonus(p, w.weekStart, realBonus, { diffScale: pendScale.get(), diffParts: pendParts });
       if (!updated) {
         await showAppAlert('Não foi possível confirmar essa semana.');
         return;
@@ -1058,7 +1089,10 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
     // (Sub-entrega 13) bônus alto — mesmo savePlatform do depósito.
     if (picked.highBonus) {
       if (!Array.isArray(p.highBonusLog)) p.highBonusLog = [];
-      p.highBonusLog.push(buildHighBonusEntry({ depositDate: entry.date, value: picked.highBonus.value, scale: picked.highBonus.scale }));
+      // (16) ➗ Dividir: uma entrada por parte, cada uma com o seu R.
+      (picked.highBonus.parts || [{ value: picked.highBonus.value, scale: picked.highBonus.scale }]).forEach(pt => {
+        p.highBonusLog.push(buildHighBonusEntry({ depositDate: entry.date, value: pt.value, scale: pt.scale }));
+      });
     }
     savePlatform(state.currentUid, p);
     openRowId = p.id;
@@ -1126,6 +1160,19 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
   betBtn.addEventListener('click', async () => {
     betBtn.disabled = true;
     try {
+      // (Sub-entrega 15) VIP diário "com aposta" já liberado e ainda não
+      // coletado: pergunta ANTES do formulário. Cancelar = nada acontece.
+      let vipCollected = false;
+      const prompt = getVipCollectPrompt(p, new Date(), ctx);
+      if (prompt) {
+        const answer = await askVipCollect({
+          title: 'Bônus VIP diário coletado?',
+          subtitle: `${p.name} · VIP diário ${formatCurrency(prompt.value)}`,
+          note: vipCollectQuestion(prompt.betNumber)
+        });
+        if (!answer) return;
+        vipCollected = answer === 'yes';
+      }
       let initial = null;
       for (;;) {
         const entry = await openBetEntry({ platform: p, initial });
@@ -1140,13 +1187,19 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
           }
         }
         if (!p.betEntries) p.betEntries = [];
-        p.betEntries.push({
+        const bet = {
           date: v.date,
           wagered: v.wagered,
           betCount: v.betCount,
           resultBetting: v.resultBetting,
           ...gameStamp(v.game)
-        });
+        };
+        // (15) SIM: o VIP diário entra no Rollover 1 s antes desta aposta.
+        // Só vale pra aposta do próprio dia da pergunta.
+        if (vipCollected && toLocalDateString(new Date(v.date)) === toLocalDateString(new Date())) {
+          bet.vipCollectedBefore = true;
+        }
+        p.betEntries.push(bet);
         savePlatform(state.currentUid, p);
         openRowId = p.id;
         refreshRow(p.id);
@@ -1214,6 +1267,15 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
     closeForm.appendChild(closeScale.button);
     closeForm.appendChild(closeScale.input);
     closeSection.appendChild(closeForm);
+    // (Sub-entrega 16) ➗ Dividir a diferença (real − contado).
+    const closeSplit = attachSplit(closeScale, () => {
+      const v = parseFloat(bonusInput.value);
+      if (isNaN(v)) return NaN;
+      const cnt = r2(computeAutoAccruedBonusForWeek(p, new Date(), ctx) + getAccumulatedBonusThisWeek(p, new Date(), ctx));
+      return r2(r2(v) - cnt);
+    });
+    bonusInput.addEventListener('input', () => closeSplit.refresh());
+    closeSection.appendChild(closeSplit.el);
 
     const closeActions = document.createElement('div');
     closeActions.className = 'reset-modal-buttons';
@@ -1230,12 +1292,19 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
       const bonus = r2(bonusRaw);
       const sc = closeScale.get();
       const counted = r2(computeAutoAccruedBonusForWeek(p, new Date(), ctx) + getAccumulatedBonusThisWeek(p, new Date(), ctx));
+      // (16) partes do ➗ Dividir — só quando a diferença é positiva.
+      let closeParts = null;
+      if (closeSplit.isActive() && bonus > counted + 0.004) {
+        const res = closeSplit.getParts();
+        if (!res.ok) { await showAppAlert(res.error); return; }
+        closeParts = res.parts;
+      }
       const diffNote = bonus > counted + 0.004
-        ? ` A diferença de ${formatCurrency(r2(bonus - counted))} entra no Saldo e no Rollover (${describeScale(sc)}).`
+        ? ` A diferença de ${formatCurrency(r2(bonus - counted))} entra no Saldo e no Rollover (${closeParts ? describeParts(closeParts) : describeScale(sc)}).`
         : '';
       const ok = await showAppConfirm(`Fechar a semana de ${p.name}?${diffNote} Depois de fechada, os valores não mudam mais sozinhos.`);
       if (!ok) return;
-      closeWeek(p, bonus, new Date(), ctx, { diffScale: sc });
+      closeWeek(p, bonus, new Date(), ctx, { diffScale: sc, diffParts: closeParts });
       savePlatform(state.currentUid, p);
       openRowId = p.id;
       refreshRow(p.id);
@@ -1289,6 +1358,22 @@ function buildScaleToggle(ariaLabel) {
 
 function describeScale(scale) {
   return scale === 0 ? 'sem rollover' : `escala ${scale}x`;
+}
+
+// (Sub-entrega 16) "➗ Dividir" ligado a um R (buildScaleToggle): aberto,
+// esconde o R único. getTotal = valor que está sendo dividido.
+function attachSplit(scaleCtl, getTotal) {
+  return createBonusSplit({
+    getTotal,
+    onToggle: on => {
+      scaleCtl.button.style.display = on ? 'none' : '';
+      if (on) scaleCtl.input.classList.add('app-hidden');
+    }
+  });
+}
+
+function describeParts(parts) {
+  return parts.map(pt => `${formatCurrency(pt.value)} ${pt.scale === 0 ? 'sem rollover' : `${pt.scale}:1`}`).join(' + ');
 }
 
 // ---------- (Sub-entrega 8a) SALDO REAL ----------
@@ -1409,6 +1494,13 @@ function buildDailyBonusSection(p, ctx) {
   wrap.appendChild(scaleBtn);
   wrap.appendChild(scaleInput);
 
+  // (Sub-entrega 16) ➗ Dividir a diferença que vai ser lançada.
+  const dailySplit = attachSplit(scaleCtl, () => {
+    const typed = parseFloat(bonusInput.value);
+    return isNaN(typed) ? NaN : r2(computeBonusDiffToday(p, r2(typed), new Date(), ctx));
+  });
+  bonusInput.addEventListener('input', () => dailySplit.refresh());
+
   // (Sub-entrega G) Resumo do dia: fórmula + avulso efetivo = total.
   const now = new Date();
   const expectedNow = r2(getExpectedBonusToday(p, now, ctx));
@@ -1426,6 +1518,7 @@ function buildDailyBonusSection(p, ctx) {
   } else {
     summary.textContent = `Hoje a fórmula já conta ${formatCurrency(expectedNow)}. Digite o TOTAL de bônus recebido hoje — só a diferença é lançada.`;
   }
+  container.appendChild(dailySplit.el);
   container.appendChild(summary);
 
   const confirmBtn = document.createElement('button');
@@ -1465,27 +1558,41 @@ function buildDailyBonusSection(p, ctx) {
 
     const currentScale = scaleCtl.get();
     const rolloverValue = r2(diff * currentScale);
+    // (16) partes do ➗ Dividir (soma = diff).
+    let parts = null;
+    if (dailySplit.isActive()) {
+      const res = dailySplit.getParts();
+      if (!res.ok) { await showAppAlert(res.error); return; }
+      parts = res.parts;
+    }
 
     const ok = await showAppConfirm(
       `Registrar ${formatCurrency(valorDigitado)} como TOTAL de bônus de hoje? ` +
       `O sistema já contava ${formatCurrency(r2(expected + alreadyLogged))} (fórmula VIP/Obrigado/Misterioso` +
       (alreadyLogged > 0 ? ' + avulso já lançado' : '') + `) — ` +
       `será lançada só a diferença: ${formatCurrency(diff)} no Saldo` +
-      (currentScale === 0 ? ' — SEM rollover (o Rollover não muda)' : currentScale !== 1 ? ` e ${formatCurrency(rolloverValue)} no Rollover (escala ${currentScale}x)` : ' e no Rollover (escala 1:1)') +
+      (parts ? `, dividida no Rollover: ${describeParts(parts)}`
+        : currentScale === 0 ? ' — SEM rollover (o Rollover não muda)' : currentScale !== 1 ? ` e ${formatCurrency(rolloverValue)} no Rollover (escala ${currentScale}x)` : ' e no Rollover (escala 1:1)') +
       `. Se o VIP diário for liberado depois (aposta mínima), ele será considerado já incluído nesse total.`
     );
     if (!ok) return;
 
-    const stamp = new Date().toISOString();
+    const stampMs = Date.now();
+    const stamp = new Date(stampMs).toISOString();
     if (!p.otherBonusLog) p.otherBonusLog = [];
-    p.otherBonusLog.push({
-      date: stamp,
-      rawValue: diff,
-      scale: currentScale,
-      rolloverValue,
-      claimedTotal: valorDigitado,
-      formulaAtLog: expected,
-      createdAt: stamp
+    // (16) uma entrada por parte (createdAt +i ms — itens próprios no
+    // "Bônus da semana"); todas com o mesmo total informado do dia.
+    (parts || [{ value: diff, scale: currentScale }]).forEach((pt, i, all) => {
+      p.otherBonusLog.push({
+        date: stamp,
+        rawValue: r2(pt.value),
+        scale: pt.scale,
+        rolloverValue: r2(pt.value * pt.scale),
+        claimedTotal: valorDigitado,
+        formulaAtLog: expected,
+        createdAt: new Date(stampMs + i).toISOString(),
+        ...(all.length > 1 ? { splitPart: i + 1, splitOf: all.length } : {})
+      });
     });
     savePlatform(state.currentUid, p);
 

@@ -108,8 +108,20 @@
 //     getExpectedRolloverForDate soma valor × escala de cada tipo.
 //   - Avulso e bônus alto: escala própria em cada lançamento (rolloverValue).
 // O SALDO nunca muda com a escala (sempre 1:1).
+//
+// === (Sub-entrega 15) VIP DIÁRIO "COM APOSTA" NO HORÁRIO DA COLETA ===
+// Nas plataformas do grupo 'com', o VIP diário só é liberado pela aposta
+// mínima e só é COLETADO na plataforma depois da sessão. Por isso, no
+// ROLLOVER (só nele — o Saldo é soma, horário não importa), ele deixa de
+// entrar às 00:00 e passa a entrar:
+//   - 1 s antes da aposta marcada com `vipCollectedBefore: true` (resposta
+//     SIM no "Registrar aposta" — ui-vip-collect.js), quando existir;
+//   - senão, no fim do dia (23:59:59.999), depois de todas as apostas.
+// getExpectedRolloverForDate(..., { splitTimed: true }) devolve o lote do
+// dia SEM esse VIP; getTimedVipDailyRollover devolve o evento dele.
+// Grupo 'sem' não muda (00:00).
 
-import { getVipConfigAt, computeEmissionDates, isBetDayEffective, getBonusExclusionSet } from './cycle-logic.js';
+import { getVipConfigAt, computeEmissionDates, isBetDayEffective, getBonusExclusionSet, getLevelAt, BET_MINIMUM_BY_LEVEL } from './cycle-logic.js';
 import { getEffectiveMisteriosoValue } from './misterioso-logic.js';
 
 function startOfDay(date) {
@@ -264,15 +276,109 @@ export function getFormulaScale(platform, dayKey, type) {
 
 // (14) Quanto a fórmula do dia põe no ROLLOVER (cada tipo × sua escala).
 // O bônus alto fica de fora — entra no horário dele (finance-logic.js).
-export function getExpectedRolloverForDate(platform, date, ctx = {}) {
+export function getExpectedRolloverForDate(platform, date, ctx = {}, { splitTimed = false } = {}) {
   const b = getExpectedBonusBreakdownForDate(platform, date, ctx);
   const key = toLocalDateKey(date);
+  // (15) VIP diário "com aposta" entra no horário da coleta (ver nota).
+  const skipDaily = splitTimed && isVipDailyTimed(platform, date);
   let total = 0;
   FORMULA_BONUS_TYPES.forEach(type => {
+    if (skipDaily && type === 'vipDaily') return;
     const v = Number(b[type]) || 0;
     if (v > 0) total += v * getFormulaScale(platform, key, type);
   });
   return total;
+}
+
+// ============================================================
+// (Sub-entrega 15) VIP DIÁRIO "COM APOSTA" — ver nota no topo
+// ============================================================
+
+function dayEndTs(dayKey) {
+  const [y, m, d] = dayKey.split('-').map(Number);
+  return new Date(y, m - 1, d, 23, 59, 59, 999).getTime();
+}
+
+/** O VIP diário desse dia depende de aposta (grupo 'com' vigente)? */
+export function isVipDailyTimed(platform, date) {
+  const { group } = getVipConfigAt(platform, startOfDay(date));
+  return group === 'com';
+}
+
+/**
+ * Instante em que o VIP diário do dia foi LIBERADO (ms), ou null se não
+ * foi: aposta que atingiu o mínimo do nível (acumulado do dia, em ordem)
+ * ou marcação manual antiga (betDays com hora; sem hora = 00:00).
+ */
+export function getVipDailyUnlockTs(platform, dayKey) {
+  const candidates = [];
+  (platform.betDays || []).forEach(entry => {
+    const str = String(entry);
+    if (str.slice(0, 10) !== dayKey) return;
+    const t = str.length > 10 ? new Date(str).getTime() : NaN;
+    const [y, m, d] = dayKey.split('-').map(Number);
+    candidates.push(Number.isFinite(t) ? t : new Date(y, m - 1, d).getTime());
+  });
+  const [y, m, d] = dayKey.split('-').map(Number);
+  const { level } = getLevelAt(platform, new Date(y, m - 1, d));
+  const minimo = BET_MINIMUM_BY_LEVEL[level] || 0;
+  if (minimo > 0) {
+    const dayBets = (platform.betEntries || [])
+      .filter(e => e && isValidEntryDate(e) && toLocalDateKey(e.date) === dayKey)
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+    let acc = 0;
+    for (const e of dayBets) {
+      acc += Number(e.wagered) || 0;
+      if (acc >= minimo) { candidates.push(new Date(e.date).getTime()); break; }
+    }
+  }
+  return candidates.length ? Math.min(...candidates) : null;
+}
+
+/** Primeira aposta do dia marcada "coletei o VIP antes desta" (ou null). */
+export function getVipCollectBet(platform, dayKey) {
+  return (platform.betEntries || [])
+    .filter(e => e && e.vipCollectedBefore === true && isValidEntryDate(e) && toLocalDateKey(e.date) === dayKey)
+    .sort((a, b) => new Date(a.date) - new Date(b.date))[0] || null;
+}
+
+/** Horário (ms) em que o VIP diário "com aposta" entra no Rollover. */
+export function getVipDailyRolloverTs(platform, dayKey) {
+  const bet = getVipCollectBet(platform, dayKey);
+  return bet ? new Date(bet.date).getTime() - 1000 : dayEndTs(dayKey);
+}
+
+/**
+ * Evento do VIP diário "com aposta" no Rollover: { t, v } (v já na escala
+ * do R) ou null (grupo 'sem', não liberado, não recebido ou escala 0).
+ */
+export function getTimedVipDailyRollover(platform, date, ctx = {}) {
+  if (!isVipDailyTimed(platform, date)) return null;
+  const b = getExpectedBonusBreakdownForDate(platform, date, ctx);
+  const key = toLocalDateKey(date);
+  const v = (Number(b.vipDaily) || 0) * getFormulaScale(platform, key, 'vipDaily');
+  if (!(v > 0)) return null;
+  return { t: getVipDailyRolloverTs(platform, key), v };
+}
+
+/**
+ * Pergunta do "Registrar aposta": o VIP diário de hoje já foi liberado por
+ * aposta anterior, entra no Rollover e ainda não foi marcado como
+ * coletado? Devolve { value, betNumber } (betNumber = nº desta aposta no
+ * dia) ou null.
+ */
+export function getVipCollectPrompt(platform, now = new Date(), ctx = {}) {
+  const key = toLocalDateKey(now);
+  if (!isVipDailyTimed(platform, now)) return null;
+  if (getVipCollectBet(platform, key)) return null;
+  const unlock = getVipDailyUnlockTs(platform, key);
+  if (unlock === null || unlock > now.getTime()) return null;
+  const ev = getTimedVipDailyRollover(platform, now, ctx);
+  if (!ev) return null;
+  const betsToday = (platform.betEntries || [])
+    .filter(e => e && isValidEntryDate(e) && toLocalDateKey(e.date) === key).length;
+  const b = getExpectedBonusBreakdownForDate(platform, now, ctx);
+  return { value: r2(b.vipDaily), betNumber: betsToday + 1 };
 }
 
 // (14) Rollover da fórmula + bônus alto da semana de refDate (segunda até

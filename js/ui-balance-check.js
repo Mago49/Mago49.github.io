@@ -23,10 +23,13 @@
 //      com o valor sem piso, pra o Saldo ficar igual ao real.
 //   (Sub-entrega 14) Escala do Rollover do bônus avulso vai de 0 ("sem
 //      rollover" — soma no Saldo, não no Rollover) a 100.
+//   (Sub-entrega 16) "➗ Dividir": o bônus avulso pode ser lançado em
+//      partes, cada uma com o seu R (ui-bonus-split.js).
 //
 // Segurança: tudo por textContent.
 
 import { formatCurrency } from './utils.js';
+import { createBonusSplit } from './ui-bonus-split.js'; // (Sub-entrega 16)
 import { parseMoneyInput } from './wager-total-logic.js';
 import {
   computeBalanceGap, parseRealBalance, applyPositiveGap, recordBalanceCheck,
@@ -224,13 +227,26 @@ export function openBalanceCheck({ platform, ctx = {}, pendingRB = 0, mode = 'st
       }
       setScale(1);
 
+      // (16) ➗ Dividir: partes com R diferente. Aberto, esconde o R único.
+      const split = createBonusSplit({
+        getTotal: () => gap.diff,
+        onToggle: on => { scaleRow.style.display = on ? 'none' : ''; }
+      });
+      box.appendChild(split.el);
+
       box.appendChild(el('p', 'bc-note', mode === 'bet'
         ? 'Entra no Saldo e no Rollover agora, logo antes desta sessão de apostas (a sessão já desconta dele, como na plataforma).'
         : 'Entra no Saldo e no Rollover agora. No domingo, o bônus real da semana já desconta este valor.'));
       footer(
         btn('Voltar', 'bc-cancel', () => (mode === 'bet' || value === null ? stepAsk() : close({ status: 'cancelled' }))),
         btn('Confirmar', 'btn-confirm', () => {
-          applyPositiveGap(platform, gap, scale, at(), bonusBefore);
+          let how = scale;
+          if (split.isActive()) {
+            const res = split.getParts();
+            if (!res.ok) { showError(res.error); return; }
+            how = res.parts;
+          }
+          if (!applyPositiveGap(platform, gap, how, at(), bonusBefore)) { showError('Não foi possível lançar as partes — confira os valores.'); return; }
           close({ status: 'done', resolution: 'bonus', gap });
         })
       );

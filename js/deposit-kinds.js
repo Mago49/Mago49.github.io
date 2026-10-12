@@ -38,6 +38,10 @@
 // pickDepositKind() continua devolvendo só o id (contrato de sempre).
 // (Sub-entrega 14) A escala do Rollover do bônus alto aceita 0 ("sem
 // rollover").
+// (Sub-entrega 16) "➗ Dividir" na 2ª página: highBonus ganha `parts`
+// [{ value, scale }] (soma = valor) — quem chama grava uma entrada por parte.
+
+import { createBonusSplit } from './ui-bonus-split.js'; // (Sub-entrega 16)
 
 export const DEPOSIT_KINDS = Object.freeze([
   Object.freeze({ id: 'semanal', emoji: '🗓️', label: 'Ativação Semanal', hint: 'Manter a conta ativa (ex.: 1 a cada 8 dias)', color: '#2563eb' }),
@@ -328,6 +332,14 @@ function openKindPicker({ title = 'Tipo do depósito', subtitle = '', current = 
       plus.addEventListener('click', () => setScale(draftScale + 1));
       setScale(draftScale);
 
+      // (16) ➗ Dividir o bônus alto em partes com R diferente.
+      const split = createBonusSplit({
+        getTotal: () => { const v = parseHighBonus(draftValue); return v === null ? NaN : v; },
+        onToggle: on => { scaleRow.style.display = on ? 'none' : ''; }
+      });
+      input.addEventListener('input', () => split.refresh());
+      box.appendChild(split.el);
+
       const note = document.createElement('p');
       note.className = 'bc-note';
       note.textContent = 'Entra como Bônus Alto: soma no Saldo, no Rollover (na escala escolhida) e no bônus da semana, junto com VIP, Obrigado e Misterioso. No "Inserir bônus hoje", o total do dia já deve incluir este valor.';
@@ -355,6 +367,16 @@ function openKindPicker({ title = 'Tipo do depósito', subtitle = '', current = 
           error.textContent = 'Digite o valor do bônus alto (ex.: 150,00).';
           error.hidden = false;
           focusFirst(input);
+          return;
+        }
+        if (split.isActive()) {
+          const res = split.getParts();
+          if (!res.ok) {
+            error.textContent = res.error;
+            error.hidden = false;
+            return;
+          }
+          finish(HIGH_BONUS_KIND, { value: v, scale: draftScale, parts: res.parts });
           return;
         }
         finish(HIGH_BONUS_KIND, { value: v, scale: draftScale });

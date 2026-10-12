@@ -133,6 +133,16 @@
 // c) Botão "📜 Ciclos": histórico, previsão, lançar à mão e reconstruir
 //    pelas fotos diárias (ui-cycle-history.js).
 
+// === (Sub-entrega 15) SEM "APOSTEI HOJE" / "GERENCIAR" ===
+// Os dois botões da linha de aposta e o modal de apostas (#betModal)
+// saíram — vinham da época em que os bônus eram só "fotos". O dia de
+// aposta agora vem só das apostas lançadas no Financeiro; o contador
+// "🎲 X dia(s)" continua. betDays antigos seguem valendo (só leitura) —
+// nenhum dado é apagado e nada do passado muda de valor.
+// O contador virou BADGE do cabeçalho ("🎲 X dia(s)" = dias com aposta no
+// mês, todas as plataformas), ligada/desligada no 👁 Badges (betDaysBadge,
+// user-preferences-store.js).
+
 // === (Sub-entrega 13) 💎 COLETAR BÔNUS ALTO ===
 // "Adicionar" usa pickDepositKindAndBonus: 💎 pede o valor do bônus alto e
 // grava depósito + highBonusLog no mesmo savePlatform. Com a semana atual
@@ -172,6 +182,7 @@ let manageBadgeVisibilityDropdown = null;
 let badgeVisibilityTotalCheckbox = null;
 let badgeVisibilityCycleDayCheckbox = null;
 let badgeVisibilityDepositCheckbox = null;
+let badgeVisibilityBetDaysCheckbox = null; // (Sub-entrega 15)
 
 // --- Referências de DOM dos 3 modais ---
 // Resolvidas por initModalListeners(), chamada pelo mount() da view
@@ -187,12 +198,6 @@ let resetDateInput = null;
 let resetConfirmBtn = null;
 let resetCancelBtn = null;
 
-let betModal = null;
-let betModalTitle = null;
-let betModalClose = null;
-let betDateInput = null;
-let betAddConfirm = null;
-let betList = null;
 
 let currentSearch = '';
 let currentMode = null; // um dos SORT_MENU_OPTIONS.value, ou null (Padrão)
@@ -231,7 +236,6 @@ let historyViewMode = 'cycle';
 
 // Plataforma atualmente associada ao modal de Reinício/Apostas aberto.
 let currentResetPlatform = null;
-let currentBetPlatform = null;
 
 // id da plataforma -> elemento <div class="platform-manage-row..."> já
 // presente no DOM. Fonte de verdade de "o que está renderizado agora".
@@ -405,7 +409,6 @@ export function resetManageListCache() {
   editingDepositDate = null;
   historyViewMode = 'cycle';
   currentResetPlatform = null;
-  currentBetPlatform = null;
 }
 
 export function renderManageList() {
@@ -495,6 +498,17 @@ function buildRow(p) {
     depositDayBadge.textContent = `Depósito: ${daysSinceDeposit} dias`;
     depositDayBadge.title = `${daysSinceDeposit} dias desde o último depósito registrado (aviso ativo a partir do 7º dia)`;
     badges.appendChild(depositDayBadge);
+  }
+
+  // (Sub-entrega 15) "🎲 X dia(s)": dias com aposta no mês — todas as
+  // plataformas, ligado/desligado pelo 👁 Badges (betDaysBadge).
+  if (badgeVisibility.betDaysBadge) {
+    const betDays = countBetDaysInMonth(p);
+    const betDaysBadge = document.createElement('span');
+    betDaysBadge.className = 'cycle-day bet-days-badge';
+    betDaysBadge.textContent = `🎲 ${betDays} dia(s)`;
+    betDaysBadge.title = `${betDays} dia(s) com aposta neste mês`;
+    badges.appendChild(betDaysBadge);
   }
 
   // Item 22 — setas ▲▼: só existem quando o modo "Reordenar" (botão ⚙️)
@@ -659,7 +673,10 @@ function buildActionsSection(p) {
       // (Sub-entrega 13) bônus alto — mesmo savePlatform do depósito.
       if (picked.highBonus) {
         if (!Array.isArray(p.highBonusLog)) p.highBonusLog = [];
-        p.highBonusLog.push(buildHighBonusEntry({ depositDate: entry.date, value: picked.highBonus.value, scale: picked.highBonus.scale }));
+        // (Sub-entrega 16) ➗ Dividir: uma entrada por parte, cada uma com o seu R.
+        (picked.highBonus.parts || [{ value: picked.highBonus.value, scale: picked.highBonus.scale }]).forEach(pt => {
+          p.highBonusLog.push(buildHighBonusEntry({ depositDate: entry.date, value: pt.value, scale: pt.scale }));
+        });
       }
       savePlatform(state.currentUid, p);
       // Só o conteúdo desta linha muda (total/badge) — depósito não afeta
@@ -728,9 +745,8 @@ function buildActionsSection(p) {
   });
   section.appendChild(cyclesBtn);
 
-  if (p.group === 'com') {
-    section.appendChild(buildBetSection(p));
-  }
+  // (Sub-entrega 15) a linha de aposta saiu do corpo — "🎲 X dia(s)" virou
+  // badge no cabeçalho (controlada pelo 👁 Badges), pra todas as plataformas.
 
   return section;
 }
@@ -746,53 +762,19 @@ function toLocalDateTimeSeconds(date) {
   return `${y}-${m}-${d}T${hh}:${mm}:${ss}`;
 }
 
-function buildBetSection(p) {
-  const betSection = document.createElement('div');
-  betSection.className = 'bet-section';
-
-  const betRow = document.createElement('div');
-  betRow.className = 'bet-row';
-
-  const now = new Date();
-  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  // "Apostei hoje" conta sempre a partir do dia 1 do mês — independente de
-  // Reinício/lastResetDate (ver getMonthStart em cycle-logic.js). Item
-  // 15b: getEffectiveBetDayKeys já une manual (betDays) + automático
-  // (valor apostado hoje >= mínimo do nível) — mesma fonte usada em
-  // getVipBonus, nunca diverge do total real do Bônus VIP.
+// (Sub-entrega 15) Dias com aposta no mês atual (desde o dia 1): dias com
+// aposta lançada no Financeiro (qualquer valor) + os que liberaram o VIP
+// diário (getEffectiveBetDayKeys — inclui marcações manuais antigas).
+// Vale pra todas as plataformas (com ou sem aposta).
+function countBetDaysInMonth(p, now = new Date()) {
   const monthStart = getMonthStart(now);
-  const betDayKeysInMonth = getEffectiveBetDayKeys(p, monthStart, now);
-  const alreadyBetToday = betDayKeysInMonth.has(todayStr);
-
-  const betTodayBtn = document.createElement('button');
-  betTodayBtn.className = 'bet-today-btn' + (alreadyBetToday ? ' already-bet' : '');
-  betTodayBtn.textContent = alreadyBetToday ? '✓ Apostei hoje' : '🎯 Apostei hoje';
-  betTodayBtn.disabled = alreadyBetToday;
-  betTodayBtn.addEventListener('click', () => {
-    if (alreadyBetToday) return;
-    if (!p.betDays) p.betDays = [];
-    // A0: grava data E hora (AAAA-MM-DDTHH:mm:ss, local). Todo leitor de
-    // betDays usa slice(0,10), então nada quebra. O feed do Perfil usa a hora.
-    p.betDays.push(toLocalDateTimeSeconds(new Date()));
-    savePlatform(state.currentUid, p);
-    // Não afeta filtro/ordenação — só o conteúdo desta linha muda.
-    refreshRow(p.id);
+  const keys = getEffectiveBetDayKeys(p, monthStart, now);
+  (p.betEntries || []).forEach(e => {
+    const d = new Date(e && e.date);
+    if (isNaN(d.getTime()) || d < monthStart || d > now) return;
+    keys.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
   });
-
-  const betCount = document.createElement('span');
-  betCount.className = 'bet-count-badge';
-  betCount.textContent = `🎲 ${betDayKeysInMonth.size} dia(s)`;
-
-  const betManageBtn = document.createElement('button');
-  betManageBtn.className = 'bet-manage-btn';
-  betManageBtn.textContent = 'Gerenciar';
-  betManageBtn.addEventListener('click', () => showBetModal(p));
-
-  betRow.appendChild(betTodayBtn);
-  betRow.appendChild(betCount);
-  betRow.appendChild(betManageBtn);
-  betSection.appendChild(betRow);
-  return betSection;
+  return keys.size;
 }
 
 // ---------- BLOCO C — GERADOR DE CÓDIGOS (grupo de campos reutilizável) ----------
@@ -1555,114 +1537,6 @@ function closeResetModal() {
   currentResetPlatform = null;
 }
 
-// ---------- MODAL: GERENCIAR APOSTAS ----------
-
-function showBetModal(platform) {
-  currentBetPlatform = platform;
-  betModalTitle.textContent = `Apostas — ${platform.name}`;
-
-  const today = new Date();
-  const yyyy = today.getFullYear();
-  const mm = String(today.getMonth() + 1).padStart(2, '0');
-  const dd = String(today.getDate()).padStart(2, '0');
-  betDateInput.value = `${yyyy}-${mm}-${dd}`;
-
-  renderBetList();
-  betModal.style.display = 'flex';
-}
-
-// Chave de dia LOCAL (AAAA-MM-DD) — nunca toISOString (desloca o dia).
-function localDayKey(date) {
-  const d = new Date(date);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-// Item 15: a lista mostra TODOS os dias efetivos do mês (os mesmos que o
-// badge "🎲 X dia(s)" e o Bônus VIP usam): manuais (betDays, removíveis) e
-// automáticos (valor apostado do dia >= mínimo do nível, só leitura).
-// Automático = getEffectiveBetDayKeys com betDays vazio (mesma fonte única,
-// nenhuma regra duplicada aqui).
-function renderBetList() {
-  betList.innerHTML = '';
-  if (!currentBetPlatform) return;
-  const p = currentBetPlatform;
-
-  const now = new Date();
-  const todayKey = localDayKey(now);
-  const monthStart = getMonthStart(now);
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-
-  const manualKeys = new Set(
-    (p.betDays || [])
-      .map(d => d.slice(0, 10))
-      .filter(k => {
-        const dt = new Date(`${k}T00:00:00`);
-        return dt >= monthStart && dt <= monthEnd;
-      })
-  );
-  const autoKeys = getEffectiveBetDayKeys({ ...p, betDays: [] }, monthStart, now);
-
-  const wageredByDay = {};
-  (p.betEntries || []).forEach(e => {
-    const k = localDayKey(e.date);
-    wageredByDay[k] = (wageredByDay[k] || 0) + (Number(e.wagered) || 0);
-  });
-
-  const allKeys = [...new Set([...manualKeys, ...autoKeys])].sort((a, b) => b.localeCompare(a));
-
-  if (allKeys.length === 0) {
-    betList.innerHTML = '<div class="bet-empty">Nenhum dia de aposta neste mês.</div>';
-    return;
-  }
-
-  const counting = allKeys.filter(k => k <= todayKey).length;
-  const summary = document.createElement('div');
-  summary.className = 'bet-empty';
-  summary.textContent = `${counting} dia(s) contando no mês (igual ao badge).`;
-  betList.appendChild(summary);
-
-  allKeys.forEach(dateStr => {
-    const [y, m, d] = dateStr.split('-');
-    const isManual = manualKeys.has(dateStr);
-    const isAuto = autoKeys.has(dateStr);
-    const isFuture = dateStr > todayKey;
-
-    const item = document.createElement('div');
-    item.className = 'bet-list-item';
-
-    const label = document.createElement('span');
-    label.textContent = `${d}/${m}/${y}`;
-    item.appendChild(label);
-
-    const tag = document.createElement('span');
-    tag.style.cssText = 'font-size:0.75rem; font-weight:600; color:#64748b; flex:1; text-align:right;';
-    const parts = [];
-    if (isManual) parts.push('manual');
-    if (isAuto) parts.push(`auto · apostado ${formatCurrency(wageredByDay[dateStr] || 0)}`);
-    if (isFuture) parts.push('futuro — ainda não conta');
-    tag.textContent = parts.join(' + ');
-    item.appendChild(tag);
-
-    if (isManual) {
-      const removeBtn = document.createElement('button');
-      removeBtn.className = 'bet-list-remove';
-      removeBtn.textContent = 'Remover';
-      removeBtn.addEventListener('click', () => {
-        currentBetPlatform.betDays = (currentBetPlatform.betDays || [])
-          .filter(dd => dd.slice(0, 10) !== dateStr);
-        savePlatform(state.currentUid, currentBetPlatform, { allowShrink: ['betDays'] });
-        renderBetList();
-        openRowId = currentBetPlatform.id;
-        // Não afeta filtro/ordenação — só o conteúdo da linha muda.
-        refreshRow(currentBetPlatform.id);
-      });
-      item.appendChild(removeBtn);
-    }
-
-    betList.appendChild(item);
-  });
-}
-
 // ---------- INICIALIZAÇÃO DE DOM (chamadas pelo mount() da view) ----------
 
 // Resolve as referências do painel principal (lista + busca), liga a
@@ -1682,6 +1556,7 @@ export function initManageControls() {
   badgeVisibilityTotalCheckbox = document.getElementById('badgeVisibilityTotal');
   badgeVisibilityCycleDayCheckbox = document.getElementById('badgeVisibilityCycleDay');
   badgeVisibilityDepositCheckbox = document.getElementById('badgeVisibilityDeposit');
+  badgeVisibilityBetDaysCheckbox = document.getElementById('badgeVisibilityBetDays');
 
   initAddRow();
 
@@ -1765,6 +1640,7 @@ export function initManageControls() {
     if (badgeVisibilityTotalCheckbox) badgeVisibilityTotalCheckbox.checked = visibility.totalBadge;
     if (badgeVisibilityCycleDayCheckbox) badgeVisibilityCycleDayCheckbox.checked = visibility.cycleDayBadge;
     if (badgeVisibilityDepositCheckbox) badgeVisibilityDepositCheckbox.checked = visibility.depositDayBadge;
+    if (badgeVisibilityBetDaysCheckbox) badgeVisibilityBetDaysCheckbox.checked = visibility.betDaysBadge;
 
     function toggleDropdown() {
       const willOpen = !manageBadgeVisibilityDropdown.classList.contains('open');
@@ -1788,7 +1664,8 @@ export function initManageControls() {
       const newVisibility = {
         totalBadge: badgeVisibilityTotalCheckbox ? badgeVisibilityTotalCheckbox.checked : true,
         cycleDayBadge: badgeVisibilityCycleDayCheckbox ? badgeVisibilityCycleDayCheckbox.checked : true,
-        depositDayBadge: badgeVisibilityDepositCheckbox ? badgeVisibilityDepositCheckbox.checked : true
+        depositDayBadge: badgeVisibilityDepositCheckbox ? badgeVisibilityDepositCheckbox.checked : true,
+        betDaysBadge: badgeVisibilityBetDaysCheckbox ? badgeVisibilityBetDaysCheckbox.checked : true
       };
       saveBadgeVisibility(state.currentUid, newVisibility);
       // Muda o CONTEÚDO de todas as linhas (badges aparecem/somem) sem
@@ -1804,6 +1681,7 @@ export function initManageControls() {
     if (badgeVisibilityTotalCheckbox) badgeVisibilityTotalCheckbox.addEventListener('change', onVisibilityChange);
     if (badgeVisibilityCycleDayCheckbox) badgeVisibilityCycleDayCheckbox.addEventListener('change', onVisibilityChange);
     if (badgeVisibilityDepositCheckbox) badgeVisibilityDepositCheckbox.addEventListener('change', onVisibilityChange);
+    if (badgeVisibilityBetDaysCheckbox) badgeVisibilityBetDaysCheckbox.addEventListener('change', onVisibilityChange);
 
     closeBadgeDropdown = () => document.removeEventListener('click', onDocumentClick);
   }
@@ -1856,7 +1734,7 @@ export function initManageControls() {
   };
 }
 
-// Resolve os 3 modais (Histórico/Reinício/Apostas) e liga seus listeners
+// Resolve os 2 modais (Histórico/Reinício) e liga seus listeners
 // fixos. Chamada UMA VEZ por mount(), DEPOIS que a view já criou e anexou
 // os 3 modais ao document.body — diferente do Sistema 1, onde esses
 // elementos existiam no HTML estático de edicao.html e os listeners eram
@@ -1913,53 +1791,4 @@ export function initModalListeners() {
 
   resetCancelBtn.addEventListener('click', closeResetModal);
   resetModal.addEventListener('click', (e) => { if (e.target === resetModal) closeResetModal(); });
-
-  betModal = document.getElementById('betModal');
-  betModalTitle = document.getElementById('betModalTitle');
-  betModalClose = document.getElementById('betModalClose');
-  betDateInput = document.getElementById('betDateInput');
-  betAddConfirm = document.getElementById('betAddConfirm');
-  betList = document.getElementById('betList');
-
-  betAddConfirm.addEventListener('click', async () => {
-    if (!currentBetPlatform || !betDateInput.value) return;
-    const dateStr = betDateInput.value;
-    if (!currentBetPlatform.betDays) currentBetPlatform.betDays = [];
-
-    const already = currentBetPlatform.betDays.some(d => d.slice(0, 10) === dateStr);
-    if (already) {
-      await showAppAlert('Este dia já está registrado.');
-      return;
-    }
-
-    // Item 15b: dia que já conta automaticamente (apostado >= mínimo do
-    // nível) não precisa — nem deve — ser gravado como manual.
-    const autoOnly = getEffectiveBetDayKeys(
-      { ...currentBetPlatform, betDays: [] },
-      new Date(`${dateStr}T00:00:00`),
-      new Date(`${dateStr}T23:59:59.999`)
-    );
-    if (autoOnly.has(dateStr)) {
-      await showAppAlert('Este dia já conta automaticamente (valor apostado atingiu o mínimo do nível). Nada foi gravado.');
-      return;
-    }
-
-    currentBetPlatform.betDays.push(dateStr);
-    savePlatform(state.currentUid, currentBetPlatform);
-    renderBetList();
-    openRowId = currentBetPlatform.id;
-    // Não afeta filtro/ordenação — só o conteúdo da linha muda.
-    refreshRow(currentBetPlatform.id);
-  });
-
-  betModalClose.addEventListener('click', () => {
-    betModal.style.display = 'none';
-    currentBetPlatform = null;
-  });
-  betModal.addEventListener('click', e => {
-    if (e.target === betModal) {
-      betModal.style.display = 'none';
-      currentBetPlatform = null;
-    }
-  });
 }

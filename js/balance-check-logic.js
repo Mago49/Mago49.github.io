@@ -55,6 +55,11 @@
 //   setAvulsoScale   — R de um avulso já lançado (rolloverValue recalculado);
 //   applyPositiveGap / updateHighBonusEntry — aceitam 0.
 // Os itens da lista trazem `scale` pra tela mostrar e editar.
+//
+// === (Sub-entrega 16) ➗ DIVIDIR ===
+// applyPositiveGap aceita, no lugar da escala, uma lista de partes
+// [{ value, scale }] (normalizeBonusParts): cada parte vira um avulso
+// próprio (mesmo checkId, createdAt +i ms), com o seu R.
 
 import {
   computeLiveBalance, computeLiveBalanceRaw, getWeekStart, getWeekEnd, toLocalDateString, isCurrentWeekClosed, roundMoney
@@ -173,26 +178,59 @@ export function recordBalanceCheck(platform, gap, resolution = 'match', now = ne
  */
 export function applyPositiveGap(platform, gap, scale = 1, now = new Date(), before = null) {
   if (!(gap.diff > BALANCE_TOLERANCE)) return null;
-  const s = normalizeRolloverScale(scale); // (14) 0 = sem rollover
   const value = r2(gap.diff);
-  const check = pushCheck(platform, gap, now, { resolution: 'bonus', bonusValue: value, scale: s });
+  // (16) `scale` pode ser uma lista de partes [{ value, scale }] (➗ Dividir).
+  const parts = normalizeBonusParts(scale, value);
+  if (!parts) return null;
+  const single = parts.length === 1;
+  const check = pushCheck(platform, gap, now, {
+    resolution: 'bonus',
+    bonusValue: value,
+    scale: single ? parts[0].scale : null,
+    ...(single ? {} : { parts: parts.map(p => ({ value: p.value, scale: p.scale })) })
+  });
   // (Sub-entrega 9) aposta com dia/hora informados: o avulso entra 1 s
   // antes DELA (nunca depois de agora).
   const anchor = before && !isNaN(new Date(before).getTime()) ? Math.min(new Date(before).getTime(), now.getTime()) : now.getTime();
   const at = new Date(anchor - 1000).toISOString();
   if (!Array.isArray(platform.otherBonusLog)) platform.otherBonusLog = [];
-  platform.otherBonusLog.push({
-    date: at,
-    rawValue: value,
-    scale: s,
-    rolloverValue: r2(value * s),
-    source: 'balance-check',
-    checkId: check.id,
-    createdAt: now.toISOString()
+  parts.forEach((part, i) => {
+    platform.otherBonusLog.push({
+      date: at,
+      rawValue: part.value,
+      scale: part.scale,
+      rolloverValue: r2(part.value * part.scale),
+      source: 'balance-check',
+      checkId: check.id,
+      // (16) createdAt distinto por parte (+i ms): cada parte é um item
+      // próprio no "Bônus da semana" (R e Excluir separados).
+      createdAt: new Date(now.getTime() + i).toISOString(),
+      ...(single ? {} : { splitPart: i + 1, splitOf: parts.length })
+    });
   });
   return check;
 }
 
+/**
+ * (Sub-entrega 16) Normaliza as partes de um bônus dividido:
+ *   número/indefinido → [{ value: total, scale }] (uma parte só);
+ *   lista [{ value, scale }] → valida (cada parte > 0) e ajusta a ÚLTIMA
+ *   pra soma bater exatamente com `total` (centavo de arredondamento).
+ * null = partes inválidas (nada deve ser gravado).
+ */
+export function normalizeBonusParts(scaleOrParts, total) {
+  const t = r2(total);
+  if (!Array.isArray(scaleOrParts)) return [{ value: t, scale: normalizeRolloverScale(scaleOrParts) }];
+  const parts = scaleOrParts
+    .map(p => ({ value: r2(p && p.value), scale: normalizeRolloverScale(p && p.scale) }));
+  if (!parts.length || parts.some(p => !(p.value > 0))) return null;
+  const sum = r2(parts.reduce((acc, p) => acc + p.value, 0));
+  const diff = r2(t - sum);
+  if (Math.abs(diff) > 0.05) return null; // não bate com o total
+  parts[parts.length - 1].value = r2(parts[parts.length - 1].value + diff);
+  if (!(parts[parts.length - 1].value > 0)) return null;
+  return parts;
+}
 // ---------- bônus da semana aberta ----------
 
 export function getOpenWeekRange(now = new Date()) {

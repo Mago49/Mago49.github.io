@@ -33,7 +33,8 @@ const DEFAULT_PREFERENCES = {
   // porque o requisito confirma que os dois pares moram no mesmo
   // documento (users/{uid}/meta/preferences). Ver correção em
   // saveBadgeVisibility abaixo: sem ela, salvar um par apagaria o outro.
-  badgeVisibility: { totalBadge: true, cycleDayBadge: true, depositDayBadge: true, financeBalanceBadge: true, financeRolloverBadge: true }
+  // (Sub-entrega 15) betDaysBadge: "🎲 X dia(s)" da Edição.
+  badgeVisibility: { totalBadge: true, cycleDayBadge: true, depositDayBadge: true, betDaysBadge: true, financeBalanceBadge: true, financeRolloverBadge: true }
 };
 
 let cachedPreferences = null;
@@ -49,6 +50,7 @@ function normalizePreferences(data) {
       totalBadge: data?.badgeVisibility?.totalBadge !== false,
       cycleDayBadge: data?.badgeVisibility?.cycleDayBadge !== false,
       depositDayBadge: data?.badgeVisibility?.depositDayBadge !== false,
+      betDaysBadge: data?.badgeVisibility?.betDaysBadge !== false, // (Sub-entrega 15)
       // Etapa 7, sub-entrega 5 — ver nota em DEFAULT_PREFERENCES.
       financeBalanceBadge: data?.badgeVisibility?.financeBalanceBadge !== false,
       financeRolloverBadge: data?.badgeVisibility?.financeRolloverBadge !== false
