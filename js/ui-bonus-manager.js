@@ -20,6 +20,11 @@
 // "Editar" (valor + escala do Rollover, no próprio item) e "Excluir"
 // (allowShrink: ['highBonusLog']). Sem "Não recebi" — é valor real.
 //
+// (Sub-entrega 14) Botão "R" (escala do Rollover, 0 = sem rollover) ao lado
+// de "Não recebi" nos bônus de fórmula e ao lado de "Excluir" nos avulsos —
+// editor no próprio item, grava na hora (savePlatform). Etiqueta azul
+// "R …" quando a escala não é 1:1.
+//
 // Segurança: nomes por textContent.
 
 import { state } from './state.js';
@@ -28,7 +33,8 @@ import { savePlatform } from './platforms-store.js';
 import {
   listOpenWeekBonusItems, excludeBonusItems, restoreExclusion, removeAvulsoEntry,
   getOpenWeekRange, BONUS_TYPE_LABELS, bonusTypeGroup,
-  removeHighBonusEntry, updateHighBonusEntry, BALANCE_MAX
+  removeHighBonusEntry, updateHighBonusEntry, BALANCE_MAX,
+  setFormulaScale, setAvulsoScale
 } from './balance-check-logic.js';
 import { parseMoneyInput } from './wager-total-logic.js';
 
@@ -80,7 +86,7 @@ export function openBonusManager({ resolveCtx = () => ({}), focusPlatformId = nu
     openId: focusPlatformId,
     chip: new Map(),     // platformId -> grupo
     shown: new Map(),    // platformId -> quantos visíveis
-    editing: null,       // (13) entrada de bônus alto em edição
+    editing: null,       // (13/14) id do item em edição (bônus alto ou R)
     busy: false
   };
   const previousOverflow = document.body.style.overflow;
@@ -189,18 +195,64 @@ export function openBonusManager({ resolveCtx = () => ({}), focusPlatformId = nu
     }
   }
 
-  // (13) 💎 bônus alto: Editar (no próprio item) e Excluir.
+  // (14) Rótulo da escala: "sem rollover" ou "N:1".
+  function scaleLabel(sc) { return sc === 0 ? 'sem rollover' : `${sc}:1`; }
+
+  // (14) Etiqueta azul "R …" quando a escala não é 1:1.
+  function scaleTag(sc) {
+    const t = el('span', 'bm-tag', `R ${scaleLabel(sc)}`);
+    t.style.background = '#dbeafe';
+    t.style.color = '#1d4ed8';
+    return t;
+  }
+
+  // (14) Linha do R no próprio item: Rollover [−] N:1 [+] (0 = sem rollover).
+  // Devolve o elemento e um getter da escala escolhida.
+  function scaleStepper(initial) {
+    let sc = Math.max(0, Math.min(100, Number(initial) || 0));
+    const val = el('span', 'bm-item-value', scaleLabel(sc));
+    const minus = btn('−', 'bc-step', () => set(sc - 1));
+    const plus = btn('+', 'bc-step', () => set(sc + 1));
+    minus.setAttribute('aria-label', 'Diminuir escala do Rollover (0 = sem rollover)');
+    plus.setAttribute('aria-label', 'Aumentar escala do Rollover');
+    function set(n) {
+      sc = Math.max(0, Math.min(100, Math.round(n)));
+      val.textContent = scaleLabel(sc);
+      minus.disabled = sc <= 0;
+      plus.disabled = sc >= 100;
+    }
+    set(sc);
+    const box = el('div', 'bc-scale');
+    box.style.flexBasis = '100%';
+    box.append(el('span', 'bm-item-type', 'Rollover'), minus, val, plus);
+    return { box, get: () => sc };
+  }
+
+  // (14) Editor só do R (fórmula e avulso): Cancelar / Salvar.
+  function appendScaleEditor(p, row, it, apply) {
+    const st = scaleStepper(it.scale);
+    row.appendChild(st.box);
+    row.appendChild(btn('Cancelar', 'bm-act bm-act-off', () => { ui.editing = null; render(); }));
+    const save = btn('Salvar', 'bm-act', () => {
+      ui.editing = null;
+      act(p, () => (apply(st.get()) ? {} : false));
+    });
+    save.style.marginLeft = '0';
+    row.appendChild(save);
+  }
+
+  // (13) 💎 bônus alto: Editar (valor + R, no próprio item) e Excluir.
   function highBonusRow(p, it) {
     const row = el('div', 'bm-item bm-item-alto');
     row.style.background = '#ecfeff';
     const info = el('div', 'bm-item-info');
     info.appendChild(el('span', 'bm-item-day', fmtDay(it.dayKey)));
-    info.appendChild(el('span', 'bm-item-type', `💎 Bônus Alto${it.scale > 1 ? ` · Rollover ${it.scale}:1 (${formatCurrency(it.rollover)})` : ''}`));
+    info.appendChild(el('span', 'bm-item-type', `💎 Bônus Alto${it.scale !== 1 ? ` · Rollover ${scaleLabel(it.scale)}${it.scale > 1 ? ` (${formatCurrency(it.rollover)})` : ''}` : ''}`));
     row.appendChild(info);
 
-    if (ui.editing !== it.entry) {
+    if (ui.editing !== it.id) {
       row.appendChild(el('span', 'bm-item-value', formatCurrency(it.value)));
-      row.appendChild(btn('Editar', 'bm-act', () => { ui.editing = it.entry; render(); }));
+      row.appendChild(btn('Editar', 'bm-act', () => { ui.editing = it.id; render(); }));
       const del = btn('Excluir', 'bm-act bm-act-del', () => act(p,
         () => (removeHighBonusEntry(p, it.entry) ? { allowShrink: ['highBonusLog'] } : false),
         `Excluir o bônus alto de ${formatCurrency(it.value)} (${fmtDay(it.dayKey)}) de ${p.name}? Sai do Saldo, do Rollover e do bônus da semana. O depósito continua.`));
@@ -215,30 +267,29 @@ export function openBonusManager({ resolveCtx = () => ({}), focusPlatformId = nu
     input.autocomplete = 'off';
     input.value = String(it.value).replace('.', ',');
     input.setAttribute('aria-label', 'Valor do bônus alto');
-    let scale = it.scale;
-    const val = el('span', 'bm-item-value', `${scale}:1`);
-    const minus = btn('−', 'bc-step', () => { scale = Math.max(1, scale - 1); val.textContent = `${scale}:1`; minus.disabled = scale <= 1; });
-    const plus = btn('+', 'bc-step', () => { scale = Math.min(100, scale + 1); val.textContent = `${scale}:1`; minus.disabled = false; });
-    minus.disabled = scale <= 1;
-    minus.setAttribute('aria-label', 'Diminuir escala do Rollover');
-    plus.setAttribute('aria-label', 'Aumentar escala do Rollover');
     input.style.flex = '1 1 100%';
     input.style.maxWidth = 'none';
     row.appendChild(input);
-    const edit = el('div', 'bc-scale');
-    edit.style.flexBasis = '100%';
-    edit.append(el('span', 'bm-item-type', 'Rollover'), minus, val, plus);
-    row.appendChild(edit);
+    const st = scaleStepper(it.scale);
+    row.appendChild(st.box);
     row.appendChild(btn('Cancelar', 'bm-act bm-act-off', () => { ui.editing = null; render(); }));
     const save = btn('Salvar', 'bm-act', () => {
       const v = parseMoneyInput(input.value);
       if (!Number.isFinite(v) || v <= 0 || v > BALANCE_MAX) { input.focus(); return; }
       ui.editing = null;
-      act(p, () => (updateHighBonusEntry(p, it.entry, { value: v, scale }) ? {} : false));
+      act(p, () => (updateHighBonusEntry(p, it.entry, { value: v, scale: st.get() }) ? {} : false));
     });
     save.style.marginLeft = '0';
     row.appendChild(save);
     return row;
+  }
+
+  // (14) Grupo das ações (etiquetas + botões) — fica junto, à direita,
+  // e quebra de linha inteiro no celular.
+  function actionsBox() {
+    const a = el('div');
+    a.style.cssText = 'display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:0.35rem;margin-left:auto;';
+    return a;
   }
 
   function itemRow(p, it) {
@@ -253,24 +304,46 @@ export function openBonusManager({ resolveCtx = () => ({}), focusPlatformId = nu
     row.appendChild(info);
     const value = el('span', 'bm-item-value', formatCurrency(it.value));
     row.appendChild(value);
+    const editingR = ui.editing === it.id;
+    const actions = actionsBox();
+    const plain = b => { b.style.marginLeft = '0'; return b; };
 
     if (it.kind === 'formula') {
-      row.appendChild(btn('Não recebi', 'bm-act bm-act-off', () => act(p,
+      if (it.scale !== 1) actions.appendChild(plain(scaleTag(it.scale)));
+      if (editingR) {
+        if (actions.childNodes.length) row.appendChild(actions);
+        appendScaleEditor(p, row, it, sc => setFormulaScale(p, it.dayKey, it.type, sc, new Date()));
+        return row;
+      }
+      const rBtn = plain(btn('R', 'bm-act', () => { ui.editing = it.id; render(); }));
+      rBtn.setAttribute('aria-label', `Escala do Rollover de ${BONUS_TYPE_LABELS[it.type]} (${fmtDay(it.dayKey)})`);
+      actions.appendChild(rBtn);
+      actions.appendChild(plain(btn('Não recebi', 'bm-act bm-act-off', () => act(p,
         () => (excludeBonusItems(p, [it], { now: new Date() }) > 0 ? {} : false),
-        `Marcar ${BONUS_TYPE_LABELS[it.type]} de ${fmtDay(it.dayKey)} (${formatCurrency(it.value)}) como NÃO recebido em ${p.name}? Sai do Saldo, do Rollover e da aba VIP.`)));
+        `Marcar ${BONUS_TYPE_LABELS[it.type]} de ${fmtDay(it.dayKey)} (${formatCurrency(it.value)}) como NÃO recebido em ${p.name}? Sai do Saldo, do Rollover e da aba VIP.`))));
     } else if (it.kind === 'excluded') {
       value.classList.add('bm-struck');
-      row.appendChild(el('span', 'bm-tag', 'não recebido'));
-      row.appendChild(btn('Desfazer', 'bm-act', () => act(p, () => {
+      actions.appendChild(plain(el('span', 'bm-tag', 'não recebido')));
+      actions.appendChild(plain(btn('Desfazer', 'bm-act', () => act(p, () => {
         const shrink = restoreExclusion(p, it.exclusionId);
         return shrink ? { allowShrink: shrink } : false;
-      })));
+      }))));
     } else {
-      if (it.value < it.rawValue - 0.004) row.appendChild(el('span', 'bm-tag', `lançado ${formatCurrency(it.rawValue)}`));
-      row.appendChild(btn('Excluir', 'bm-act bm-act-del', () => act(p,
+      if (it.value < it.rawValue - 0.004) actions.appendChild(plain(el('span', 'bm-tag', `lançado ${formatCurrency(it.rawValue)}`)));
+      if (it.scale !== 1) actions.appendChild(plain(scaleTag(it.scale)));
+      if (editingR) {
+        if (actions.childNodes.length) row.appendChild(actions);
+        appendScaleEditor(p, row, it, sc => setAvulsoScale(p, it.entry, sc));
+        return row;
+      }
+      const rBtn = plain(btn('R', 'bm-act', () => { ui.editing = it.id; render(); }));
+      rBtn.setAttribute('aria-label', 'Escala do Rollover deste avulso');
+      actions.appendChild(rBtn);
+      actions.appendChild(plain(btn('Excluir', 'bm-act bm-act-del', () => act(p,
         () => (removeAvulsoEntry(p, it.entry) ? { allowShrink: ['otherBonusLog'] } : false),
-        `Excluir o bônus avulso de ${formatCurrency(it.rawValue)} (${fmtDay(it.dayKey)}) de ${p.name}? Sai do Saldo e do Rollover.`)));
+        `Excluir o bônus avulso de ${formatCurrency(it.rawValue)} (${fmtDay(it.dayKey)}) de ${p.name}? Sai do Saldo e do Rollover.`))));
     }
+    row.appendChild(actions);
     return row;
   }
 

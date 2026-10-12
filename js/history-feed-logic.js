@@ -26,8 +26,9 @@
 // (Sub-entrega 13) "💎 Bônus alto" aparece no horário em que foi coletado
 // (highBonusLog). O detalhamento da fórmula nunca o mostra de novo (os
 // tipos de fórmula listados abaixo são só VIP/Obrigado/Misterioso).
+// (Sub-entrega 14) Escala 0 aparece como "Sem rollover".
 
-import { getExpectedBonusBreakdownForDate, getEffectiveOtherBonusEntries, getHighBonusEntries, highBonusRollover } from './bonus-ledger-logic.js';
+import { getExpectedBonusBreakdownForDate, getEffectiveOtherBonusEntries, getHighBonusEntries, highBonusRollover, normalizeRolloverScale } from './bonus-ledger-logic.js';
 import { getLevelAt, BET_MINIMUM_BY_LEVEL } from './cycle-logic.js';
 
 // Cópia intencional do algoritmo de toLocalDateString (finance-logic.js).
@@ -153,9 +154,9 @@ export function buildDayFeed(platforms, dayKey, resolveCtx = () => ({}), refDate
       const v = r2(item.raw);
       if (v === 0) return;
       const e = item.entry;
-      const scale = Number(e.scale) || 1;
+      const scale = normalizeRolloverScale(e.scale); // (14) 0 = sem rollover
       const parts = [];
-      if (scale !== 1) parts.push(`Rollover ${scale}x`);
+      if (scale !== 1) parts.push(scale === 0 ? 'Sem rollover' : `Rollover ${scale}x`);
       if (typeof e.claimedTotal === 'number' && Number.isFinite(e.claimedTotal)) {
         parts.push(`Total informado ${money(e.claimedTotal)}`);
       }
@@ -168,10 +169,10 @@ export function buildDayFeed(platforms, dayKey, resolveCtx = () => ({}), refDate
     // (Sub-entrega 13) 💎 bônus alto, no horário em que foi coletado.
     getHighBonusEntries(p).forEach(e => {
       if (!isOnDay(e.date, dayKey)) return;
-      const scale = Number(e.scale) || 1;
+      const scale = normalizeRolloverScale(e.scale);
       events.push({
         ...base, ts: new Date(e.date).getTime(), kind: 'bonus-alto', icon: '💎', label: 'Bônus alto',
-        value: r2(e.value), detail: scale !== 1 ? `Rollover ${scale}x (${money(highBonusRollover(e))})` : ''
+        value: r2(e.value), detail: scale === 0 ? 'Sem rollover' : (scale !== 1 ? `Rollover ${scale}x (${money(highBonusRollover(e))})` : '')
       });
     });
 

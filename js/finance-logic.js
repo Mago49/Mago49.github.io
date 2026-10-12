@@ -103,11 +103,20 @@
 //     bônus alto pelo rolloverValue (+ rollover − valor).
 // computeLiveBalanceRaw: Saldo SEM o piso em zero — usado só pela
 // conferência de saldo pra avisar quando falta lançamento na fase.
+//
+// === (Sub-entrega 14) ESCALA DO ROLLOVER (R, inclusive "sem rollover") ===
+// O Rollover da fórmula deixa de ser sempre 1:1: cada tipo de cada dia usa
+// a escala do botão R (bonus-ledger-logic.js — getExpectedRolloverForDate /
+// computeAutoAccruedRolloverForWeek). Saldo não muda (sempre 1:1).
+// Fechamento de domingo e "Bônus real da semana passada": a diferença
+// POSITIVA (real − contado) entra no Rollover × diffScale (R, padrão 1;
+// 0 = sem rollover); diferença negativa sai 1:1, como sempre.
 
 import {
   computeAutoAccruedBonusForWeek, getAccumulatedBonusThisWeek, getExpectedBonusForDate,
   sumEffectiveOtherBonus, getEffectiveOtherBonusEntries,
-  getExpectedBonusBreakdownForDate, getHighBonusEntries, highBonusRollover, sumHighBonusForWeek
+  getHighBonusEntries, highBonusRollover,
+  getExpectedRolloverForDate, computeAutoAccruedRolloverForWeek, normalizeRolloverScale
 } from './bonus-ledger-logic.js';
 
 // (Sub-entrega G) arredonda em centavos.
@@ -494,8 +503,8 @@ function simulateRollover(platform, { initialRollover = 0, windowStart = null, w
     const cursor = new Date(weekStart);
     while (cursor <= lastDay) {
       // (13) lote do dia SEM o bônus alto — ele entra no horário dele.
-      const b = getExpectedBonusBreakdownForDate(platform, cursor, ctx);
-      const v = (getExpectedBonusForDate(platform, cursor, ctx) || 0) - (Number(b.alto) || 0);
+      // (14) cada tipo da fórmula na escala do R (0 = sem rollover).
+      const v = getExpectedRolloverForDate(platform, cursor, ctx) || 0;
       if (v > 0.0000001) events.push({ t: cursor.getTime(), p: 0, v });
       cursor.setDate(cursor.getDate() + 1);
     }
@@ -617,9 +626,8 @@ export function computePhaseHistory(platform, refDate = new Date(), ctx = {}) {
       // computeLiveBalance/computeRolloverLive, 1:1 nos dois.
       const autoAccruedThisWeek = computeAutoAccruedBonusForWeek(platform, refDate, ctx);
       bonus += autoAccruedThisWeek;
-      // (13) bônus alto: no Rollover pela escala dele, não 1:1.
-      const high = sumHighBonusForWeek(platform, refDate);
-      bonusRollover += autoAccruedThisWeek - high.raw + high.rollover;
+      // (13/14) Rollover da fórmula (escala do R) + bônus alto (escala dele).
+      bonusRollover += computeAutoAccruedRolloverForWeek(platform, refDate, ctx);
     }
 
     results.push({
@@ -670,7 +678,7 @@ export function computePhaseHistory(platform, refDate = new Date(), ctx = {}) {
 // que essa semana especificamente já vinha contribuindo (autoAccrued +
 // otherBonusRaw), e só DEPOIS soma o valor real digitado — uma
 // substituição, não uma soma.
-export function closeWeek(platform, bonus, refDate = new Date(), ctx = {}) {
+export function closeWeek(platform, bonus, refDate = new Date(), ctx = {}, opts = {}) {
   const live = computeCurrentWeekLive(platform, refDate);
   const bonusNum = r2(Number(bonus) || 0);
 
@@ -715,10 +723,13 @@ export function closeWeek(platform, bonus, refDate = new Date(), ctx = {}) {
   // sobrar segue pra semana seguinte porque o Rollover é acumulado por
   // fase (initialRollover + depósitos + bonusRollover - apostado).
   const bonusDiff = r2(bonusNum - autoAccruedThisWeek - otherBonusRawThisWeek);
-  // (13) bônus alto: a parte dele em autoAccruedThisWeek é 1:1 — troca
-  // pela escala escolhida (rolloverValue).
-  const highThisWeek = sumHighBonusForWeek(platform, refDate);
-  const bonusRollover = r2(autoAccruedThisWeek - highThisWeek.raw + highThisWeek.rollover + otherBonusRolloverThisWeek + bonusDiff);
+  // (13/14) Rollover que a semana já somou: fórmula na escala do R de cada
+  // item + bônus alto na escala dele + avulso. A diferença positiva do
+  // bônus real entra × diffScale (R do fechamento; 0 = sem rollover); a
+  // negativa sai 1:1.
+  const diffScale = normalizeRolloverScale(opts.diffScale);
+  const diffRollover = bonusDiff > 0 ? r2(bonusDiff * diffScale) : bonusDiff;
+  const bonusRollover = r2(computeAutoAccruedRolloverForWeek(platform, refDate, ctx) + otherBonusRolloverThisWeek + diffRollover);
 
   const entry = {
     weekStart: toLocalDateString(live.weekStart),
@@ -734,6 +745,8 @@ export function closeWeek(platform, bonus, refDate = new Date(), ctx = {}) {
     // (fórmula + avulso efetivo). Só informativo (Gráficos contam como
     // Avulso); Saldo/Rollover já incorporam essa diferença acima.
     bonusAdjustment: bonusDiff,
+    // (14) escala usada na diferença (só informativo).
+    bonusDiffScale: diffScale,
     resultBetting: live.resultBetting,
     rbPlusBonus: r2(live.resultBetting + bonusNum),
     balance: balanceAtClose,
@@ -1389,7 +1402,7 @@ export function autoCloseOverdueWeeks(platforms, resolveCtx = () => ({}), refDat
 // entra no Rollover congelado (1:1), mesma regra do fechamento de domingo.
 // (Sub-entrega G) bonusAdjustment acompanha a diferença.
 // Retorna a semana, ou null se não existe / não está pendente / valor inválido.
-export function setClosedWeekRealBonus(platform, weekStart, realBonus = null) {
+export function setClosedWeekRealBonus(platform, weekStart, realBonus = null, opts = {}) {
   const entry = (platform.financeWeeks || []).find(w => w.weekStart === weekStart);
   if (!entry || entry.bonusPending !== true) return null;
 
@@ -1402,8 +1415,12 @@ export function setClosedWeekRealBonus(platform, weekStart, realBonus = null) {
     entry.rbPlusBonus = r2((Number(entry.resultBetting) || 0) + value);
     entry.balance = r2(Math.max(0, (Number(entry.balance) || 0) + diff));
     // Mesma regra do fechamento: a diferença do bônus também entra no
-    // Rollover (1:1) e no retrato dele.
-    if (entry.bonusRollover !== undefined) entry.bonusRollover = r2((Number(entry.bonusRollover) || 0) + diff);
+    // Rollover e no retrato dele. (14) Positiva × diffScale (R; 0 = sem
+    // rollover), negativa 1:1.
+    const diffScale = normalizeRolloverScale(opts.diffScale);
+    const diffRollover = diff > 0 ? r2(diff * diffScale) : diff;
+    if (entry.bonusRollover !== undefined) entry.bonusRollover = r2((Number(entry.bonusRollover) || 0) + diffRollover);
+    entry.bonusDiffScale = diffScale;
     bumpBonusAdjustment(entry, diff);
     if (entry.rolloverAtClose !== undefined && entry.rolloverAtClose !== null) {
       // Retrato "como estava no fim daquela semana" (fase vigente e teto de

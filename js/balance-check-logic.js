@@ -48,11 +48,21 @@
 //    o usuário continuar, o Saldo fica igual ao real.
 // b) 💎 BÔNUS ALTO na lista "Bônus da semana": tipo 'alto', com Editar
 //    (valor + escala) e Excluir. Não tem "Não recebi" (é valor real).
+//
+// === (Sub-entrega 14) ESCALA DO ROLLOVER (R) EM TODOS OS BÔNUS ===
+// Escala 0 = "sem rollover" (soma no Saldo, não no Rollover).
+//   setFormulaScale  — R de um bônus de fórmula num dia (bonusScales);
+//   setAvulsoScale   — R de um avulso já lançado (rolloverValue recalculado);
+//   applyPositiveGap / updateHighBonusEntry — aceitam 0.
+// Os itens da lista trazem `scale` pra tela mostrar e editar.
 
 import {
   computeLiveBalance, computeLiveBalanceRaw, getWeekStart, getWeekEnd, toLocalDateString, isCurrentWeekClosed, roundMoney
 } from './finance-logic.js';
-import { getExpectedBonusBreakdownForDate, getEffectiveOtherBonusEntries, isFixedOtherBonus, getHighBonusEntries, highBonusRollover } from './bonus-ledger-logic.js';
+import {
+  getExpectedBonusBreakdownForDate, getEffectiveOtherBonusEntries, isFixedOtherBonus, getHighBonusEntries, highBonusRollover,
+  normalizeRolloverScale, getFormulaScale
+} from './bonus-ledger-logic.js';
 
 const r2 = roundMoney;
 
@@ -163,7 +173,7 @@ export function recordBalanceCheck(platform, gap, resolution = 'match', now = ne
  */
 export function applyPositiveGap(platform, gap, scale = 1, now = new Date(), before = null) {
   if (!(gap.diff > BALANCE_TOLERANCE)) return null;
-  const s = Math.max(1, Math.round(Number(scale) || 1));
+  const s = normalizeRolloverScale(scale); // (14) 0 = sem rollover
   const value = r2(gap.diff);
   const check = pushCheck(platform, gap, now, { resolution: 'bonus', bonusValue: value, scale: s });
   // (Sub-entrega 9) aposta com dia/hora informados: o avulso entra 1 s
@@ -217,7 +227,7 @@ export function listOpenWeekBonusItems(platform, ctx = {}, now = new Date()) {
     const b = getExpectedBonusBreakdownForDate(platform, dayKeyToDate(key), ctx);
     FORMULA_TYPES.forEach(type => {
       const v = r2(b[type]);
-      if (v > 0) items.push({ id: `f|${key}|${type}`, kind: 'formula', dayKey: key, type, value: v, sortKey: `${key}T00:00:00` });
+      if (v > 0) items.push({ id: `f|${key}|${type}`, kind: 'formula', dayKey: key, type, value: v, scale: getFormulaScale(platform, key, type), sortKey: `${key}T00:00:00` });
     });
     key = addDaysKey(key, 1);
     guard++;
@@ -242,7 +252,7 @@ export function listOpenWeekBonusItems(platform, ctx = {}, now = new Date()) {
       dayKey: toLocalDateString(d),
       type: 'alto',
       value: r2(e.value),
-      scale: Math.max(1, Number(e.scale) || 1),
+      scale: normalizeRolloverScale(e.scale),
       rollover: r2(highBonusRollover(e)),
       entry: e,
       sortKey: e.date
@@ -261,6 +271,7 @@ export function listOpenWeekBonusItems(platform, ctx = {}, now = new Date()) {
       type: 'avulso',
       value: r2(raw),
       rawValue: r2(entry.rawValue),
+      scale: normalizeRolloverScale(entry.scale),
       fromCheck: isFixedOtherBonus(entry),
       entry,
       sortKey: entry.date
@@ -379,11 +390,48 @@ export function updateHighBonusEntry(platform, entry, { value, scale }) {
   if (!list.includes(entry)) return false;
   const v = r2(value);
   if (!(v > 0) || v > BALANCE_MAX) return false;
-  const s = Math.max(1, Math.min(100, Math.round(Number(scale) || 1)));
+  const s = normalizeRolloverScale(scale); // (14) 0 = sem rollover
   shiftLaterClaims(platform, entry, r2(v - (Number(entry.value) || 0)));
   entry.value = v;
   entry.scale = s;
   entry.rolloverValue = r2(v * s);
   entry.editedAt = new Date().toISOString();
+  return true;
+}
+
+// ---------- (Sub-entrega 14) R — escala do Rollover ----------
+
+/**
+ * R de um bônus de fórmula (VIP/Obrigado/Misterioso) num dia da semana
+ * aberta. Grava/atualiza platform.bonusScales (nunca remove — voltar pra
+ * 1:1 grava 1). true se mudou.
+ */
+export function setFormulaScale(platform, dayKey, type, scale, now = new Date()) {
+  if (!FORMULA_TYPES.includes(type) || !inOpenWeek(dayKey, now)) return false;
+  const s = normalizeRolloverScale(scale);
+  if (!Array.isArray(platform.bonusScales)) platform.bonusScales = [];
+  const hit = platform.bonusScales.find(e => e && e.dayKey === dayKey && e.type === type);
+  if (hit) {
+    if (normalizeRolloverScale(hit.scale) === s) return false;
+    hit.scale = s;
+    hit.updatedAt = now.toISOString();
+    return true;
+  }
+  if (s === 1) return false; // já é o padrão
+  platform.bonusScales.push({ id: newId('bs'), dayKey, type, scale: s, updatedAt: now.toISOString() });
+  return true;
+}
+
+/** R de um avulso já lançado (inclusive o da conferência). true se mudou. */
+export function setAvulsoScale(platform, entry, scale) {
+  const list = Array.isArray(platform.otherBonusLog) ? platform.otherBonusLog : [];
+  if (!list.includes(entry)) return false;
+  const s = normalizeRolloverScale(scale);
+  const raw = Number(entry.rawValue) || 0;
+  const rv = r2(raw * s);
+  if (normalizeRolloverScale(entry.scale) === s && r2(Number(entry.rolloverValue) || 0) === rv) return false;
+  entry.scale = s;
+  entry.rolloverValue = rv;
+  entry.scaleEditedAt = new Date().toISOString();
   return true;
 }

@@ -108,6 +108,13 @@
 // mesmo savePlatform. O bônus alto entra no esperado do dia (fórmula) —
 // "Inserir bônus hoje" e "Bônus Acumulado" já o incluem.
 //
+// === (Sub-entrega 14) R "SEM ROLLOVER" + NOVA ORDEM ===
+// Ordem da semana atual: Depósito → Saque → Inserir bônus hoje → Saldo
+// real → Registrar aposta / Últimas apostas → Fechar semana. O botão R
+// (buildScaleToggle) vai de 0 ("sem rollover") a 100 e aparece também no
+// fechamento de domingo e no "Bônus real da semana passada" (diferença
+// positiva × R; negativa sai 1:1 — finance-logic.js).
+//
 // === CUIDADO SPA (Adendo K12) ===
 // `financeListEl`/`financeSearchEl` NÃO são resolvidos no topo do
 // módulo (isso quebraria, já que o router injeta o HTML da view DEPOIS
@@ -903,6 +910,10 @@ function buildPendingBonusPanels(p) {
     input.placeholder = `Bônus real da semana ${range} (opcional)`;
     input.setAttribute('aria-label', `Bônus real da semana ${range}`);
     form.appendChild(input);
+    // (Sub-entrega 14) R da diferença (real − contado), 0 = sem rollover.
+    const pendScale = buildScaleToggle(`Escala do Rollover da diferença do bônus da semana ${range}`);
+    form.appendChild(pendScale.button);
+    form.appendChild(pendScale.input);
     wrap.appendChild(form);
 
     const actions = document.createElement('div');
@@ -924,10 +935,11 @@ function buildPendingBonusPanels(p) {
       }
       const ok = await showAppConfirm(realBonus === null
         ? `Manter o bônus contabilizado de ${formatCurrency(w.bonus)} na semana ${range}?`
-        : `Gravar ${formatCurrency(realBonus)} como bônus real da semana ${range}? (contabilizado pelo sistema: ${formatCurrency(w.bonus)})`);
+        : `Gravar ${formatCurrency(realBonus)} como bônus real da semana ${range}? (contabilizado pelo sistema: ${formatCurrency(w.bonus)})` +
+          (realBonus > w.bonus + 0.004 ? ` A diferença entra no Rollover (${describeScale(pendScale.get())}).` : ''));
       if (!ok) return;
 
-      const updated = setClosedWeekRealBonus(p, w.weekStart, realBonus);
+      const updated = setClosedWeekRealBonus(p, w.weekStart, realBonus, { diffScale: pendScale.get() });
       if (!updated) {
         await showAppAlert('Não foi possível confirmar essa semana.');
         return;
@@ -1097,7 +1109,8 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
   section.appendChild(withdrawForm);
 
   // --- (8a) saldo real + Bônus da semana ---
-  section.appendChild(buildBalanceCheckRow(p, ctx));
+  // (14) montado aqui, anexado mais abaixo (depois de "Inserir bônus hoje").
+  const balanceCheckRow = buildBalanceCheckRow(p, ctx);
 
   // --- registrar aposta + Últimas apostas (Bloco P) ---
   // (Sub-entrega 9) Só o botão fica na tela: os campos (Jogo, dia e hora,
@@ -1154,13 +1167,14 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
 
   betForm.appendChild(betBtn);
   betForm.appendChild(betHistoryBtn);
-  section.appendChild(betForm);
 
   // --- Etapa 7, sub-entrega 3: "Inserir bônus hoje" (Bloco F/Item 16 +
-  //     Bloco P) --- Abaixo da linha de "Registrar aposta" (P3.1) —
-  //     nunca na mesma linha, pra não sobrepor em telas pequenas.
-  //     Reaproveita .finance-entry-form (já tem flex-wrap — P3.3).
+  //     Bloco P). Reaproveita .finance-entry-form (já tem flex-wrap — P3.3).
+  // (Sub-entrega 14) NOVA ORDEM: Inserir bônus hoje → Saldo real →
+  // Registrar aposta / Últimas apostas (cada um na sua linha).
   section.appendChild(buildDailyBonusSection(p, ctx));
+  section.appendChild(balanceCheckRow);
+  section.appendChild(betForm);
 
   if (canCloseCurrentWeek()) {
     const closeSection = document.createElement('div');
@@ -1195,6 +1209,10 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
     bonusInput.step = '0.01';
     bonusInput.placeholder = 'Bônus recebido na semana (valor real)';
     closeForm.appendChild(bonusInput);
+    // (Sub-entrega 14) R da diferença (real − contado), 0 = sem rollover.
+    const closeScale = buildScaleToggle('Escala do Rollover da diferença do bônus');
+    closeForm.appendChild(closeScale.button);
+    closeForm.appendChild(closeScale.input);
     closeSection.appendChild(closeForm);
 
     const closeActions = document.createElement('div');
@@ -1210,9 +1228,14 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
         return;
       }
       const bonus = r2(bonusRaw);
-      const ok = await showAppConfirm(`Fechar a semana de ${p.name}? Depois de fechada, os valores não mudam mais sozinhos.`);
+      const sc = closeScale.get();
+      const counted = r2(computeAutoAccruedBonusForWeek(p, new Date(), ctx) + getAccumulatedBonusThisWeek(p, new Date(), ctx));
+      const diffNote = bonus > counted + 0.004
+        ? ` A diferença de ${formatCurrency(r2(bonus - counted))} entra no Saldo e no Rollover (${describeScale(sc)}).`
+        : '';
+      const ok = await showAppConfirm(`Fechar a semana de ${p.name}?${diffNote} Depois de fechada, os valores não mudam mais sozinhos.`);
       if (!ok) return;
-      closeWeek(p, bonus, new Date(), ctx);
+      closeWeek(p, bonus, new Date(), ctx, { diffScale: sc });
       savePlatform(state.currentUid, p);
       openRowId = p.id;
       refreshRow(p.id);
@@ -1224,6 +1247,48 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
   }
 
   return section;
+}
+
+// ---------- (Sub-entrega 14) BOTÃO R (escala do Rollover) ----------
+// Botão "R: 1x" + campo numérico escondido (0 a 100). 0 = "sem rollover":
+// o bônus soma no Saldo, mas o Rollover não muda. Usado em "Inserir bônus
+// hoje", no fechamento de domingo e no "Bônus real da semana passada".
+function buildScaleToggle(ariaLabel) {
+  let current = 1;
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.step = '1';
+  input.min = '0';
+  input.max = '100';
+  input.value = '1';
+  input.className = 'history-value-input app-hidden';
+  input.setAttribute('aria-label', `${ariaLabel} (0 = sem rollover)`);
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'bet-manage-btn';
+  button.title = 'Escala do Rollover — padrão 1:1; 0 = sem rollover (soma no Saldo, não no Rollover)';
+  const paint = () => { button.textContent = current === 0 ? 'R: sem rollover' : `R: ${current}x`; };
+  paint();
+  button.addEventListener('click', () => { input.classList.toggle('app-hidden'); });
+  const sync = () => {
+    const v = parseInt(input.value, 10);
+    current = (!isNaN(v) && v >= 0) ? Math.min(100, v) : 1;
+    paint();
+  };
+  input.addEventListener('change', () => { sync(); input.value = String(current); });
+  input.addEventListener('input', sync);
+
+  return {
+    button,
+    input,
+    get: () => current,
+    reset: () => { current = 1; input.value = '1'; input.classList.add('app-hidden'); paint(); }
+  };
+}
+
+function describeScale(scale) {
+  return scale === 0 ? 'sem rollover' : `escala ${scale}x`;
 }
 
 // ---------- (Sub-entrega 8a) SALDO REAL ----------
@@ -1334,34 +1399,13 @@ function buildDailyBonusSection(p, ctx) {
   bonusInput.setAttribute('aria-label', 'Valor total de bônus recebido hoje');
   wrap.appendChild(bonusInput);
 
-  let currentScale = 1;
 
-  // Escala (botão R) — some/aparece um campo numérico compacto ao lado,
-  // padrão 1 (1:1). Só afeta o Rollover, nunca o Saldo (que é sempre
-  // 1:1 — ver finance-logic.js/computeLiveBalance).
-  const scaleInput = document.createElement('input');
-  scaleInput.type = 'number';
-  scaleInput.step = '1';
-  scaleInput.min = '1';
-  scaleInput.value = '1';
-  scaleInput.className = 'history-value-input app-hidden';
-  scaleInput.setAttribute('aria-label', 'Escala do Rollover pra este lançamento');
-
-  const scaleBtn = document.createElement('button');
-  scaleBtn.type = 'button';
-  scaleBtn.className = 'bet-manage-btn';
-  scaleBtn.textContent = 'R: 1x';
-  scaleBtn.title = 'Escala do Rollover pra este lançamento — padrão 1:1, clique pra mudar';
-  scaleBtn.addEventListener('click', () => {
-    scaleInput.classList.toggle('app-hidden');
-  });
-  scaleInput.addEventListener('change', () => {
-    const v = parseInt(scaleInput.value, 10);
-    currentScale = (!isNaN(v) && v >= 1) ? v : 1;
-    scaleInput.value = String(currentScale);
-    scaleBtn.textContent = `R: ${currentScale}x`;
-  });
-
+  // Escala (botão R) — padrão 1:1. Só afeta o Rollover, nunca o Saldo
+  // (sempre 1:1 — ver finance-logic.js/computeLiveBalance).
+  // (Sub-entrega 14) aceita 0 = sem rollover.
+  const scaleCtl = buildScaleToggle('Escala do Rollover pra este lançamento');
+  const scaleBtn = scaleCtl.button;
+  const scaleInput = scaleCtl.input;
   wrap.appendChild(scaleBtn);
   wrap.appendChild(scaleInput);
 
@@ -1419,6 +1463,7 @@ function buildDailyBonusSection(p, ctx) {
       return;
     }
 
+    const currentScale = scaleCtl.get();
     const rolloverValue = r2(diff * currentScale);
 
     const ok = await showAppConfirm(
@@ -1426,7 +1471,7 @@ function buildDailyBonusSection(p, ctx) {
       `O sistema já contava ${formatCurrency(r2(expected + alreadyLogged))} (fórmula VIP/Obrigado/Misterioso` +
       (alreadyLogged > 0 ? ' + avulso já lançado' : '') + `) — ` +
       `será lançada só a diferença: ${formatCurrency(diff)} no Saldo` +
-      (currentScale !== 1 ? ` e ${formatCurrency(rolloverValue)} no Rollover (escala ${currentScale}x)` : ' e no Rollover (escala 1:1)') +
+      (currentScale === 0 ? ' — SEM rollover (o Rollover não muda)' : currentScale !== 1 ? ` e ${formatCurrency(rolloverValue)} no Rollover (escala ${currentScale}x)` : ' e no Rollover (escala 1:1)') +
       `. Se o VIP diário for liberado depois (aposta mínima), ele será considerado já incluído nesse total.`
     );
     if (!ok) return;
@@ -1445,10 +1490,7 @@ function buildDailyBonusSection(p, ctx) {
     savePlatform(state.currentUid, p);
 
     bonusInput.value = '';
-    scaleInput.value = '1';
-    currentScale = 1;
-    scaleBtn.textContent = 'R: 1x';
-    scaleInput.classList.add('app-hidden');
+    scaleCtl.reset();
 
     openRowId = p.id;
     // Muda o Saldo (e o Rollover, quando visível — sub-entrega 4) — se

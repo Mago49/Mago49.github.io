@@ -21,6 +21,8 @@
 //      exibido mostra 0,00 pelo piso), aviso "falta lançamento nesta fase".
 //      Cancelar / Voltar não gravam nada; "Continuar mesmo assim" compara
 //      com o valor sem piso, pra o Saldo ficar igual ao real.
+//   (Sub-entrega 14) Escala do Rollover do bônus avulso vai de 0 ("sem
+//      rollover" — soma no Saldo, não no Rollover) a 100.
 //
 // Segurança: tudo por textContent.
 
@@ -204,7 +206,7 @@ export function openBalanceCheck({ platform, ctx = {}, pendingRB = 0, mode = 'st
       const minus = btn('−', 'bc-step', () => setScale(scale - 1));
       const val = el('span', 'bc-scale-val', '1:1');
       const plus = btn('+', 'bc-step', () => setScale(scale + 1));
-      minus.setAttribute('aria-label', 'Diminuir escala do Rollover');
+      minus.setAttribute('aria-label', 'Diminuir escala do Rollover (0 = sem rollover)');
       plus.setAttribute('aria-label', 'Aumentar escala do Rollover (botão R)');
       const roll = el('span', 'bc-v', '');
       scaleRow.appendChild(minus);
@@ -213,10 +215,12 @@ export function openBalanceCheck({ platform, ctx = {}, pendingRB = 0, mode = 'st
       scaleRow.appendChild(roll);
       box.appendChild(scaleRow);
       function setScale(n) {
-        scale = Math.max(1, Math.min(100, Math.round(n)));
-        val.textContent = `${scale}:1`;
-        roll.textContent = `= ${formatCurrency(gap.diff * scale)} no Rollover`;
-        minus.disabled = scale <= 1;
+        // (14) 0 = sem rollover.
+        scale = Math.max(0, Math.min(100, Math.round(n)));
+        val.textContent = scale === 0 ? 'sem rollover' : `${scale}:1`;
+        roll.textContent = scale === 0 ? 'Rollover não muda' : `= ${formatCurrency(gap.diff * scale)} no Rollover`;
+        minus.disabled = scale <= 0;
+        plus.disabled = scale >= 100;
       }
       setScale(1);
 

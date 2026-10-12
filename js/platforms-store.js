@@ -87,6 +87,9 @@ export function normalizePlatformData(parsed) {
       // ver bonus-ledger-logic.js. Mesma regra: precisa estar aqui, senão a
       // próxima gravação apagaria o campo.
       highBonusLog: Array.isArray(p.highBonusLog) ? p.highBonusLog : [],
+      // (Sub-entrega 14) Escala do Rollover (botão R) de bônus de fórmula,
+      // por dia e tipo — ver bonus-ledger-logic.js. Mesma regra.
+      bonusScales: Array.isArray(p.bonusScales) ? p.bonusScales : [],
       codigoConfig: (p.codigoConfig && typeof p.codigoConfig === 'object')
         ? p.codigoConfig : { tipo: null, fixo: '', baseDate: null, variavelInicio: 0 },
       codigoDeposito: (p.codigoDeposito && typeof p.codigoDeposito === 'object')
@@ -231,7 +234,9 @@ const GUARDED_FIELDS = [
   // registro (allowShrink) pode diminuir.
   'cycleHistory',
   // (Sub-entrega 13) bônus alto: só o "Excluir" do 🧾 Bônus (allowShrink).
-  'highBonusLog'
+  'highBonusLog',
+  // (Sub-entrega 14) escalas do R: só são atualizadas, nunca diminuem.
+  'bonusScales'
 ];
 
 // id da plataforma -> { campo: quantidade de itens } (carga ou última gravação)

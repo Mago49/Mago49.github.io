@@ -97,6 +97,17 @@
 // (rolloverValue). Por isso finance-logic.js tira `alto` do lote do dia e
 // usa getHighBonusEntries / sumHighBonusForWeek. NÃO é afetado por "Não
 // recebi" (é lançamento real — corrige-se editando ou excluindo).
+//
+// === (Sub-entrega 14) ESCALA DO ROLLOVER POR BÔNUS (botão R) ===
+// Escala 0 = "sem rollover": o bônus soma no Saldo e no bônus recebido,
+// mas NÃO no Rollover (bônus que a plataforma dá de presente, sem exigir
+// aposta). Vale de 0 a 100 em todo lugar que tem R.
+//   - Fórmula (VIP diário/semanal/mensal, Obrigado, Misterioso): 1:1 por
+//     padrão; o R de cada item no "Bônus da semana" grava
+//     platform.bonusScales = [{ id, dayKey, type, scale, updatedAt }].
+//     getExpectedRolloverForDate soma valor × escala de cada tipo.
+//   - Avulso e bônus alto: escala própria em cada lançamento (rolloverValue).
+// O SALDO nunca muda com a escala (sempre 1:1).
 
 import { getVipConfigAt, computeEmissionDates, isBetDayEffective, getBonusExclusionSet } from './cycle-logic.js';
 import { getEffectiveMisteriosoValue } from './misterioso-logic.js';
@@ -227,15 +238,64 @@ export function getHighBonusEntries(platform) {
 export function highBonusRollover(e) {
   const rv = Number(e && e.rolloverValue);
   if (Number.isFinite(rv) && rv >= 0) return rv;
-  const scale = Math.max(1, Number(e && e.scale) || 1);
-  return (Number(e && e.value) || 0) * scale;
+  return (Number(e && e.value) || 0) * normalizeRolloverScale(e && e.scale);
+}
+
+// (14) Escala do R: inteiro de 0 (sem rollover) a 100. Ausente/inválida = 1.
+export const ROLLOVER_SCALE_MAX = 100;
+export function normalizeRolloverScale(value, fallback = 1) {
+  const n = Number(value);
+  if (value === null || value === undefined || value === '' || !Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.min(ROLLOVER_SCALE_MAX, Math.round(n)));
+}
+export function formatRolloverScale(scale) {
+  const s = normalizeRolloverScale(scale);
+  return s === 0 ? 'sem rollover' : `${s}:1`;
+}
+
+export const FORMULA_BONUS_TYPES = Object.freeze(['vipDaily', 'vipWeekly', 'vipMonthly', 'obrigado', 'misterioso']);
+
+// (14) Escala do Rollover de um bônus de fórmula num dia (padrão 1:1).
+export function getFormulaScale(platform, dayKey, type) {
+  const list = platform && Array.isArray(platform.bonusScales) ? platform.bonusScales : [];
+  const hit = list.find(e => e && e.dayKey === dayKey && e.type === type);
+  return hit ? normalizeRolloverScale(hit.scale) : 1;
+}
+
+// (14) Quanto a fórmula do dia põe no ROLLOVER (cada tipo × sua escala).
+// O bônus alto fica de fora — entra no horário dele (finance-logic.js).
+export function getExpectedRolloverForDate(platform, date, ctx = {}) {
+  const b = getExpectedBonusBreakdownForDate(platform, date, ctx);
+  const key = toLocalDateKey(date);
+  let total = 0;
+  FORMULA_BONUS_TYPES.forEach(type => {
+    const v = Number(b[type]) || 0;
+    if (v > 0) total += v * getFormulaScale(platform, key, type);
+  });
+  return total;
+}
+
+// (14) Rollover da fórmula + bônus alto da semana de refDate (segunda até
+// o fim do dia de refDate) — par de computeAutoAccruedBonusForWeek.
+export function computeAutoAccruedRolloverForWeek(platform, refDate = new Date(), ctx = {}) {
+  const weekStart = getWeekStartLocal(refDate);
+  const weekEnd = getWeekEndLocal(weekStart);
+  const today = startOfDay(refDate);
+  const lastDay = today < weekEnd ? today : weekEnd;
+  let total = 0;
+  const cursor = new Date(weekStart);
+  while (cursor <= lastDay) {
+    total += getExpectedRolloverForDate(platform, cursor, ctx);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return r2(total + sumHighBonusForWeek(platform, refDate).rollover);
 }
 
 // Monta a entrada de highBonusLog. O bônus nasce 1 s DEPOIS do depósito
 // (o depósito libera o bônus) — no Rollover, entra logo após ele.
 export function buildHighBonusEntry({ depositDate, value, scale = 1, now = new Date() }) {
   const v = r2(value);
-  const s = Math.max(1, Math.min(100, Math.round(Number(scale) || 1)));
+  const s = normalizeRolloverScale(scale); // (14) 0 = sem rollover
   const base = depositDate && !isNaN(new Date(depositDate).getTime()) ? new Date(depositDate).getTime() : now.getTime();
   return {
     id: `hb${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`,

@@ -36,6 +36,8 @@
 // MESMO savePlatform do depósito. Reclassificar um depósito antigo como 💎
 // (Histórico da Edição) só troca o tipo — não cria bônus.
 // pickDepositKind() continua devolvendo só o id (contrato de sempre).
+// (Sub-entrega 14) A escala do Rollover do bônus alto aceita 0 ("sem
+// rollover").
 
 export const DEPOSIT_KINDS = Object.freeze([
   Object.freeze({ id: 'semanal', emoji: '🗓️', label: 'Ativação Semanal', hint: 'Manter a conta ativa (ex.: 1 a cada 8 dias)', color: '#2563eb' }),
@@ -301,7 +303,7 @@ function openKindPicker({ title = 'Tipo do depósito', subtitle = '', current = 
       minus.type = 'button';
       minus.className = 'bc-step';
       minus.textContent = '−';
-      minus.setAttribute('aria-label', 'Diminuir escala do Rollover');
+      minus.setAttribute('aria-label', 'Diminuir escala do Rollover (0 = sem rollover)');
       const val = document.createElement('span');
       val.className = 'bc-scale-val';
       const plus = document.createElement('button');
@@ -314,11 +316,13 @@ function openKindPicker({ title = 'Tipo do depósito', subtitle = '', current = 
       scaleRow.append(k, minus, val, plus, roll);
       box.appendChild(scaleRow);
       function setScale(n) {
-        draftScale = Math.max(1, Math.min(100, Math.round(n)));
-        val.textContent = `${draftScale}:1`;
-        minus.disabled = draftScale <= 1;
+        // (14) 0 = sem rollover.
+        draftScale = Math.max(0, Math.min(100, Math.round(n)));
+        val.textContent = draftScale === 0 ? 'sem rollover' : `${draftScale}:1`;
+        minus.disabled = draftScale <= 0;
+        plus.disabled = draftScale >= 100;
         const v = parseHighBonus(draftValue);
-        roll.textContent = v ? `= ${fmtBRL(v * draftScale)} no Rollover` : '';
+        roll.textContent = draftScale === 0 ? 'Rollover não muda' : (v ? `= ${fmtBRL(v * draftScale)} no Rollover` : '');
       }
       minus.addEventListener('click', () => setScale(draftScale - 1));
       plus.addEventListener('click', () => setScale(draftScale + 1));
