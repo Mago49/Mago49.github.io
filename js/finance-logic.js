@@ -120,6 +120,12 @@
 // consomem. Somas (Saldo, fechamento, fases) não mudam: horário só importa
 // no piso em zero da simulação.
 //
+// === (Sub-entrega 17) ⬇️ ABATIMENTO DE ROLLOVER ===
+// platform.rolloverAdjustments = [{ id, date, value, source, createdAt }]:
+// a plataforma deu baixa em rollover sem aposta. simulateRollover subtrai
+// `value` no horário (piso em zero, como aposta). Saldo e bônus não mudam.
+// O rollover só SOBE por bônus (escala do R) — abatimento é sempre > 0.
+//
 // === (Sub-entrega 16) ➗ DIVIDIR NO FECHAMENTO ===
 // closeWeek / setClosedWeekRealBonus aceitam opts.diffParts = [{ value,
 // scale }]: a diferença positiva entra no Rollover parte a parte, cada uma
@@ -445,19 +451,29 @@ export function computeLiveBalanceRaw(platform, refDate = new Date(), ctx = {}) 
 // cada dia; avulso EFETIVO (Sub-entrega G) no horário de cada lançamento.
 // Com dados que nunca passam do Rollover disponível, o resultado é
 // IDÊNTICO ao da fórmula antiga.
-function simulateRollover(platform, { initialRollover = 0, windowStart = null, windowEnd = null, refDate = new Date(), includeOpenWeek = true, ctx = {} } = {}) {
+function simulateRollover(platform, { initialRollover = 0, windowStart = null, windowEnd = null, refDate = new Date(), includeOpenWeek = true, ctx = {}, cutoff = null } = {}) {
   const inWindow = (dateStr) => {
     const d = new Date(dateStr);
     return (!windowStart || d > windowStart) && (!windowEnd || d <= windowEnd);
   };
 
-  // p = prioridade no MESMO instante: 0 bônus/início, 1 depósito, 2 aposta.
+  // p = prioridade no MESMO instante: 0 bônus/início, 1 depósito, 2 aposta,
+  // 3 abatimento (Sub-entrega 17).
   const events = [];
 
   (platform.depositLog || []).forEach(e => {
     if (!e || !inWindow(e.date)) return;
     const v = Number(e.value) || 0;
     if (v) events.push({ t: new Date(e.date).getTime(), p: 1, v });
+  });
+
+  // (Sub-entrega 17) Abatimentos de rollover (baixa da plataforma, sem
+  // aposta): subtraem no horário deles, DEPOIS de qualquer aposta do mesmo
+  // instante (p 3). Valem em semana aberta e fechada, como os depósitos.
+  (platform.rolloverAdjustments || []).forEach(e => {
+    if (!e || !e.date || !inWindow(e.date)) return;
+    const v = Number(e.value) || 0;
+    if (v > 0) events.push({ t: new Date(e.date).getTime(), p: 3, v: -v });
   });
 
   // apostas brutas agrupadas pela segunda-feira da semana delas
@@ -537,8 +553,11 @@ function simulateRollover(platform, { initialRollover = 0, windowStart = null, w
   }
 
   events.sort((a, b) => (a.t - b.t) || (a.p - b.p));
+  // (17) cutoff: só o que já aconteceu até esse instante (ex.: o VIP diário
+  // "com aposta" que entra às 23:59 ainda não conta "agora").
+  const timeline = Number.isFinite(cutoff) ? events.filter(e => e.t <= cutoff) : events;
   let rollover = Math.max(0, Number(initialRollover) || 0);
-  events.forEach(e => { rollover = Math.max(0, rollover + e.v); });
+  timeline.forEach(e => { rollover = Math.max(0, rollover + e.v); });
   return r2(rollover);
 }
 
@@ -572,6 +591,22 @@ function computeRolloverRaw(platform, refDate = new Date(), ctx = {}) {
 // fechamento de semana somar a diferença do bônus antes de aplicar o piso.
 export function computeRolloverLive(platform, refDate = new Date(), ctx = {}) {
   return Math.max(0, computeRolloverRaw(platform, refDate, ctx));
+}
+
+// (Sub-entrega 17) Rollover NO INSTANTE `at` — só eventos até ele. É o que
+// a plataforma mostra agora (sem o VIP diário "com aposta" que ainda vai
+// entrar no fim do dia). Usado pra comparar com o rollover real.
+export function computeRolloverAt(platform, at = new Date(), ctx = {}) {
+  const phaseStart = getCurrentPhaseStartDate(platform, at);
+  return Math.max(0, simulateRollover(platform, {
+    initialRollover: getCurrentPhaseInitialRollover(platform, at),
+    windowStart: phaseStart ? new Date(phaseStart) : null,
+    windowEnd: getWeekEnd(getWeekStart(at)),
+    refDate: at,
+    includeOpenWeek: true,
+    ctx,
+    cutoff: new Date(at).getTime()
+  }));
 }
 
 // Monta a lista de TODAS as fases de uma plataforma (inclusive a atual),

@@ -90,6 +90,9 @@ export function normalizePlatformData(parsed) {
       // (Sub-entrega 14) Escala do Rollover (botão R) de bônus de fórmula,
       // por dia e tipo — ver bonus-ledger-logic.js. Mesma regra.
       bonusScales: Array.isArray(p.bonusScales) ? p.bonusScales : [],
+      // (Sub-entrega 17) Abatimentos de rollover (baixa da plataforma, sem
+      // aposta) — ver finance-logic.js. Mesma regra.
+      rolloverAdjustments: Array.isArray(p.rolloverAdjustments) ? p.rolloverAdjustments : [],
       codigoConfig: (p.codigoConfig && typeof p.codigoConfig === 'object')
         ? p.codigoConfig : { tipo: null, fixo: '', baseDate: null, variavelInicio: 0 },
       codigoDeposito: (p.codigoDeposito && typeof p.codigoDeposito === 'object')
@@ -236,7 +239,9 @@ const GUARDED_FIELDS = [
   // (Sub-entrega 13) bônus alto: só o "Excluir" do 🧾 Bônus (allowShrink).
   'highBonusLog',
   // (Sub-entrega 14) escalas do R: só são atualizadas, nunca diminuem.
-  'bonusScales'
+  'bonusScales',
+  // (Sub-entrega 17) abatimentos: só o "Excluir" (allowShrink) diminui.
+  'rolloverAdjustments'
 ];
 
 // id da plataforma -> { campo: quantidade de itens } (carga ou última gravação)

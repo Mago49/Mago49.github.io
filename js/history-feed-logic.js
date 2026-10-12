@@ -27,6 +27,7 @@
 // (highBonusLog). O detalhamento da fórmula nunca o mostra de novo (os
 // tipos de fórmula listados abaixo são só VIP/Obrigado/Misterioso).
 // (Sub-entrega 14) Escala 0 aparece como "Sem rollover".
+// (Sub-entrega 17) "⬇️ Rollover abatido" (rolloverAdjustments) no horário.
 
 import { getExpectedBonusBreakdownForDate, getEffectiveOtherBonusEntries, getHighBonusEntries, highBonusRollover, normalizeRolloverScale } from './bonus-ledger-logic.js';
 import { getLevelAt, BET_MINIMUM_BY_LEVEL } from './cycle-logic.js';
@@ -173,6 +174,17 @@ export function buildDayFeed(platforms, dayKey, resolveCtx = () => ({}), refDate
       events.push({
         ...base, ts: new Date(e.date).getTime(), kind: 'bonus-alto', icon: '💎', label: 'Bônus alto',
         value: r2(e.value), detail: scale === 0 ? 'Sem rollover' : (scale !== 1 ? `Rollover ${scale}x (${money(highBonusRollover(e))})` : '')
+      });
+    });
+
+    // (Sub-entrega 17) ⬇️ abatimento de rollover (não é bônus: value null,
+    // o valor vai no detalhe).
+    (p.rolloverAdjustments || []).forEach(e => {
+      if (!e || !isOnDay(e.date, dayKey)) return;
+      const src = e.source === 'batch' ? 'conferência em lote' : e.source === 'session' ? 'conferência da sessão' : e.source === 'check' ? 'conferência de saldo' : 'lançado à mão';
+      events.push({
+        ...base, ts: new Date(e.date).getTime(), kind: 'rollover-abatido', icon: '⬇️', label: 'Rollover abatido',
+        value: null, detail: `−${money(e.value)} no Rollover · ${src}`
       });
     });
 

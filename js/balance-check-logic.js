@@ -60,9 +60,20 @@
 // applyPositiveGap aceita, no lugar da escala, uma lista de partes
 // [{ value, scale }] (normalizeBonusParts): cada parte vira um avulso
 // próprio (mesmo checkId, createdAt +i ms), com o seu R.
+//
+// === (Sub-entrega 17) ⬇️ ABATIMENTO DE ROLLOVER ===
+// platform.rolloverAdjustments: baixa de rollover que a plataforma deu sem
+// aposta. planRolloverTarget decide, a partir do rollover que o sistema
+// terá depois das mudanças desta tela (previewRollover), quanto abater:
+//   abatido informado  -> abate esse valor (nunca mais que o rollover);
+//   rollover real      -> abate (sistema − real) quando o real é MENOR;
+//                         real MAIOR = só bônus com escala maior sobe o
+//                         rollover -> erro 'above' (nada é lançado).
+// Aparece no "Bônus da semana" (kind 'abatido', Excluir).
 
 import {
-  computeLiveBalance, computeLiveBalanceRaw, getWeekStart, getWeekEnd, toLocalDateString, isCurrentWeekClosed, roundMoney
+  computeLiveBalance, computeLiveBalanceRaw, getWeekStart, getWeekEnd, toLocalDateString, isCurrentWeekClosed, roundMoney,
+  computeRolloverAt
 } from './finance-logic.js';
 import {
   getExpectedBonusBreakdownForDate, getEffectiveOtherBonusEntries, isFixedOtherBonus, getHighBonusEntries, highBonusRollover,
@@ -81,7 +92,8 @@ export const BONUS_TYPE_LABELS = Object.freeze({
   obrigado: 'Obrigado',
   misterioso: 'Misterioso',
   alto: 'Bônus Alto',
-  avulso: 'Avulso'
+  avulso: 'Avulso',
+  abatido: 'Rollover abatido'
 });
 
 // Grupo do filtro (VIP / Misterioso / Obrigado / Avulso).
@@ -297,6 +309,22 @@ export function listOpenWeekBonusItems(platform, ctx = {}, now = new Date()) {
     });
   });
 
+  // (17) ⬇️ abatimentos de rollover da semana aberta.
+  (platform.rolloverAdjustments || []).forEach(e => {
+    if (!e || !e.date) return;
+    const d = new Date(e.date);
+    if (isNaN(d.getTime()) || d < weekStart || d > weekEnd) return;
+    items.push({
+      id: `r|${e.id || e.date}`,
+      kind: 'abatido',
+      dayKey: toLocalDateString(d),
+      type: 'abatido',
+      value: r2(e.value),
+      entry: e,
+      sortKey: e.date
+    });
+  });
+
   getEffectiveOtherBonusEntries(platform, e => {
     const d = new Date(e.date);
     return d >= weekStart && d <= weekEnd;
@@ -472,4 +500,81 @@ export function setAvulsoScale(platform, entry, scale) {
   entry.rolloverValue = rv;
   entry.scaleEditedAt = new Date().toISOString();
   return true;
+}
+
+// ---------- (Sub-entrega 17) ⬇️ abatimento de rollover ----------
+
+export const ROLLOVER_TOLERANCE = 0.01;
+
+/** Grava um abatimento (value > 0). `at` = instante dele (padrão: now). */
+export function addRolloverAdjustment(platform, value, { at = null, now = new Date(), source = 'manual', checkId = null } = {}) {
+  const v = r2(value);
+  if (!(v > 0) || v > BALANCE_MAX) return null;
+  if (!Array.isArray(platform.rolloverAdjustments)) platform.rolloverAdjustments = [];
+  const when = at && !isNaN(new Date(at).getTime()) ? new Date(at) : now;
+  const entry = {
+    id: newId('ra'),
+    date: when.toISOString(),
+    value: v,
+    source,
+    ...(checkId ? { checkId } : {}),
+    createdAt: now.toISOString()
+  };
+  platform.rolloverAdjustments.push(entry);
+  return entry;
+}
+
+/** Remove um abatimento. true se removeu. */
+export function removeRolloverAdjustment(platform, entry) {
+  const list = Array.isArray(platform.rolloverAdjustments) ? platform.rolloverAdjustments : [];
+  const idx = list.indexOf(entry);
+  if (idx === -1) return false;
+  list.splice(idx, 1);
+  return true;
+}
+
+/**
+ * Rollover que o sistema tem NO INSTANTE `at` (computeRolloverAt) depois de
+ * `mutate(copia)` — sem mexer na plataforma de verdade (cópia profunda).
+ * É esse o número comparável ao que a plataforma mostra agora.
+ */
+export function previewRollover(platform, ctx = {}, at = new Date(), mutate = null) {
+  const copy = JSON.parse(JSON.stringify(platform));
+  if (typeof mutate === 'function') mutate(copy);
+  return r2(computeRolloverAt(copy, at, ctx));
+}
+
+/**
+ * Decide o abatimento a partir do rollover do sistema (`systemRollover`,
+ * já com as mudanças da tela) e do que o usuário informou:
+ *   { abated } ou { real } (números; NaN/undefined = vazio).
+ * Devolve { kind:'none'|'abate'|'above'|'match'|'error', value, after, error }.
+ */
+export function planRolloverTarget(systemRollover, { abated, real } = {}) {
+  const sys = r2(systemRollover);
+  const hasAbated = Number.isFinite(abated);
+  const hasReal = Number.isFinite(real);
+  if (!hasAbated && !hasReal) return { kind: 'none', value: 0, after: sys };
+  if (hasAbated) {
+    const v = r2(abated);
+    if (!(v > 0)) return { kind: 'error', error: 'O valor abatido precisa ser maior que zero.', value: 0, after: sys };
+    if (v > sys + ROLLOVER_TOLERANCE) return { kind: 'error', error: `O abatimento (${fmtBR(v)}) passa do rollover do sistema (${fmtBR(sys)}).`, value: 0, after: sys };
+    const val = r2(Math.min(v, sys));
+    return { kind: 'abate', value: val, after: r2(sys - val) };
+  }
+  const rr = r2(real);
+  if (rr < 0) return { kind: 'error', error: 'O rollover não pode ser negativo.', value: 0, after: sys };
+  const diff = r2(sys - rr);
+  if (Math.abs(diff) <= ROLLOVER_TOLERANCE) return { kind: 'match', value: 0, after: sys };
+  if (diff > 0) return { kind: 'abate', value: diff, after: rr };
+  return {
+    kind: 'above',
+    value: 0,
+    after: sys,
+    error: `A plataforma mostra ${fmtBR(rr)}, ${fmtBR(-diff)} acima do sistema (${fmtBR(sys)}). O rollover só sobe por bônus com escala maior: aumente o R do bônus (aqui ou no "Bônus da semana").`
+  };
+}
+
+function fmtBR(v) {
+  return (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }

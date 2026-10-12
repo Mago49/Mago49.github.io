@@ -25,12 +25,21 @@
 //      rollover" — soma no Saldo, não no Rollover) a 100.
 //   (Sub-entrega 16) "➗ Dividir": o bônus avulso pode ser lançado em
 //      partes, cada uma com o seu R (ui-bonus-split.js).
+//   (Sub-entrega 17) Campo opcional "Rollover que a plataforma mostra": no
+//      fim (match/bônus/divergente/não recebidos) o sistema compara com o
+//      rollover que ele terá AGORA — já com a decisão desta tela e com a
+//      aposta desta sessão (pendingBet). Menor → "⬇️ Rollover abatido"
+//      (confirmado antes de gravar). Maior → aviso: só bônus com escala
+//      maior sobe o rollover. Campos de valor aceitam ",3".
 //
 // Segurança: tudo por textContent.
 
 import { formatCurrency } from './utils.js';
 import { createBonusSplit } from './ui-bonus-split.js'; // (Sub-entrega 16)
-import { parseMoneyInput } from './wager-total-logic.js';
+import { parseSplitMoney } from './ui-bonus-split.js'; // (Sub-entrega 17)
+import {
+  previewRollover, planRolloverTarget, addRolloverAdjustment
+} from './balance-check-logic.js'; // (Sub-entrega 17)
 import {
   computeBalanceGap, parseRealBalance, applyPositiveGap, recordBalanceCheck,
   listOpenWeekBonusItems, excludeBonusItems, BONUS_TYPE_LABELS, BALANCE_TOLERANCE
@@ -73,7 +82,7 @@ function moneyInput(placeholder) {
  *   platform, ctx, pendingRB (R.B. da sessão ainda não gravada),
  *   mode 'bet' | 'standalone', value (saldo já digitado na linha), now
  */
-export function openBalanceCheck({ platform, ctx = {}, pendingRB = 0, mode = 'standalone', value = null, now = null, bonusBefore = null } = {}) {
+export function openBalanceCheck({ platform, ctx = {}, pendingRB = 0, mode = 'standalone', value = null, now = null, bonusBefore = null, pendingBet = null } = {}) {
   if (activeClose) activeClose({ status: 'cancelled' });
 
   return new Promise(resolve => {
@@ -110,6 +119,8 @@ export function openBalanceCheck({ platform, ctx = {}, pendingRB = 0, mode = 'st
     window.addEventListener('popstate', onRoute);
 
     const at = () => (now ? new Date(now) : new Date());
+    // (17) rollover que a plataforma mostra (opcional, pedido junto do saldo).
+    let rollReal = NaN;
 
     function header(title, sub) {
       box.replaceChildren();
@@ -141,12 +152,29 @@ export function openBalanceCheck({ platform, ctx = {}, pendingRB = 0, mode = 'st
       const input = moneyInput('Ex.: 1.250,00');
       label.appendChild(input);
       box.appendChild(label);
+      // (17) Rollover que a plataforma mostra — opcional. Se a plataforma
+      // deu baixa (abatimento sem aposta), a diferença vira ⬇️ abatimento.
+      const rollLabel = el('label', 'bc-label', mode === 'bet'
+        ? 'Rollover que a plataforma mostra agora (opcional)'
+        : 'Rollover que a plataforma mostra (opcional)');
+      const rollInput = moneyInput('Ex.: 12,50 ou ,3');
+      rollLabel.appendChild(rollInput);
+      box.appendChild(rollLabel);
       const ok = btn('Atualizar', 'btn-confirm', () => {
-        const v = parseRealBalance(parseMoneyInput(input.value));
+        const v = parseRealBalance(parseSplitMoney(input.value));
         if (v === null) { showError('Digite o saldo que aparece na plataforma (ex.: 1.250,00).'); return; }
+        const rawRoll = rollInput.value.trim();
+        if (rawRoll) {
+          const r = parseSplitMoney(rawRoll);
+          if (!Number.isFinite(r) || r < 0) { showError('Rollover inválido (ex.: 12,50 ou ,3) — ou deixe em branco.'); return; }
+          rollReal = r;
+        } else {
+          rollReal = NaN;
+        }
         stepCompare(v);
       });
       input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); ok.click(); } });
+      rollInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); ok.click(); } });
       footer(btn('Cancelar', 'bc-cancel', () => close({ status: 'cancelled' })), ok);
       setTimeout(() => { try { input.focus({ preventScroll: true }); } catch (_) { input.focus(); } }, 30);
     }
@@ -170,10 +198,61 @@ export function openBalanceCheck({ platform, ctx = {}, pendingRB = 0, mode = 'st
       );
     }
 
+    // ---- (17) fechamento com o rollover real ----
+    // applyFn(alvo, t) aplica a decisão (na cópia da prévia ou na plataforma
+    // de verdade) e devolve a conferência gravada. Sem rollover informado,
+    // aplica direto (como sempre). Com ele: compara o rollover que o sistema
+    // terá AGORA (já com esta decisão e com a aposta desta sessão) com o da
+    // plataforma — menor vira ⬇️ abatimento (confirmado antes); maior só se
+    // resolve com bônus de escala maior (aviso).
+    function pushPending(c) {
+      if (!pendingBet) return;
+      if (!Array.isArray(c.betEntries)) c.betEntries = [];
+      c.betEntries.push({ date: pendingBet.date, wagered: Number(pendingBet.wagered) || 0, betCount: 0, resultBetting: Number(pendingBet.resultBetting) || 0 });
+    }
+
+    function finalize(resolution, gap, applyFn, onAboveInline = null) {
+      const t = at();
+      const done = () => close({ status: 'done', resolution, gap });
+      if (!Number.isFinite(rollReal)) { applyFn(platform, t); done(); return; }
+      const sys = previewRollover(platform, ctx, t, c => { applyFn(c, t); pushPending(c); });
+      const plan = planRolloverTarget(sys, { real: rollReal });
+      if (plan.kind === 'above') {
+        if (onAboveInline) { onAboveInline(plan.error); return; }
+        header('Rollover acima do sistema', platform.name);
+        box.appendChild(el('p', 'bc-warn', plan.error));
+        footer(
+          btn('Cancelar', 'bc-cancel', () => close({ status: 'cancelled' })),
+          btn('Continuar sem ajustar o rollover', 'btn-confirm', () => { applyFn(platform, t); done(); })
+        );
+        return;
+      }
+      if (plan.kind === 'abate') {
+        header('⬇️ Rollover abatido', platform.name);
+        const grid = el('div', 'bc-grid');
+        const row = (k, v, cls = '') => { grid.appendChild(el('span', 'bc-k', k)); grid.appendChild(el('span', `bc-v${cls ? ` ${cls}` : ''}`, v)); };
+        row(pendingBet ? 'Rollover do sistema (após esta sessão)' : 'Rollover do sistema agora', formatCurrency(sys));
+        row('A plataforma mostra', formatCurrency(rollReal));
+        row('Abatimento', `−${formatCurrency(plan.value)}`, 'bc-neg');
+        box.appendChild(grid);
+        box.appendChild(el('p', 'bc-note', 'A plataforma deu baixa no rollover sem aposta. O abatimento só mexe no Rollover — Saldo e bônus não mudam. Pode ser excluído depois no "Bônus da semana".'));
+        footer(
+          btn('Não lançar o abatimento', 'bc-cancel', () => { applyFn(platform, t); done(); }),
+          btn('Confirmar', 'btn-confirm', () => {
+            const check = applyFn(platform, t);
+            addRolloverAdjustment(platform, plan.value, { at: t, now: t, source: pendingBet ? 'session' : 'check', checkId: check && check.id ? check.id : null });
+            done();
+          })
+        );
+        return;
+      }
+      applyFn(platform, t);
+      done();
+    }
+
     function proceed(gap) {
       if (gap.kind === 'match') {
-        recordBalanceCheck(platform, gap, 'match', at());
-        close({ status: 'done', resolution: 'match', gap });
+        finalize('match', gap, (c, t) => recordBalanceCheck(c, gap, 'match', t));
         return;
       }
       if (gap.kind === 'over') stepOver(gap);
@@ -246,8 +325,10 @@ export function openBalanceCheck({ platform, ctx = {}, pendingRB = 0, mode = 'st
             if (!res.ok) { showError(res.error); return; }
             how = res.parts;
           }
-          if (!applyPositiveGap(platform, gap, how, at(), bonusBefore)) { showError('Não foi possível lançar as partes — confira os valores.'); return; }
-          close({ status: 'done', resolution: 'bonus', gap });
+          if (!applyPositiveGap(JSON.parse(JSON.stringify(platform)), gap, how, at(), bonusBefore)) { showError('Não foi possível lançar as partes — confira os valores.'); return; }
+          // (17) com o rollover informado, "acima do sistema" aparece aqui
+          // mesmo (dá pra subir o R e confirmar de novo).
+          finalize('bonus', gap, (c, t) => applyPositiveGap(c, gap, how, t, bonusBefore), msg => showError(msg));
         })
       );
     }
@@ -261,8 +342,7 @@ export function openBalanceCheck({ platform, ctx = {}, pendingRB = 0, mode = 'st
       footer(
         btn('Cancelar', 'bc-cancel', () => close({ status: 'cancelled' })),
         btn('Registrar assim mesmo', 'bet-manage-btn', () => {
-          recordBalanceCheck(platform, gap, 'divergent', at());
-          close({ status: 'done', resolution: 'divergent', gap });
+          finalize('divergent', gap, (c, t) => recordBalanceCheck(c, gap, 'divergent', t));
         }),
         ...(items.length ? [btn('Escolher bônus não recebidos', 'btn-confirm', () => stepPick(gap, items))] : [])
       );
@@ -296,9 +376,11 @@ export function openBalanceCheck({ platform, ctx = {}, pendingRB = 0, mode = 'st
         const total = picked.reduce((s, i) => s + i.value, 0);
         if (total > target + BALANCE_TOLERANCE) { showError('Marcou mais do que a diferença — desmarque algum.'); return; }
         // Grava a conferência primeiro (pra ligar as exclusões a ela).
-        const check = recordBalanceCheck(platform, gap, 'excluded', at());
-        check.excludedTotal = excludeBonusItems(platform, picked, { checkId: check.id, now: at() });
-        close({ status: 'done', resolution: 'excluded', gap });
+        finalize('excluded', gap, (c, t) => {
+          const check = recordBalanceCheck(c, gap, 'excluded', t);
+          check.excludedTotal = excludeBonusItems(c, picked, { checkId: check.id, now: t });
+          return check;
+        });
       });
       function sync() {
         const total = items.filter(i => chosen.has(i.id)).reduce((s, i) => s + i.value, 0);

@@ -115,6 +115,18 @@
 // fechamento de domingo e no "Bônus real da semana passada" (diferença
 // positiva × R; negativa sai 1:1 — finance-logic.js).
 //
+// === (Sub-entrega 18) BARRA DE AÇÕES ===
+// A semana atual mostra uma fileira de botões no lugar dos formulários:
+// 💰 Depósito · ↩️ Saque · 🎁 Bônus hoje (janelinhas com os MESMOS
+// formulários de antes) · 🔎 Saldo real (abre a conferência com saldo +
+// rollover opcional) · 🎯 Registrar aposta · 🎲 Últimas apostas · 🧾 Bônus.
+// Toda gravação passa por refreshRow, que fecha a janelinha aberta.
+//
+// === (Sub-entrega 17) ROLLOVER REAL NA CONFERÊNCIA DA SESSÃO ===
+// A conferência pedida no "Registrar aposta" recebe a aposta pendente
+// (pendingBet) pra comparar o rollover que a plataforma mostra com o do
+// sistema já descontando esta sessão (ui-balance-check.js).
+//
 // === (Sub-entrega 16) ➗ DIVIDIR ===
 // "Inserir bônus hoje", fechamento de domingo, "Bônus real da semana
 // passada" e o 💎 do "Registrar depósito": o valor pode ser dividido em
@@ -171,7 +183,6 @@ import { openBalanceCheck } from './ui-balance-check.js';
 import { openBetEntry } from './ui-bet-entry.js';
 import { gameStamp, setEntryGame, searchGames } from './game-catalog-logic.js';
 import { loadGameCatalog, isGameCatalogLoaded, getGames } from './game-catalog-store.js';
-import { parseMoneyInput } from './wager-total-logic.js';
 import { openBonusManager } from './ui-bonus-manager.js';
 import { hasBalanceCheckToday, getLastBalanceCheck, parseRealBalance } from './balance-check-logic.js';
 
@@ -612,6 +623,7 @@ export function renderFinanceOverview() {
 // ---------- RECONCILIAÇÃO DE DOM ----------
 
 function refreshRow(platformId) {
+  closeActionModal(); // (18) a janelinha mostrava a linha antiga
   const platform = state.platforms.find(pp => pp.id === platformId);
   if (!platform) return;
   const oldEl = rowElements.get(platformId);
@@ -910,7 +922,7 @@ function buildPendingBonusPanels(p) {
 
     const note = document.createElement('p');
     note.className = 'finance-close-week-note';
-    note.textContent = `Semana ${range} fechada automaticamente. Informe o valor REAL de bônus recebido nela — ou deixe em branco e confirme pra manter o que o sistema já contabilizou (fórmula + avulso). A diferença também entra no Saldo e no Rollover (1:1).`;
+    note.textContent = `Semana ${range} fechada automaticamente. Informe o valor REAL de bônus recebido nela — ou deixe em branco e confirme pra manter o que o sistema já contabilizou (fórmula + bônus alto + avulso). A diferença entra no Saldo e no Rollover — na escala do R (ou ➗ dividida).`;
     wrap.appendChild(note);
 
     const stat = document.createElement('div');
@@ -1101,7 +1113,7 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
   });
   depositForm.appendChild(depositInput);
   depositForm.appendChild(depositBtn);
-  section.appendChild(depositForm);
+  // (18) vai pra janelinha do botão "💰 Depósito" (barra de ações abaixo).
 
   // --- registrar saque ---
   const withdrawForm = document.createElement('div');
@@ -1140,11 +1152,7 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
   withdrawEditBtn.setAttribute('aria-label', 'Editar saques da semana');
   withdrawEditBtn.addEventListener('click', () => showWithdrawalsModal(p));
   withdrawForm.appendChild(withdrawEditBtn);
-  section.appendChild(withdrawForm);
-
-  // --- (8a) saldo real + Bônus da semana ---
-  // (14) montado aqui, anexado mais abaixo (depois de "Inserir bônus hoje").
-  const balanceCheckRow = buildBalanceCheckRow(p, ctx);
+  // (18) vai pra janelinha do botão "↩️ Saque".
 
   // --- registrar aposta + Últimas apostas (Bloco P) ---
   // (Sub-entrega 9) Só o botão fica na tela: os campos (Jogo, dia e hora,
@@ -1180,7 +1188,9 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
         const v = entry.values;
         // (8a) Sem conferência de saldo hoje: pede antes de gravar.
         if (!hasBalanceCheckToday(p)) {
-          const result = await openBalanceCheck({ platform: p, ctx, pendingRB: v.resultBetting, mode: 'bet', bonusBefore: v.date });
+          // (17) pendingBet: a aposta desta sessão entra na prévia do
+          // rollover (campo opcional "Rollover que a plataforma mostra").
+          const result = await openBalanceCheck({ platform: p, ctx, pendingRB: v.resultBetting, mode: 'bet', bonusBefore: v.date, pendingBet: { date: v.date, wagered: v.wagered, resultBetting: v.resultBetting } });
           if (!result || result.status !== 'done') {
             initial = v; // volta pro contêiner sem perder nada
             continue;
@@ -1218,16 +1228,19 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
   betHistoryBtn.textContent = '🎲 Últimas apostas';
   betHistoryBtn.addEventListener('click', () => showBetHistoryModal(p));
 
-  betForm.appendChild(betBtn);
-  betForm.appendChild(betHistoryBtn);
-
-  // --- Etapa 7, sub-entrega 3: "Inserir bônus hoje" (Bloco F/Item 16 +
-  //     Bloco P). Reaproveita .finance-entry-form (já tem flex-wrap — P3.3).
-  // (Sub-entrega 14) NOVA ORDEM: Inserir bônus hoje → Saldo real →
-  // Registrar aposta / Últimas apostas (cada um na sua linha).
-  section.appendChild(buildDailyBonusSection(p, ctx));
-  section.appendChild(balanceCheckRow);
-  section.appendChild(betForm);
+  // --- (Sub-entrega 18) BARRA DE AÇÕES ---
+  // Os formulários (Depósito, Saque, Inserir bônus hoje) moram em
+  // janelinhas abertas pelos botões; Saldo real abre direto a conferência
+  // (com o campo opcional do rollover); Aposta, Últimas apostas e 🧾 Bônus
+  // são os mesmos botões de sempre. Campos, regras e gravações não mudam.
+  section.appendChild(buildActionBar(p, ctx, {
+    depositForm,
+    depositInput,
+    withdrawForm,
+    withdrawInput,
+    betBtn,
+    betHistoryBtn
+  }));
 
   if (canCloseCurrentWeek()) {
     const closeSection = document.createElement('div');
@@ -1240,7 +1253,7 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
 
     const closeNote = document.createElement('p');
     closeNote.className = 'finance-close-week-note';
-    closeNote.textContent = `R.B. da semana já somado automaticamente: ${formatCurrency(live.resultBetting)}. Saldo atual (antes do Bônus final desta semana): ${formatCurrency(liveBalance)}. Informe o valor REAL total de bônus recebido na semana — o Saldo final é recalculado sozinho ao fechar, e a diferença pro que o sistema já contabilizou também entra no Rollover (1:1).`;
+    closeNote.textContent = `R.B. da semana já somado automaticamente: ${formatCurrency(live.resultBetting)}. Saldo atual (antes do Bônus final desta semana): ${formatCurrency(liveBalance)}. Informe o valor REAL total de bônus recebido na semana — o Saldo final é recalculado sozinho ao fechar, e a diferença pro que o sistema já contabilizou entra no Rollover na escala do R (ou ➗ dividida).`;
     closeSection.appendChild(closeNote);
 
     // Bloco F Item 16.7 — só-leitura: soma do que a fórmula (Bônus 1) já
@@ -1394,49 +1407,123 @@ function describeLastCheck(p) {
   return `Última conferência: ${label} — ${formatCurrency(c.real)} · ${res}`;
 }
 
-function buildBalanceCheckRow(p, ctx) {
+// ---------- (Sub-entrega 18) BARRA DE AÇÕES + JANELINHAS ----------
+
+let activeActionClose = null;
+
+// Fecha a janelinha aberta (chamado por refreshRow depois de cada gravação).
+function closeActionModal() {
+  if (activeActionClose) activeActionClose();
+}
+
+// Janelinha fixa e centralizada (mesmo visual da conferência de saldo).
+// Esc / toque fora / troca de tela fecham; nada é gravado ao fechar.
+function openActionModal(title, subtitle, content, focusEl = null) {
+  closeActionModal();
+  const previousOverflow = document.body.style.overflow;
+  document.body.style.overflow = 'hidden';
+  const overlay = document.createElement('div');
+  overlay.className = 'bc-overlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  const box = document.createElement('div');
+  box.className = 'bc-box';
+  overlay.appendChild(box);
+  const h = document.createElement('h3');
+  h.className = 'bc-title';
+  h.textContent = title;
+  box.appendChild(h);
+  if (subtitle) {
+    const sub = document.createElement('p');
+    sub.className = 'bc-sub';
+    sub.textContent = subtitle;
+    box.appendChild(sub);
+  }
+  box.appendChild(content);
+  const foot = document.createElement('div');
+  foot.className = 'bc-footer';
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'bc-cancel';
+  closeBtn.textContent = 'Fechar';
+  foot.appendChild(closeBtn);
+  box.appendChild(foot);
+
+  function close() {
+    if (!overlay.isConnected) return;
+    activeActionClose = null;
+    document.removeEventListener('keydown', onKey, true);
+    window.removeEventListener('hashchange', close);
+    window.removeEventListener('popstate', close);
+    overlay.remove();
+    document.body.style.overflow = previousOverflow;
+  }
+  function onKey(e) {
+    // Outra janela por cima (tipo do depósito, confirmação)? Ela trata o Esc.
+    if (e.key !== 'Escape' || document.body.lastElementChild !== overlay) return;
+    e.preventDefault();
+    close();
+  }
+  closeBtn.addEventListener('click', close);
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  document.addEventListener('keydown', onKey, true);
+  window.addEventListener('hashchange', close);
+  window.addEventListener('popstate', close);
+  activeActionClose = close;
+  document.body.appendChild(overlay);
+  // Campo principal ocupa a linha inteira (os botões vão pra linha de baixo).
+  if (focusEl) {
+    focusEl.style.flex = '1 1 100%';
+    focusEl.style.minWidth = '0';
+    setTimeout(() => { try { focusEl.focus({ preventScroll: true }); } catch (_) { focusEl.focus(); } }, 30);
+  }
+}
+
+function buildActionBar(p, ctx, parts) {
   const wrap = document.createElement('div');
   wrap.className = 'finance-balance-check';
 
-  const form = document.createElement('div');
-  form.className = 'finance-entry-form';
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.inputMode = 'decimal';
-  input.autocomplete = 'off';
-  input.placeholder = 'Saldo real agora';
-  input.setAttribute('aria-label', 'Saldo real agora na plataforma');
-  const updateBtn = document.createElement('button');
-  updateBtn.type = 'button';
-  updateBtn.className = 'bet-manage-btn';
-  updateBtn.textContent = 'Atualizar';
-  updateBtn.addEventListener('click', async () => {
-    const value = parseRealBalance(parseMoneyInput(input.value));
-    if (value === null) {
-      await showAppAlert('Digite o saldo que aparece na plataforma (ex.: 1.250,00).');
-      return;
-    }
-    updateBtn.disabled = true;
-    let result;
-    try {
-      result = await openBalanceCheck({ platform: p, ctx, mode: 'standalone', value });
-    } finally {
-      updateBtn.disabled = false;
-    }
+  const bar = document.createElement('div');
+  bar.className = 'finance-entry-form finance-action-bar';
+  bar.style.flexWrap = 'wrap';
+  const action = (label, aria, onClick) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'bet-manage-btn';
+    b.textContent = label;
+    b.setAttribute('aria-label', aria);
+    b.style.flex = '1 1 auto';
+    b.addEventListener('click', onClick);
+    return b;
+  };
+
+  bar.appendChild(action('💰 Depósito', `Registrar depósito em ${p.name}`, () => {
+    openActionModal('💰 Registrar depósito', p.name, parts.depositForm, parts.depositInput);
+  }));
+  bar.appendChild(action('↩️ Saque', `Registrar ou editar saque em ${p.name}`, () => {
+    openActionModal('↩️ Registrar saque', p.name, parts.withdrawForm, parts.withdrawInput);
+  }));
+  bar.appendChild(action('🎁 Bônus hoje', `Inserir bônus recebido hoje em ${p.name}`, () => {
+    const section = buildDailyBonusSection(p, ctx);
+    openActionModal('🎁 Inserir bônus hoje', p.name, section, section.querySelector('input'));
+  }));
+  bar.appendChild(action('🔎 Saldo real', `Conferir saldo real (e rollover) de ${p.name}`, async () => {
+    // Abre direto a conferência (saldo + rollover opcional).
+    const result = await openBalanceCheck({ platform: p, ctx, mode: 'standalone' });
     if (!result || result.status !== 'done') return;
     savePlatform(state.currentUid, p);
     openRowId = p.id;
     refreshRow(p.id);
     renderFinanceList();
     if (result.resolution === 'match') await showAppAlert('Saldo conferido ✓ — bate com o sistema.');
-  });
-  const bonusBtn = document.createElement('button');
-  bonusBtn.type = 'button';
-  bonusBtn.className = 'bet-manage-btn';
-  bonusBtn.textContent = '🧾 Bônus';
-  bonusBtn.style.flex = '0 0 auto';
-  bonusBtn.setAttribute('aria-label', 'Bônus da semana — marcar não recebido, desfazer ou excluir avulso');
-  bonusBtn.addEventListener('click', () => openBonusManager({
+  }));
+
+  parts.betBtn.style.flex = '1 1 auto';
+  parts.betHistoryBtn.style.flex = '1 1 auto';
+  bar.appendChild(parts.betBtn);
+  bar.appendChild(parts.betHistoryBtn);
+
+  bar.appendChild(action('🧾 Bônus', 'Bônus da semana — R, não recebi, abatido, conferência em lote', () => openBonusManager({
     resolveCtx: resolveCtxForPlatform,
     focusPlatformId: p.id,
     onChanged: () => {
@@ -1444,17 +1531,12 @@ function buildBalanceCheckRow(p, ctx) {
       refreshAllRows();
       renderFinanceList();
     }
-  }));
-  form.appendChild(input);
-  form.appendChild(updateBtn);
-  form.appendChild(bonusBtn);
-  wrap.appendChild(form);
+  })));
+  wrap.appendChild(bar);
 
   const note = document.createElement('p');
   note.className = 'finance-close-week-note';
   note.textContent = describeLastCheck(p);
-  // Sem destaque de "falta conferir": a conferência só é exigida na hora de
-  // registrar uma aposta (o Planejador prevê dias sem aposta).
   wrap.appendChild(note);
   return wrap;
 }

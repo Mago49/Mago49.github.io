@@ -29,10 +29,12 @@ function fmt(v) {
   return (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-// "1.250,50" / "1250.5" / "R$ 10" → número (NaN se inválido).
+// "1.250,50" / "1250.5" / "R$ 10" / ",3" → número (NaN se inválido).
 export function parseSplitMoney(raw) {
   let s = String(raw === null || raw === undefined ? '' : raw).trim().replace(/^R\$\s*/i, '').replace(/\s+/g, '');
   if (!s) return NaN;
+  // (Sub-entrega 17) ",3" / ".5" = 0,30 / 0,50 (zero antes da vírgula opcional).
+  if (/^[.,]\d+$/.test(s)) s = `0${s}`;
   if (s.includes(',')) {
     if ((s.match(/,/g) || []).length > 1) return NaN;
     s = s.replace(/\./g, '').replace(',', '.');

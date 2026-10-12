@@ -25,6 +25,12 @@
 // editor no próprio item, grava na hora (savePlatform). Etiqueta azul
 // "R …" quando a escala não é 1:1.
 //
+// (Sub-entrega 17) "📋 Conferência em lote" no topo (saldo real + rollover
+// de várias plataformas, com "Colar lista") e "⬇️ Abatido" dentro de cada
+// plataforma (ui-rollover-adjust.js). Abatimentos aparecem na lista com
+// "Excluir" (allowShrink: ['rolloverAdjustments']); não somam no total de
+// bônus da plataforma.
+//
 // Segurança: nomes por textContent.
 
 import { state } from './state.js';
@@ -34,8 +40,9 @@ import {
   listOpenWeekBonusItems, excludeBonusItems, restoreExclusion, removeAvulsoEntry,
   getOpenWeekRange, BONUS_TYPE_LABELS, bonusTypeGroup,
   removeHighBonusEntry, updateHighBonusEntry, BALANCE_MAX,
-  setFormulaScale, setAvulsoScale
+  setFormulaScale, setAvulsoScale, removeRolloverAdjustment
 } from './balance-check-logic.js';
+import { openRolloverAdjust, openBatchCheck } from './ui-rollover-adjust.js'; // (Sub-entrega 17)
 import { parseMoneyInput } from './wager-total-logic.js';
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -140,6 +147,20 @@ export function openBonusManager({ resolveCtx = () => ({}), focusPlatformId = nu
   filters.appendChild(date);
   filters.appendChild(clear);
   sheet.appendChild(filters);
+
+  // (17) Conferência em lote (abre por cima; ao gravar, redesenha).
+  const batchBar = el('div', 'bm-filters');
+  batchBar.style.paddingTop = '0';
+  const batchBtn = btn('📋 Conferência em lote (saldo / rollover)', 'bet-manage-btn', async () => {
+    const res = await openBatchCheck({ resolveCtx });
+    if (res && res.status === 'done' && res.changed.length) {
+      res.changed.forEach(p => { try { onChanged(p); } catch (err) { console.error('Bônus da semana: falha ao redesenhar a tela:', err); } });
+      if (overlay.isConnected) render();
+    }
+  });
+  batchBtn.style.width = '100%';
+  batchBar.appendChild(batchBtn);
+  sheet.appendChild(batchBar);
 
   const list = el('div', 'bm-list');
   sheet.appendChild(list);
@@ -294,6 +315,24 @@ export function openBonusManager({ resolveCtx = () => ({}), focusPlatformId = nu
 
   function itemRow(p, it) {
     if (it.kind === 'alto') return highBonusRow(p, it);
+    if (it.kind === 'abatido') {
+      // (17) ⬇️ abatimento de rollover: só Excluir.
+      const row = el('div', 'bm-item bm-item-abatido');
+      row.style.background = '#fef3c7';
+      const info = el('div', 'bm-item-info');
+      info.appendChild(el('span', 'bm-item-day', fmtDay(it.dayKey)));
+      info.appendChild(el('span', 'bm-item-type', '⬇️ Rollover abatido (não é bônus)'));
+      row.appendChild(info);
+      row.appendChild(el('span', 'bm-item-value', `−${formatCurrency(it.value)}`));
+      const actions = actionsBox();
+      const del = btn('Excluir', 'bm-act bm-act-del', () => act(p,
+        () => (removeRolloverAdjustment(p, it.entry) ? { allowShrink: ['rolloverAdjustments'] } : false),
+        `Excluir o abatimento de rollover de ${formatCurrency(it.value)} (${fmtDay(it.dayKey)}) de ${p.name}? O Rollover volta a contar esse valor.`));
+      del.style.marginLeft = '0';
+      actions.appendChild(del);
+      row.appendChild(actions);
+      return row;
+    }
     const row = el('div', `bm-item bm-item-${it.kind}`);
     const info = el('div', 'bm-item-info');
     info.appendChild(el('span', 'bm-item-day', fmtDay(it.dayKey)));
@@ -365,7 +404,7 @@ export function openBonusManager({ resolveCtx = () => ({}), focusPlatformId = nu
       h.type = 'button';
       h.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
       h.appendChild(el('span', 'bm-row-name', p.name));
-      const received = all.filter(i => i.kind !== 'excluded').reduce((s, i) => s + i.value, 0);
+      const received = all.filter(i => i.kind !== 'excluded' && i.kind !== 'abatido').reduce((s, i) => s + i.value, 0);
       const off = all.filter(i => i.kind === 'excluded').length;
       h.appendChild(el('span', 'bm-row-meta', `${formatCurrency(received)}${off ? ` · ${off} não recebido(s)` : ''}`));
       h.appendChild(el('span', 'platform-manage-chevron', '▾'));
@@ -382,6 +421,15 @@ export function openBonusManager({ resolveCtx = () => ({}), focusPlatformId = nu
           render();
         })));
         body.appendChild(chips);
+        // (17) ⬇️ Abatido — baixa de rollover sem aposta nesta plataforma.
+        const abBtn = btn('⬇️ Abatido (rollover)', 'bet-manage-btn', async () => {
+          let ctx = {};
+          try { ctx = resolveCtx(p) || {}; } catch (_) { ctx = {}; }
+          const res = await openRolloverAdjust({ platform: p, ctx });
+          if (res && res.status === 'done') act(p, () => ({}));
+        });
+        abBtn.style.alignSelf = 'flex-start';
+        body.appendChild(abBtn);
         const filtered = all.filter(i => current === 'all' || bonusTypeGroup(i.type) === current);
         const limit = ui.dateKey ? filtered.length : (ui.shown.get(p.id) || PAGE);
         if (filtered.length === 0) body.appendChild(el('p', 'bm-empty', 'Nada desse tipo nesta semana.'));
