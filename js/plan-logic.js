@@ -590,6 +590,7 @@ export function buildGroupPlan(base, members, group, todayKey = null) {
       dayBoost: m.dayBoost || {},
       reserve: cleanReserve(m.reserve),
       reservedC: Math.max(0, Math.round(Number(m.reservedC) || 0)),
+      targetBase: base.targetBase === 'projected' ? 'projected' : 'rollover',
       goal: { mode: 'none', value: 0, baseBalance: 0 },
       phase: i,
       phaseCount: n,
@@ -792,6 +793,7 @@ export function sanitizeParams(p) {
     phaseCount: Math.max(1, Math.min(GROUP_MAX_MEMBERS, Math.round(Number(p.phaseCount) || 1))),
     group: cleanGroupRef(p.group),
     // (20)
+    targetBase: p.targetBase === 'projected' ? 'projected' : 'rollover',
     reserve: cleanReserve(p.reserve),
     reservedC: Math.max(0, Math.round(Number(p.reservedC) || 0))
   };
@@ -814,10 +816,15 @@ export function cleanReserve(r) {
  *   activationC depósitos de ativação previstos no período (modo 'all')
  * @returns {{ targetC, reservedC }}
  */
-export function applyReserve(rolloverC, reserve, activationC = 0) {
+//   baseHasActivation: a base já inclui os depósitos previstos (Projetado)
+//   — aí o guardado não conta duas vezes o que a meta cobre.
+export function applyReserve(rolloverC, reserve, activationC = 0, baseHasActivation = false) {
   const r = cleanReserve(reserve);
   const roll = Math.max(0, Math.round(Number(rolloverC) || 0));
-  if (r.mode === 'all') return { targetC: Math.max(0, Math.round(Number(activationC) || 0)), reservedC: roll };
+  if (r.mode === 'all') {
+    const act = Math.max(0, Math.round(Number(activationC) || 0));
+    return { targetC: act, reservedC: baseHasActivation ? Math.max(0, roll - act) : roll };
+  }
   let reservedC = 0;
   if (r.mode === 'value') reservedC = Math.min(roll, toCents(r.value));
   if (r.mode === 'pct') reservedC = Math.min(roll, Math.round((roll * r.value) / 100));

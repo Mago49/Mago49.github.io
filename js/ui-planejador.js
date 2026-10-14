@@ -110,6 +110,12 @@
 //    plataforma tem a sua (toque na linha dela) e o grupo mostra o total
 //    "🔒 Guardado pra jogar depois".
 // b) ↻ Recalcular grupo a partir de amanhã (metas com o Rollover de agora).
+// c) GRUPO — "Base da meta": Rollover ou Projetado (Rollover + entradas
+//    previstas de cada plataforma: rotinas de depósito e bônus do
+//    Misterioso das próximas emissões), sempre × peso e depois o Guardar.
+//    Gráfico do grupo: barras EMPILHADAS por plataforma (dá pra ver a
+//    escala/ritmo de cada uma), linha do Rollover previsto do grupo e o dia
+//    mais alto destacado; cada linha da lista mostra o pico da plataforma.
 
 import { state } from './state.js';
 import { formatCurrency, showAppAlert, showAppConfirm } from './utils.js';
@@ -200,7 +206,8 @@ const form = {
   // (20) 🔒 Guardar rollover
   reserve: { mode: 'none', valueText: '' },
   reservedC: 0,
-  groupReserve: {}        // { [platformId]: { mode, valueText } } (modo grupo)
+  groupReserve: {},       // { [platformId]: { mode, valueText } } (modo grupo)
+  groupBase: 'rollover'   // 'rollover' | 'projected' (modo grupo)
 };
 
 function isGroupMode() {
@@ -418,9 +425,9 @@ function activationC(platform, endKey) {
 
 // (20) Aplica o "Guardar" sobre uma base (Rollover × peso, ou projetado)
 // e grava meta + guardado no formulário (modo plataforma).
-function setTargetFromBase(baseC) {
+function setTargetFromBase(baseC, projected = false) {
   const platform = findPlatform(form.platformId);
-  const res = applyReserve(baseC, reserveFromForm(form.reserve), activationC(platform, form.endKey));
+  const res = applyReserve(baseC, reserveFromForm(form.reserve), activationC(platform, form.endKey), projected);
   form.reservedC = res.reservedC;
   form.target = res.targetC > 0 ? fmtMoneyInput(fromCents(res.targetC)) : '';
 }
@@ -560,6 +567,12 @@ function renderSkeleton() {
           <div id="planWeekdays" class="plan-chips" role="group" aria-label="Dias da semana"></div>
           <div id="planWeekMode" class="plan-chips plan-weekmode" role="group" aria-label="Como usar os dias"></div>
           <p id="planWeekModeHint" class="plan-hint"></p>
+        </div>
+
+        <div class="plan-field app-hidden" id="planGroupBaseField">
+          <span class="plan-label">Base da meta <small>de cada plataforma</small></span>
+          <div id="planGroupBase" class="plan-chips" role="group" aria-label="Base da meta"></div>
+          <p id="planGroupBaseHint" class="plan-hint"></p>
         </div>
 
         <div class="plan-field app-hidden" id="planGroupFollowField">
@@ -858,6 +871,17 @@ function renderChips() {
       schedulePreview(0);
     })));
   }
+  // (20) Base da meta do grupo
+  const gb = $('planGroupBase');
+  if (gb) {
+    gb.replaceChildren();
+    [['rollover', 'Rollover'], ['projected', 'Projetado']].forEach(([id, label]) => gb.appendChild(chip(label, form.groupBase === id, () => {
+      form.groupBase = id;
+      renderChips();
+      syncInputs();
+      schedulePreview(0);
+    })));
+  }
   // (19) Sempre assim / Intercalar
   const wm = $('planWeekMode');
   if (wm) {
@@ -1102,6 +1126,11 @@ function syncGroupInputs() {
   hide('planSpeedField', group);
   hide('planGoalField', group);
   hide('planReserveField', group);
+  hide('planGroupBaseField', !group);
+  const gbh = $('planGroupBaseHint');
+  if (gbh) gbh.textContent = form.groupBase === 'projected'
+    ? 'Projetado: Rollover de hoje + o que ainda vai entrar até o fim do período (depósitos das rotinas e bônus do Misterioso das próximas emissões), × peso ⚡, menos o 🔒 guardado.'
+    : 'Rollover de hoje × peso ⚡, menos o 🔒 guardado.';
   // (20) Guardar rollover (modo plataforma)
   const rv = $('planReserveValue');
   if (rv) {
@@ -1603,8 +1632,10 @@ function selectGroup(routineId) {
     form.groupFloorMode = f > 0 ? 'manual' : 'none';
     form.groupFloor = f > 0 ? fmtMoneyInput(f) : '';
     form.followGroup = g.routine.action === 'bet' ? saved.params.followRoutineId === routineId : true;
+    form.groupBase = saved.params.targetBase === 'projected' ? 'projected' : 'rollover';
   } else {
     form.followGroup = true;
+    form.groupBase = 'rollover';
   }
   // (20) Guardar rollover de cada plataforma (do plano salvo dela, se for deste grupo).
   form.groupReserve = {};
@@ -1672,7 +1703,7 @@ function bindControls() {
     const inf = computeInflows(platform, form.endKey);
     const total = Math.round((world.rolloverC + inf.items.reduce((s, x) => s + x.valueC, 0)) * speedBase());
     if (total <= 0) return;
-    setTargetFromBase(total); // (20) respeita o Guardar
+    setTargetFromBase(total, true); // (20) respeita o Guardar
     syncInputs();
     schedulePreview(0);
   });
@@ -1933,6 +1964,8 @@ function renderChart(plan, proj) {
     });
   }
 
+  // (20) O gráfico do grupo é empilhado: ao voltar pro individual, recria.
+  if (chart && chart.__group) { chart.destroy(); chart = null; }
   if (chart) {
     chart.data.labels = labels;
     chart.data.datasets = datasets;
@@ -1991,8 +2024,27 @@ function groupBaseParams() {
     cap: Number.isFinite(cap) && cap > 0 ? cap : null,
     stakes,
     buy: { enabled: form.buy.enabled, multiplier: form.buy.multiplier },
-    skipEmissions: form.skipEmissions.slice()
+    skipEmissions: form.skipEmissions.slice(),
+    targetBase: form.groupBase
   };
+}
+
+// (20) O que ainda vai ENTRAR no Rollover da plataforma até endKey:
+// depósitos das rotinas + bônus do Misterioso das próximas emissões (mesma
+// conta do "Usar projetado" individual, sem o depósito sugerido do
+// otimizador — ele escolhe UMA plataforma por vez).
+function memberInflows(p, endKey) {
+  if (!p || !endKey) return [];
+  const t = todayKey();
+  if (endKey < t) return [];
+  const routines = isRoutinesLoaded(state.currentUid) ? getRoutines() : [];
+  const items = depositRoutineInflows(routines, p, t, endKey).items.map(x => ({ key: x.key, valueC: x.valueC }));
+  let tpl = null;
+  if (contextConfirmed) { try { tpl = (resolveCtx(p) || {}).misteriosoTemplate || null; } catch (err) { tpl = null; } }
+  if (tpl && !p.cycleEnded) {
+    try { return [...items, ...projectMisteriosoInflows(p, tpl, items, endKey, new Date())]; } catch (err) { return items; }
+  }
+  return items;
 }
 
 // Membros com meta (Rollover × peso) e dias bloqueados de CADA plataforma.
@@ -2010,8 +2062,11 @@ function groupMembers(g) {
     const valid = form.startKey && form.endKey && form.startKey <= form.endKey;
     // (20) 🔒 Guardar rollover desta plataforma.
     const reserve = reserveFromForm(form.groupReserve[p.id]);
-    const baseC = rolloverC === null ? 0 : Math.max(0, Math.round(rolloverC * base));
-    const res = rolloverC === null ? { targetC: 0, reservedC: 0 } : applyReserve(baseC, reserve, valid ? activationC(p, form.endKey) : 0);
+    // (20) Base: Rollover ou Projetado (Rollover + entradas previstas).
+    const inflows = valid ? memberInflows(p, form.endKey) : [];
+    const inflowC = inflows.reduce((sum, x) => sum + x.valueC, 0);
+    const baseC = rolloverC === null ? 0 : Math.max(0, Math.round((rolloverC + (form.groupBase === 'projected' ? inflowC : 0)) * base));
+    const res = rolloverC === null ? { targetC: 0, reservedC: 0 } : applyReserve(baseC, reserve, valid ? activationC(p, form.endKey) : 0, form.groupBase === 'projected');
     const target = fromCents(res.targetC);
     const m = {
       platformId: p.id,
@@ -2021,6 +2076,8 @@ function groupMembers(g) {
       speed: base,
       reserve,
       reservedC: res.reservedC,
+      inflows,
+      inflowC,
       excludeKeys: valid ? forbiddenBetDays(routines, p, form.startKey, form.endKey) : [],
       skipEmissions: form.skipEmissions.slice(),
       skipKeys: valid ? emissionKeysInRange(p, form.startKey, form.endKey, form.skipEmissions) : [],
@@ -2084,7 +2141,11 @@ function renderGroupPreview() {
       if (res.days.length) {
         const vals = res.days.map(d => d.plannedC);
         kpis.appendChild(kpi('Dias com aposta', String(res.days.length), `${fmtShort(res.days[0].key)} a ${fmtShort(res.days[res.days.length - 1].key)}`));
-        kpis.appendChild(kpi('Maior / menor dia', formatCurrency(fromCents(Math.max(...vals))), `menor ${formatCurrency(fromCents(Math.min(...vals)))} · soma do grupo`));
+        const maxV = Math.max(...vals);
+        const maxDay = res.days.find(d => d.plannedC === maxV);
+        kpis.appendChild(kpi('🔝 Dia mais alto (grupo)', formatCurrency(fromCents(maxV)), `${fmtDay(maxDay.key)} · ${maxDay.platforms} plataforma(s) · menor dia ${formatCurrency(fromCents(Math.min(...vals)))}`, 'plan-kpi-main'));
+        const inflowAll = members.reduce((sum, m) => sum + (m.rolloverC === null ? 0 : m.inflowC), 0);
+        if (inflowAll > 0) kpis.appendChild(kpi('Entradas previstas', formatCurrency(fromCents(inflowAll)), form.groupBase === 'projected' ? 'somadas na meta (Projetado)' : 'fora da meta — use "Projetado" pra incluir'));
       }
     }
   }
@@ -2113,7 +2174,8 @@ function renderGroupPreview() {
       const rsv = members[i].reserve.mode !== 'none' ? ` · 🔒 ${formatCurrency(fromCents(members[i].reservedC))}` : '';
       if (m.plan) {
         const sp = members[i].speed !== 1 ? ` · ⚡${formatMult(members[i].speed)}` : '';
-        head.appendChild(el('span', 'plan-group-meta', `${m.plan.days.length} dia(s)${sp}${rsv}`));
+        const peak = m.plan.days.reduce((a, d) => (d.plannedC > a.plannedC ? d : a), m.plan.days[0]);
+        head.appendChild(el('span', 'plan-group-meta', `${m.plan.days.length} dia(s) · pico ${fmtShort(peak.key)} ${formatCurrency(fromCents(peak.plannedC))}${sp}${rsv}`));
         head.appendChild(el('span', 'plan-group-total', formatCurrency(fromCents(m.plan.totals.plannedC))));
       } else {
         head.appendChild(el('span', 'plan-group-meta plan-group-err', `${m.error || 'Sem plano'}${rsv}`));
@@ -2181,23 +2243,68 @@ function renderMemberReserve(pid, member) {
 function renderGroupChart(res) {
   const canvas = $('planChart');
   if (!canvas || !window.Chart) return;
-  const labels = res.days.map(d => fmtShort(d.key));
-  const datasets = [{
-    type: 'bar',
-    label: 'Aposta do dia (soma do grupo)',
-    data: res.days.map(d => fromCents(d.plannedC)),
-    backgroundColor: '#3b82f6',
-    borderRadius: 4,
-    yAxisID: 'y',
-    order: 2
-  }];
-  if (chart) {
-    chart.data.labels = labels;
-    chart.data.datasets = datasets;
-    chart.options.scales.y1.display = false;
-    chart.update('none');
-    return;
+  const keys = res.days.map(d => d.key);
+  const labels = keys.map(fmtShort);
+  const PALETTE = ['#2563eb', '#15803d', '#f59e0b', '#7c3aed', '#dc2626', '#0891b2', '#db2777', '#475569', '#65a30d', '#ea580c'];
+  const maxV = res.days.length ? Math.max(...res.days.map(d => d.plannedC)) : 0;
+  const maxIdx = res.days.findIndex(d => d.plannedC === maxV);
+  const okMembers = res.members.filter(m => m.plan);
+  const srcById = new Map((lastGroup ? lastGroup.members : []).map(m => [m.platformId, m]));
+  // (20) Barras EMPILHADAS: uma cor por plataforma — mostra a escala/ritmo.
+  const datasets = okMembers.map((m, i) => {
+    const by = new Map(m.plan.days.map(d => [d.key, fromCents(d.plannedC)]));
+    return {
+      type: 'bar',
+      label: m.name,
+      data: keys.map(k => (by.has(k) ? by.get(k) : 0)),
+      backgroundColor: PALETTE[i % PALETTE.length],
+      borderColor: keys.map((k, idx) => (idx === maxIdx ? '#0f172a' : 'rgba(0,0,0,0)')),
+      borderWidth: keys.map((k, idx) => (idx === maxIdx ? 2 : 0)),
+      stack: 'grupo',
+      yAxisID: 'y',
+      order: 2
+    };
+  });
+  // Linha: Rollover previsto do grupo (soma: Rollover de hoje + entradas
+  // até o dia − apostado planejado até o dia, de cada plataforma).
+  let hasLine = false;
+  const line = keys.map(() => 0);
+  okMembers.forEach(m => {
+    const src = srcById.get(m.platformId);
+    if (!src || src.rolloverC === null) return;
+    hasLine = true;
+    const proj = computePlanProjections(m.plan.days, { startRolloverC: src.rolloverC, inflows: src.inflows || [] });
+    const byKey = new Map(m.plan.days.map((d, idx) => [d.key, proj.rollover[idx]]));
+    let last = src.rolloverC + (src.inflows || []).filter(x => keys.length && x.key < keys[0]).reduce((s2, x) => s2 + x.valueC, 0);
+    keys.forEach((k, idx) => {
+      if (byKey.has(k)) last = byKey.get(k);
+      line[idx] += Math.max(0, last);
+    });
+  });
+  if (hasLine) {
+    datasets.push({
+      type: 'line',
+      label: 'Rollover previsto (grupo)',
+      data: line.map(fromCents),
+      borderColor: '#f59e0b',
+      backgroundColor: '#f59e0b',
+      pointRadius: keys.length > 30 ? 0 : 2,
+      tension: 0.25,
+      yAxisID: 'y1',
+      order: 1
+    });
   }
+  const tooltip = {
+    callbacks: {
+      label: (c) => `${c.dataset.label}: ${formatCurrency(c.parsed.y)}`,
+      afterBody: (items) => {
+        const d = lastGroup && lastGroup.res.days[items[0].dataIndex];
+        if (!d) return [];
+        return [`Total do dia: ${formatCurrency(fromCents(d.plannedC))} · ${d.platforms} plataforma(s)${items[0].dataIndex === maxIdx ? ' · 🔝 dia mais alto' : ''}`];
+      }
+    }
+  };
+  if (chart) chart.destroy();
   chart = new window.Chart(canvas, {
     data: { labels, datasets },
     options: {
@@ -2205,29 +2312,16 @@ function renderGroupChart(res) {
       maintainAspectRatio: false,
       animation: false,
       interaction: { mode: 'index', intersect: false },
-      plugins: {
-        legend: { labels: { boxWidth: 12 } },
-        tooltip: {
-          callbacks: {
-            label: (c) => `${c.dataset.label}: ${formatCurrency(c.parsed.y)}`,
-            afterBody: (items) => {
-              if (lastGroup && isGroupMode()) {
-                const d = lastGroup.res.days[items[0].dataIndex];
-                return d ? [`${d.platforms} plataforma(s)`] : [];
-              }
-              const d = lastPlan && lastPlan.plan.days[items[0].dataIndex];
-              return d ? [TIER_LABEL[d.tier], describeLines(d.lines)] : [];
-            }
-          }
-        }
-      },
+      // Plataforma sem aposta no dia não aparece no tooltip.
+      plugins: { legend: { labels: { boxWidth: 12 } }, tooltip: { ...tooltip, filter: (item) => item.dataset.type === 'line' || Number(item.parsed.y) > 0 } },
       scales: {
-        x: { ticks: { maxRotation: 0, autoSkip: true, autoSkipPadding: 8 } },
-        y: { beginAtZero: true, position: 'left' },
-        y1: { beginAtZero: true, position: 'right', display: false, grid: { drawOnChartArea: false } }
+        x: { stacked: true, ticks: { maxRotation: 0, autoSkip: true, autoSkipPadding: 8 } },
+        y: { stacked: true, beginAtZero: true, position: 'left' },
+        y1: { beginAtZero: true, position: 'right', display: hasLine, grid: { drawOnChartArea: false } }
       }
     }
   });
+  chart.__group = true;
 }
 
 function renderGroupActions() {
