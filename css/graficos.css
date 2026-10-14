@@ -2276,3 +2276,211 @@
 .cycle-row-unstable { background: #fffbeb; border-color: #fde68a; }
 .cycle-actions { padding: 0.6rem 1.1rem 0; }
 @media (max-width: 640px) { .cycle-actions { padding-left: 0.6rem; padding-right: 0.6rem; } }
+
+/* ============================================================
+   (Sub-entrega 19) Planejador — Intercalar e plano de GRUPO;
+   Rotinas — 👥 Membros, participação, 🏆; aba 🏆 Grupos (.gr-*)
+   Só acréscimos — nenhuma regra acima foi alterada.
+   ============================================================ */
+.plan-weekmode { margin-top: 0.35rem; }
+
+.plan-group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0 1.1rem 0.6rem;
+}
+
+.plan-group-row {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.plan-group-row-err { background: #fef2f2; border-color: #fecaca; }
+
+.plan-group-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.6rem;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.plan-group-name { font-weight: 800; color: #0f172a; min-width: 0; overflow-wrap: anywhere; flex: 1 1 140px; }
+.plan-group-meta { font-size: 0.78rem; color: #64748b; }
+.plan-group-err { color: #b91c1c; font-weight: 700; flex: 1 1 100%; }
+.plan-group-total { margin-left: auto; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.plan-group-days {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0 0.6rem 0.6rem;
+}
+
+/* Rotinas — 👥 Membros / participação */
+.rt-comp { font-weight: 700; color: #0f172a; }
+
+.rt-members {
+  padding: 0.5rem 0.7rem;
+  border: 1px dashed rgba(15, 23, 42, 0.18);
+  border-radius: 12px;
+}
+
+.rt-members summary {
+  cursor: pointer;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+  color: #2563eb;
+}
+
+.rt-members[open] { display: flex; flex-direction: column; gap: 0.45rem; }
+
+.rt-member-row,
+.rt-mc-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  min-width: 0;
+}
+
+.rt-member-name { font-weight: 700; color: #0f172a; flex: 1 1 120px; min-width: 0; overflow-wrap: anywhere; }
+
+.rt-member-dates {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.rt-member-dates .plan-input { flex: 1 1 0; min-width: 0; min-height: 38px; padding: 0.35rem 0.5rem; }
+.rt-member-del { flex: 0 0 auto; }
+
+.rt-mc-box { width: min(100%, 520px); }
+.rt-mc-list summary { cursor: pointer; min-height: 36px; display: flex; align-items: center; font-weight: 700; color: #2563eb; }
+.rt-mc-row .plan-chips { flex: 1 1 100%; }
+
+/* Aba 🏆 Grupos */
+.gr-ranking {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.6rem 1.1rem 0.4rem;
+}
+
+.gr-row {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-left: 5px solid #2563eb;
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.gr-row-archived { background: #f8fafc; }
+
+.gr-row-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 52px;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.gr-pos { flex: 0 0 2rem; font-size: 1.15rem; font-weight: 800; text-align: center; color: #475569; }
+.gr-name-box { display: flex; flex-direction: column; gap: 0.1rem; flex: 1 1 auto; min-width: 0; }
+.gr-name { font-weight: 800; color: #0f172a; overflow-wrap: anywhere; }
+.gr-sub { font-size: 0.76rem; color: #64748b; }
+.gr-value { flex: 0 0 auto; font-weight: 800; font-size: 1rem; font-variant-numeric: tabular-nums; white-space: nowrap; color: #15803d; }
+.gr-neg { color: #b91c1c !important; }
+.gr-pos-v { color: #15803d; }
+
+.gr-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0 0.75rem 0.75rem;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.gr-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.4rem;
+  padding-top: 0.6rem;
+}
+
+.gr-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 10px;
+  background: #f8fafc;
+  min-width: 0;
+}
+
+.gr-stat-label { font-size: 0.72rem; color: #64748b; font-weight: 700; }
+.gr-stat-value { font-weight: 800; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
+.gr-members summary { cursor: pointer; min-height: 36px; display: flex; align-items: center; font-weight: 700; color: #2563eb; font-size: 0.84rem; }
+.gr-member { display: flex; justify-content: space-between; gap: 0.6rem; padding: 0.3rem 0; border-bottom: 1px solid rgba(15, 23, 42, 0.05); font-size: 0.84rem; }
+.gr-member-name { font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
+.gr-member-val { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.gr-archived {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 12px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+}
+
+.gr-chart { height: 300px; }
+
+@media (max-width: 640px) {
+  .plan-group-list,
+  .gr-ranking { padding-left: 0.6rem; padding-right: 0.6rem; }
+  .gr-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gr-chart { height: 250px; }
+  .rt-member-dates { flex-basis: 100%; }
+}
+.gr-toggle { padding: 0 1.1rem 0.2rem; }
+@media (max-width: 640px) { .gr-toggle { padding-left: 0.6rem; padding-right: 0.6rem; } }
+
+/* (Sub-entrega 20) 🔒 Guardar rollover */
+.plan-kpi-reserve { background: #fffbeb; border-color: #fcd34d; }
+.plan-group-reserve {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0 0.6rem 0.6rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 10px;
+  background: #fffbeb;
+  border: 1px dashed #fcd34d;
+}
