@@ -82,6 +82,13 @@
 // game-catalog-store.js): biblioteca de jogos, provedores e valores de
 // aposta. Sem Chart.js: monta na primeira abertura (como Rotinas). Grava só
 // gameCatalog/gameConfig — nunca em plataformas.
+//
+// === (🏆 Grupos — Sub-entrega 19) ===
+// Aba "🏆 Grupos" (ui-grupos.js + group-compare-logic.js): ranking dos
+// grupos (rotinas 🏆 + grupos encerrados) com alternância rápida de
+// métrica, filtro de período, gráficos de comparação e grupos encerrados
+// (editar/excluir). Usa Chart.js — monta SOB DEMANDA. Grava só
+// groupArchive (edição de grupo encerrado) — nunca em plataformas.
 
 import { state } from './state.js';
 import { formatCurrency } from './utils.js';
@@ -102,6 +109,7 @@ import {
   mountCalendarioAnalytics, refreshCalendarioAnalytics, resizeCalendarioAnalytics, unmountCalendarioAnalytics
 } from './ui-calendario-analytics.js';
 import { mountGameCatalog, refreshGameCatalog, unmountGameCatalog } from './ui-game-catalog.js';
+import { mountGrupos, refreshGrupos, resizeGrupos, unmountGrupos } from './ui-grupos.js';
 
 let dailyTimer = null;
 let chartJsLoadPromise = null;
@@ -123,7 +131,7 @@ let misteriosoTemplates = [];
 let bonusContextConfirmed = false; // (Sub-entrega E)
 
 // (Análises — Sub-entrega 1)
-const GRAFICOS_TABS = ['geral', 'analises', 'apostado', 'planejador', 'rotinas', 'misterioso', 'calendario', 'jogos'];
+const GRAFICOS_TABS = ['geral', 'analises', 'apostado', 'planejador', 'rotinas', 'grupos', 'misterioso', 'calendario', 'jogos'];
 let activeGraficosTab = 'geral'; // lembrada durante a sessão
 let analiseMounted = false;
 let analiseMountPromise = null;
@@ -136,6 +144,8 @@ let misteriosoMountPromise = null;
 let calendarioMounted = false; // (Calendário — Sub-entrega 8b)
 let calendarioMountPromise = null;
 let jogosMounted = false; // (Jogos — Sub-entrega 9)
+let gruposMounted = false; // (🏆 Grupos — Sub-entrega 19)
+let gruposMountPromise = null;
 
 function loadChartJsScript() {
   if (window.Chart) return Promise.resolve();
@@ -650,6 +660,36 @@ function ensureCalendarioMounted(container, token) {
   return calendarioMountPromise;
 }
 
+// (🏆 Grupos — Sub-entrega 19) Mesmo padrão de ensurePlanejadorMounted.
+function ensureGruposMounted(container, token) {
+  if (gruposMounted) return Promise.resolve();
+  if (gruposMountPromise) return gruposMountPromise;
+
+  gruposMountPromise = loadChartJsScript()
+    .then(() => {
+      if (token !== mountToken) return;
+      if (activeGraficosTab !== 'grupos') return;
+      const root = container.querySelector('#graficosGruposRoot');
+      if (!root) return;
+      mountGrupos(root, { resolveCtx: resolveCtxForPlatform, contextConfirmed: bonusContextConfirmed });
+      gruposMounted = true;
+    })
+    .catch(err => {
+      console.error('Grupos: não foi possível carregar o Chart.js:', err);
+      if (token !== mountToken) return;
+      const root = container.querySelector('#graficosGruposRoot');
+      if (root) {
+        root.innerHTML = '<p class="graficos-note graficos-note-warn"></p>';
+        root.firstElementChild.textContent = 'Não foi possível carregar a biblioteca de gráficos. Verifique a internet e abra a aba de novo.';
+      }
+    })
+    .finally(() => {
+      gruposMountPromise = null;
+    });
+
+  return gruposMountPromise;
+}
+
 function applyGraficosTab(container, token) {
   if (!GRAFICOS_TABS.includes(activeGraficosTab)) activeGraficosTab = 'geral';
 
@@ -696,6 +736,13 @@ function applyGraficosTab(container, token) {
         mountRotinas(root, { resolveCtx: resolveCtxForPlatform, contextConfirmed: bonusContextConfirmed });
         rotinasMounted = true;
       }
+    }
+  } else if (activeGraficosTab === 'grupos') {
+    if (gruposMounted) {
+      resizeGrupos();
+      refreshGrupos();
+    } else {
+      ensureGruposMounted(container, token);
     }
   } else if (activeGraficosTab === 'misterioso') {
     if (misteriosoMounted) {
@@ -765,6 +812,7 @@ function scheduleDailyUpdate() {
     refreshRotinas(); // (Rotinas) idem — grava o dia que fechou
     refreshMisterioso(); // (Misterioso) idem
     refreshCalendarioAnalytics(); // (Calendário) idem — guarda o dia que fechou
+    refreshGrupos(); // (🏆 Grupos) idem
     scheduleDailyUpdate();
   }, nextMidnight - now);
 }
@@ -783,6 +831,8 @@ export async function mount(container) {
   calendarioMounted = false;
   calendarioMountPromise = null;
   jogosMounted = false;
+  gruposMounted = false; // (19)
+  gruposMountPromise = null;
   container.innerHTML = `
     <div class="page-header">
       <div class="page-header-text">
@@ -800,6 +850,7 @@ export async function mount(container) {
       <button type="button" class="vip-tab-btn graficos-tab-btn" role="tab" data-tab="apostado">Total Apostado</button>
       <button type="button" class="vip-tab-btn graficos-tab-btn" role="tab" data-tab="planejador">Planejador</button>
       <button type="button" class="vip-tab-btn graficos-tab-btn" role="tab" data-tab="rotinas">Rotinas</button>
+      <button type="button" class="vip-tab-btn graficos-tab-btn" role="tab" data-tab="grupos">🏆 Grupos</button>
       <button type="button" class="vip-tab-btn graficos-tab-btn" role="tab" data-tab="misterioso">Misterioso</button>
       <button type="button" class="vip-tab-btn graficos-tab-btn" role="tab" data-tab="calendario">Calendário</button>
       <button type="button" class="vip-tab-btn graficos-tab-btn" role="tab" data-tab="jogos">Jogos</button>
@@ -920,6 +971,10 @@ export async function mount(container) {
       <div id="graficosRotinasRoot"></div>
     </div>
 
+    <div class="graficos-tab-panel app-hidden" data-tab-panel="grupos" role="tabpanel">
+      <div id="graficosGruposRoot"></div>
+    </div>
+
     <div class="graficos-tab-panel app-hidden" data-tab-panel="misterioso" role="tabpanel">
       <div id="graficosMisteriosoRoot"></div>
     </div>
@@ -1013,4 +1068,8 @@ export function unmount() {
   // (Jogos)
   unmountGameCatalog();
   jogosMounted = false;
+  // (🏆 Grupos)
+  unmountGrupos();
+  gruposMounted = false;
+  gruposMountPromise = null;
 }

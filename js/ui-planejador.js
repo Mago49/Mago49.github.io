@@ -83,6 +83,33 @@
 // - Plano: dias fora do ciclo (params.pauseKeys) são pulados; a previsão
 //   do ciclo aparece abaixo da plataforma.
 // - Caixa: ciclo encerrado não conta ativação semanal até a volta prevista.
+//
+// === (Sub-entrega 19) ===
+// a) SEMPRE ASSIM / INTERCALAR (abaixo dos dias da semana): Intercalar =
+//    1 dia por semana, revezando entre os dias marcados (plan-logic.js).
+//    A curva continua variando os valores nos dois modos.
+// b) PLANO DE GRUPO: o seletor ganha "👥 Grupos" (rotinas com 2+
+//    plataformas). Mesmos controles pra todas; por plataforma, sozinho:
+//    meta = Rollover × peso (⚡), dias proibidos/emissão/fora do ciclo,
+//    épocas. Escala: o pico (Onda/Pulso), o sorteio (Caos) e o revezamento
+//    (Intercalar) de cada plataforma começam em pontos diferentes. Piso do
+//    grupo: valor único ou sem piso. Rotina de aposta: "Seguir os dias da
+//    rotina" (ligado por padrão). Prévia: total somado por dia + lista das
+//    plataformas (toque pra ver os dias). Salvar/Excluir = UM lote
+//    (plan-store.js saveGroupPlans/deleteGroupPlans) — 1 plano por
+//    plataforma, marcado com o grupo (Calendário/Aderência leem igual).
+// c) Editar SOZINHA uma plataforma que está num plano de grupo: aviso —
+//    salvar tira ela do grupo.
+// d) Trocar de plataforma/grupo com alterações não salvas pergunta antes.
+//
+// === (Sub-entrega 20) ===
+// a) 🔒 GUARDAR ROLLOVER (plan-logic.js applyReserve): Não guardar · Tudo ·
+//    R$ · %. Tudo = a meta cobre só os depósitos de ATIVAÇÃO previstos no
+//    período (rotinas 🗓️/🎁). A meta é recalculada quando você mexe na
+//    opção, em "Usar Rollover/projetado" e em "Recalcular". No GRUPO, cada
+//    plataforma tem a sua (toque na linha dela) e o grupo mostra o total
+//    "🔒 Guardado pra jogar depois".
+// b) ↻ Recalcular grupo a partir de amanhã (metas com o Rollover de agora).
 
 import { state } from './state.js';
 import { formatCurrency, showAppAlert, showAppConfirm } from './utils.js';
@@ -94,7 +121,8 @@ import {
   CURVES, WEEKDAY_LABELS, PLAN_MAX_DAYS, CAUTION_PRESET,
   buildPlan, computePlanProjections, planToDoc, sanitizeParams, sameParams,
   computeGoalProgress, getCautionStatus, computeCautionStats,
-  addDaysKey, toCents, fromCents, EMISSION_CYCLE_DAYS, emissionKeysInRange
+  addDaysKey, toCents, fromCents, EMISSION_CYCLE_DAYS, emissionKeysInRange,
+  WEEK_MODES, buildGroupPlan, RESERVE_MODES, cleanReserve, applyReserve
 } from './plan-logic.js';
 import { getPlatformSpeed, dayBoostsFor, formatMult } from './speed-logic.js';
 import { openSpeedEditor } from './ui-speed.js';
@@ -106,10 +134,11 @@ import {
   loadPlannerData, isPlannerLoaded, getSavedPlan, getSavedPlanIds, getPalette,
   getInvalidPlanCount, savePlan, deletePlan, savePalette,
   getPlannerSettings, savePlannerSettings, getStrategySettings, getCalendarSettings, getSavedPlans,
-  getStrategyPriority, getSpeedConfig, getNewPlatformsConfig, saveStrategySettings
+  getStrategyPriority, getSpeedConfig, getNewPlatformsConfig, saveStrategySettings,
+  saveGroupPlans, deleteGroupPlans
 } from './plan-store.js';
 import { loadRoutineData, isRoutinesLoaded, getRoutines } from './routine-store.js';
-import { forbiddenBetDays, routineBetDays, betRoutinesFor, ROUTINE_HISTORY_DAYS, depositRoutineInflows } from './routine-logic.js';
+import { forbiddenBetDays, routineBetDays, betRoutinesFor, ROUTINE_HISTORY_DAYS, depositRoutineInflows, isPlanGroup } from './routine-logic.js';
 import { buildMisteriosoStrategy, projectMisteriosoInflows } from './strategy-logic.js';
 import { computeAdherence } from './calendar-logic.js';
 import { loadPlanLogs, isPlanLogLoaded, getPlanLogEntry } from './plan-log-store.js';
@@ -134,6 +163,9 @@ let lastPlan = null;   // último resultado de buildPlan (pra salvar exatamente 
 let world = null;      // dados do sistema da plataforma escolhida
 let routinesFailed = false; // (5b) rotinas não carregadas
 let cashPeriod = 'week';     // (11b) período do Caixa (sessão)
+let lastGroup = null;        // (19) último resultado de buildGroupPlan na tela
+let openGroupRows = new Set(); // (19) plataformas abertas na lista do grupo
+let formSnap = null;         // (19) foto do formulário ao escolher/salvar
 
 // Formulário (sessão). Datas preenchidas no primeiro mount.
 const form = {
@@ -155,8 +187,29 @@ const form = {
   followRoutineId: null,
   goal: { mode: 'none', valueText: '', baseBalance: 0 },
   // (11a) dias do ciclo com emissão do Misterioso em que NÃO apostar
-  skipEmissions: []
+  skipEmissions: [],
+  // (19)
+  weekMode: 'all',
+  groupId: null,          // rotina do plano de grupo (modo grupo)
+  followGroup: true,      // grupo de rotina de aposta: seguir os dias dela
+  groupFloorMode: 'none', // 'manual' | 'none'
+  groupFloor: '',
+  phase: 0,               // escala herdada do plano de grupo (modo plataforma)
+  phaseCount: 1,
+  groupRef: null,         // { routineId, name } do plano salvo (modo plataforma)
+  // (20) 🔒 Guardar rollover
+  reserve: { mode: 'none', valueText: '' },
+  reservedC: 0,
+  groupReserve: {}        // { [platformId]: { mode, valueText } } (modo grupo)
 };
+
+function isGroupMode() {
+  return !!form.groupId;
+}
+
+function snapForm() {
+  return JSON.stringify(form);
+}
 
 // ---------- helpers ----------
 
@@ -330,8 +383,51 @@ function currentParams() {
     ...routineKeysFor(form.startKey, form.endKey),
     goal: currentGoal(),
     // (11a)
-    ...speedAndEmissionKeys(form.startKey, form.endKey)
+    ...speedAndEmissionKeys(form.startKey, form.endKey),
+    // (19)
+    weekMode: form.weekMode,
+    phase: form.phase,
+    phaseCount: form.phaseCount,
+    group: form.groupRef,
+    // (20)
+    reserve: reserveFromForm(form.reserve),
+    reservedC: form.reservedC
   };
+}
+
+// (20) { mode, valueText } -> { mode, value } limpo.
+function reserveFromForm(r) {
+  const mode = r && r.mode ? r.mode : 'none';
+  const v = mode === 'pct' ? Number(String(r.valueText || '').replace(',', '.')) : parseMoneyInput(r && r.valueText);
+  return cleanReserve({ mode, value: Number.isFinite(v) ? v : 0 });
+}
+
+function reserveToForm(r) {
+  const c = cleanReserve(r);
+  return { mode: c.mode, valueText: c.mode === 'value' ? fmtMoneyInput(c.value) : (c.mode === 'pct' ? String(c.value).replace('.', ',') : '') };
+}
+
+// (20) Depósitos de ATIVAÇÃO previstos (rotinas 🗓️ semanal / 🎁 mensal)
+// da plataforma, de hoje até endKey — centavos.
+function activationC(platform, endKey) {
+  if (!platform || !endKey || !isRoutinesLoaded(state.currentUid)) return 0;
+  const acts = getRoutines().filter(r => r.action === 'deposit' && ['semanal', 'mensal'].includes(r.depositKind));
+  if (!acts.length) return 0;
+  return depositRoutineInflows(acts, platform, todayKey(), endKey).items.reduce((sum, x) => sum + x.valueC, 0);
+}
+
+// (20) Aplica o "Guardar" sobre uma base (Rollover × peso, ou projetado)
+// e grava meta + guardado no formulário (modo plataforma).
+function setTargetFromBase(baseC) {
+  const platform = findPlatform(form.platformId);
+  const res = applyReserve(baseC, reserveFromForm(form.reserve), activationC(platform, form.endKey));
+  form.reservedC = res.reservedC;
+  form.target = res.targetC > 0 ? fmtMoneyInput(fromCents(res.targetC)) : '';
+}
+
+function reapplyReserve() {
+  if (!world || world.rolloverC === null) return;
+  setTargetFromBase(Math.round(world.rolloverC * speedBase()));
 }
 
 // (11a) Dias de emissão a pular + multiplicadores das épocas no período.
@@ -393,6 +489,12 @@ function applyParamsToForm(params) {
   form.buy = { enabled: p.buy.enabled, multiplier: p.buy.multiplier || 100 };
   form.followRoutineId = p.followRoutineId || null;
   form.skipEmissions = (p.skipEmissions || []).slice();
+  form.weekMode = p.weekMode;
+  form.phase = p.phase;
+  form.phaseCount = p.phaseCount;
+  form.groupRef = p.group;
+  form.reserve = reserveToForm(p.reserve);
+  form.reservedC = p.reservedC || 0;
   form.goal = {
     mode: p.goal.mode,
     valueText: p.goal.mode === 'percent' ? String(p.goal.value).replace('.', ',') : fmtMoneyInput(p.goal.value),
@@ -423,9 +525,10 @@ function renderSkeleton() {
           <select id="planPlatform" class="plan-input"></select>
           <p id="planPlatformInfo" class="plan-hint"></p>
           <p id="planCycleInfo" class="plan-hint"></p>
+          <p id="planGroupInfo" class="plan-hint app-hidden"></p>
         </div>
 
-        <div class="plan-field">
+        <div class="plan-field" id="planTargetField">
           <label for="planTarget">Meta (R$)</label>
           <div class="plan-row">
             <input type="text" id="planTarget" class="plan-input" inputmode="decimal" autocomplete="off" placeholder="Ex.: 1.500,00" />
@@ -433,6 +536,13 @@ function renderSkeleton() {
           </div>
           <button type="button" id="planUseProjected" class="bet-manage-btn app-hidden">Usar projetado</button>
           <p id="planRolloverHint" class="plan-hint"></p>
+        </div>
+
+        <div class="plan-field" id="planReserveField">
+          <span class="plan-label">🔒 Guardar rollover <small>pra jogar depois</small></span>
+          <div id="planReserveModes" class="plan-chips" role="group" aria-label="Guardar rollover"></div>
+          <input type="text" id="planReserveValue" class="plan-input app-hidden" inputmode="decimal" autocomplete="off" aria-label="Quanto guardar" />
+          <p id="planReserveHint" class="plan-hint"></p>
         </div>
 
         <div class="plan-field">
@@ -448,9 +558,16 @@ function renderSkeleton() {
         <div class="plan-field">
           <span class="plan-label">Dias de aposta <small>(toque pra marcar folga)</small></span>
           <div id="planWeekdays" class="plan-chips" role="group" aria-label="Dias da semana"></div>
+          <div id="planWeekMode" class="plan-chips plan-weekmode" role="group" aria-label="Como usar os dias"></div>
+          <p id="planWeekModeHint" class="plan-hint"></p>
         </div>
 
-        <div class="plan-field">
+        <div class="plan-field app-hidden" id="planGroupFollowField">
+          <label class="plan-toggle"><input type="checkbox" id="planGroupFollow" /> Seguir os dias desta rotina</label>
+          <p id="planGroupFollowHint" class="plan-hint"></p>
+        </div>
+
+        <div class="plan-field" id="planFollowField">
           <label for="planFollow">Seguir rotina <small>opcional</small></label>
           <select id="planFollow" class="plan-input"></select>
           <p id="planFollowHint" class="plan-hint"></p>
@@ -462,7 +579,7 @@ function renderSkeleton() {
           <p id="planSkipHint" class="plan-hint"></p>
         </div>
 
-        <div class="plan-field">
+        <div class="plan-field" id="planSpeedField">
           <span class="plan-label">⚡ Velocidade</span>
           <div class="plan-row">
             <span id="planSpeedInfo" class="plan-hint plan-speed-info"></span>
@@ -494,6 +611,7 @@ function renderSkeleton() {
           <span class="plan-label">Piso diário</span>
           <div id="planFloorModes" class="plan-chips" role="group" aria-label="Piso diário"></div>
           <input type="text" id="planFloor" class="plan-input app-hidden" inputmode="decimal" autocomplete="off" placeholder="Ex.: 12,00" aria-label="Piso diário manual" />
+          <input type="text" id="planGroupFloor" class="plan-input app-hidden" inputmode="decimal" autocomplete="off" placeholder="Ex.: 5,00 (vale pra todas)" aria-label="Piso diário do grupo" />
           <p id="planFloorHint" class="plan-hint"></p>
         </div>
 
@@ -520,7 +638,7 @@ function renderSkeleton() {
           <div id="planBuyMult" class="plan-chips app-hidden" role="group" aria-label="Multiplicador"></div>
         </div>
 
-        <div class="plan-field">
+        <div class="plan-field" id="planGoalField">
           <span class="plan-label">Meta de ganho <small>opcional — só referência</small></span>
           <div id="planGoalModes" class="plan-chips" role="group" aria-label="Meta de ganho"></div>
           <input type="text" id="planGoalValue" class="plan-input app-hidden" inputmode="decimal" autocomplete="off" aria-label="Valor da meta de ganho" />
@@ -535,7 +653,7 @@ function renderSkeleton() {
             <p id="planStatusLine" class="plan-hint"></p>
           </div>
         </div>
-        <div class="plan-radar">
+        <div class="plan-radar" id="planRadar">
           <div id="planCaution"></div>
           <div id="planAdherence"></div>
           <div id="planGoalCard"></div>
@@ -544,6 +662,7 @@ function renderSkeleton() {
         <p id="planError" class="graficos-note graficos-note-warn app-hidden"></p>
         <div id="planWarnings"></div>
         <div id="planChartWrap" class="chart-wrap plan-chart"><canvas id="planChart"></canvas></div>
+        <div id="planGroupList" class="plan-group-list app-hidden"></div>
         <div id="planDays" class="plan-days"></div>
         <div class="plan-actions">
           <button type="button" id="planSave" class="btn-confirm">💾 Salvar plano</button>
@@ -652,16 +771,55 @@ function fillPlatformSelect() {
   if (!select) return;
   const saved = new Set(getSavedPlanIds());
   select.replaceChildren();
-  const ph = el('option', '', 'Escolha a plataforma…');
+  const ph = el('option', '', 'Escolha a plataforma ou o grupo…');
   ph.value = '';
   select.appendChild(ph);
+  // (19) Grupos: rotinas com 2+ plataformas que existem.
+  const groups = planGroups();
+  if (groups.length) {
+    const og = el('optgroup');
+    og.label = '👥 Grupos (rotinas com 2+ plataformas)';
+    groups.forEach(g => {
+      const savedAll = g.ids.length && g.ids.every(id => { const sp = getSavedPlan(id); return sp && sp.params && sp.params.group && sp.params.group.routineId === g.routine.id; });
+      const o = el('option', '', `👥 ${g.routine.emoji ? `${g.routine.emoji} ` : ''}${g.routine.name} (${g.ids.length})${savedAll ? ' • plano salvo' : ''}`);
+      o.value = `g:${g.routine.id}`;
+      og.appendChild(o);
+    });
+    select.appendChild(og);
+  }
+  const op = el('optgroup');
+  op.label = 'Plataformas';
   sortedPlatforms().forEach(p => {
-    const o = el('option', '', saved.has(p.id) ? `${p.name} • plano salvo` : p.name);
+    const sp = getSavedPlan(p.id);
+    const tag = sp ? (sp.params && sp.params.group ? ` • grupo ${sp.params.group.name || ''}`.trimEnd() : ' • plano salvo') : '';
+    const o = el('option', '', `${p.name}${tag}`);
     o.value = p.id;
-    select.appendChild(o);
+    op.appendChild(o);
   });
+  select.appendChild(op);
   if (form.platformId && !findPlatform(form.platformId)) form.platformId = null;
-  select.value = form.platformId || '';
+  if (form.groupId && !groups.some(g => g.routine.id === form.groupId)) form.groupId = null;
+  select.value = form.groupId ? `g:${form.groupId}` : (form.platformId || '');
+}
+
+// (19) Rotinas que valem como grupo (2+ plataformas existentes), por nome.
+function planGroups() {
+  if (!isRoutinesLoaded(state.currentUid)) return [];
+  const existing = new Set(state.platforms.map(p => p.id));
+  return getRoutines()
+    .filter(r => isPlanGroup(r, existing))
+    .map(r => ({ routine: r, ids: (r.platformIds || []).filter(id => existing.has(id)) }))
+    .sort((a, b) => String(a.routine.name).localeCompare(String(b.routine.name), 'pt-BR', { numeric: true }));
+}
+
+function currentGroup() {
+  return form.groupId ? planGroups().find(g => g.routine.id === form.groupId) || null : null;
+}
+
+// Plataformas do grupo em ordem alfabética (a ordem define a escala).
+function groupPlatforms(g) {
+  const ids = new Set(g ? g.ids : []);
+  return sortedPlatforms().filter(p => ids.has(p.id));
 }
 
 function renderChips() {
@@ -687,6 +845,29 @@ function renderChips() {
         schedulePreview(0);
       }));
     });
+  }
+  // (20) Guardar rollover (modo plataforma)
+  const rm = $('planReserveModes');
+  if (rm) {
+    rm.replaceChildren();
+    RESERVE_MODES.forEach(m => rm.appendChild(chip(m.label, form.reserve.mode === m.id, () => {
+      if (form.reserve.mode !== m.id) form.reserve = { mode: m.id, valueText: '' };
+      reapplyReserve();
+      renderChips();
+      syncInputs();
+      schedulePreview(0);
+    })));
+  }
+  // (19) Sempre assim / Intercalar
+  const wm = $('planWeekMode');
+  if (wm) {
+    wm.replaceChildren();
+    WEEK_MODES.forEach(m => wm.appendChild(chip(m.label, form.weekMode === m.id, () => {
+      form.weekMode = m.id;
+      renderChips();
+      syncInputs();
+      schedulePreview(0);
+    })));
   }
   // (11a) Dias de emissão a pular
   const skip = $('planSkipEm');
@@ -717,14 +898,26 @@ function renderChips() {
   const floors = $('planFloorModes');
   if (floors) {
     floors.replaceChildren();
-    [['auto', 'Mínimo do nível'], ['manual', 'Valor'], ['none', 'Sem piso']].forEach(([id, label]) => {
-      floors.appendChild(chip(label, form.floorMode === id, () => {
-        form.floorMode = id;
-        renderChips();
-        syncInputs();
-        schedulePreview(0);
-      }));
-    });
+    if (isGroupMode()) {
+      // (19) Grupo: valor único pra todas ou sem piso.
+      [['manual', 'Valor (todas)'], ['none', 'Sem piso']].forEach(([id, label]) => {
+        floors.appendChild(chip(label, form.groupFloorMode === id, () => {
+          form.groupFloorMode = id;
+          renderChips();
+          syncInputs();
+          schedulePreview(0);
+        }));
+      });
+    } else {
+      [['auto', 'Mínimo do nível'], ['manual', 'Valor'], ['none', 'Sem piso']].forEach(([id, label]) => {
+        floors.appendChild(chip(label, form.floorMode === id, () => {
+          form.floorMode = id;
+          renderChips();
+          syncInputs();
+          schedulePreview(0);
+        }));
+      });
+    }
   }
   // Valores de aposta
   const stakesBox = $('planStakes');
@@ -890,11 +1083,82 @@ function syncInputs() {
   }
   if (speedBtn) speedBtn.disabled = !platformNow;
 
+  syncGroupInputs();
+
   const palette = getPalette();
   const ps = $('planPaletteStakes');
   if (ps && document.activeElement !== ps) ps.value = palette.stakes.map(fmtStake).join('; ');
   const pm = $('planPaletteMult');
   if (pm && document.activeElement !== pm) pm.value = palette.buyMultipliers.join('; ');
+}
+
+// (19) Campos do modo grupo / Intercalar.
+function syncGroupInputs() {
+  const group = isGroupMode();
+  const g = currentGroup();
+  const hide = (id, h) => { const e = $(id); if (e) e.classList.toggle('app-hidden', h); };
+  hide('planTargetField', group);
+  hide('planFollowField', group);
+  hide('planSpeedField', group);
+  hide('planGoalField', group);
+  hide('planReserveField', group);
+  // (20) Guardar rollover (modo plataforma)
+  const rv = $('planReserveValue');
+  if (rv) {
+    const needs = form.reserve.mode === 'value' || form.reserve.mode === 'pct';
+    rv.classList.toggle('app-hidden', !needs);
+    rv.placeholder = form.reserve.mode === 'pct' ? 'Ex.: 50 (%)' : 'Ex.: 100,00';
+    if (document.activeElement !== rv && rv.value !== form.reserve.valueText) rv.value = form.reserve.valueText;
+  }
+  const ti = $('planTarget');
+  if (ti) ti.disabled = !group && form.reserve.mode !== 'none';
+  const rh = $('planReserveHint');
+  if (rh) {
+    const m = form.reserve.mode;
+    let t = 'O plano usa todo o Rollover na meta.';
+    if (m !== 'none') {
+      const g = formatCurrency(fromCents(form.reservedC));
+      t = m === 'all'
+        ? `🔒 Rollover inteiro guardado (${g}). A meta cobre só os depósitos de ativação previstos (rotinas 🗓️/🎁) até o fim do período.`
+        : `🔒 Guardado ${g} — a meta é o resto do Rollover.`;
+      if (!parseMoneyInput(form.target)) t += ' Sem nada a apostar no período.';
+    }
+    rh.textContent = t;
+  }
+  hide('planRadar', group);
+  const isBetGroup = !!(g && g.routine.action === 'bet');
+  hide('planGroupFollowField', !(group && isBetGroup));
+  const gf = $('planGroupFollow');
+  if (gf) gf.checked = form.followGroup;
+  const gfh = $('planGroupFollowHint');
+  if (gfh) gfh.textContent = isBetGroup ? (form.followGroup ? 'O plano usa só os dias em que a rotina vale (pra cada plataforma).' : 'Usa o período e os dias marcados.') : '';
+  const info = $('planGroupInfo');
+  if (info) {
+    info.classList.toggle('app-hidden', !group);
+    if (group && g) {
+      const plats = groupPlatforms(g);
+      info.textContent = `👥 ${plats.length} plataforma(s): ${plats.map(p => p.name).join(', ')}. Meta de cada uma = Rollover × peso (⚡). Escala: cada plataforma começa num ponto diferente da curva.`;
+    } else info.textContent = '';
+  }
+  // Piso do grupo
+  const fi = $('planFloor');
+  if (fi && group) fi.classList.add('app-hidden');
+  const gfi = $('planGroupFloor');
+  if (gfi) {
+    gfi.classList.toggle('app-hidden', !(group && form.groupFloorMode === 'manual'));
+    if (document.activeElement !== gfi && gfi.value !== form.groupFloor) gfi.value = form.groupFloor;
+  }
+  const fh = $('planFloorHint');
+  if (fh && group) fh.textContent = form.groupFloorMode === 'manual' ? 'Mesmo piso diário pra todas as plataformas do grupo.' : 'Sem piso: os dias baixos ficam livres pra curva.';
+  const sk = $('planSkipHint');
+  if (sk && group) sk.textContent = form.skipEmissions.length ? 'Vale pra cada plataforma do grupo, pelo ciclo de cada uma.' : 'Toque nos dias do ciclo em que o plano não deve apostar (vale pra todas, pelo ciclo de cada uma).';
+  // Sempre assim / Intercalar
+  const wh = $('planWeekModeHint');
+  if (wh) {
+    wh.textContent = form.weekMode === 'alternate'
+      ? 'Intercalar: 1 dia por semana, revezando entre os dias marcados (o valor da semana fica concentrado nele).'
+      : 'Sempre assim: aposta em todos os dias marcados, toda semana — os valores variam pela curva.';
+  }
 }
 
 function fillFollowSelect() {
@@ -1242,6 +1506,7 @@ function renderPlatformInfo() {
       const noWeekly = isRoutinesLoaded(state.currentUid) && !weeklyRoutinePlatformIds(getRoutines()).has(platform.id);
       info.textContent = `${lv} · grupo ${gr} · apostado ${formatCurrency(world ? world.wagerTotalNow : 0)}` +
         (saved ? ` · plano salvo em ${fmtFull(saved.updatedAt)}` : '') +
+        (form.groupRef ? ` · 👥 faz parte do plano do grupo ${form.groupRef.name || ''} — salvar alterações aqui tira ela do grupo` : '') +
         (noWeekly ? ' · ⚠ sem rotina 🗓️ de ativação semanal — fora do Caixa' : '');
     }
   }
@@ -1282,6 +1547,13 @@ function renderProjectedHint() {
 }
 
 function selectPlatform(id) {
+  // (19) "g:<rotina>" = plano de grupo.
+  if (id && String(id).startsWith('g:')) { selectGroup(String(id).slice(2)); return; }
+  form.groupId = null;
+  form.groupRef = null;
+  form.phase = 0;
+  form.phaseCount = 1;
+  lastGroup = null;
   form.platformId = id || null;
   const platform = findPlatform(form.platformId);
   world = computeWorld(platform);
@@ -1289,6 +1561,8 @@ function selectPlatform(id) {
   const saved = platform ? getSavedPlan(platform.id) : null;
   form.followRoutineId = null;
   form.skipEmissions = [];
+  form.reserve = { mode: 'none', valueText: '' };
+  form.reservedC = 0;
   if (saved) {
     applyParamsToForm(saved.params);
   } else if (platform && world && world.rolloverC !== null && world.rolloverC > 0 && !parseMoneyInput(form.target)) {
@@ -1298,6 +1572,54 @@ function selectPlatform(id) {
   syncInputs();
   renderPlatformInfo();
   renderCaution();
+  formSnap = snapForm();
+  schedulePreview(0);
+}
+
+// (19) Escolhe um GRUPO (rotina com 2+ plataformas).
+function selectGroup(routineId) {
+  form.groupId = routineId;
+  form.platformId = null;
+  form.groupRef = null;
+  form.phase = 0;
+  form.phaseCount = 1;
+  form.followRoutineId = null;
+  world = null;
+  lastPlan = null;
+  showAllDays = false;
+  openGroupRows = new Set();
+  const g = currentGroup();
+  if (!g) { form.groupId = null; selectPlatform(''); return; }
+  // Plano do grupo já salvo: os parâmetros comuns vêm do 1º membro salvo.
+  const saved = g.ids.map(id => getSavedPlan(id)).find(sp => sp && sp.params && sp.params.group && sp.params.group.routineId === routineId);
+  if (saved) {
+    applyParamsToForm(saved.params);
+    form.groupRef = null;
+    form.phase = 0;
+    form.phaseCount = 1;
+    form.followRoutineId = null;
+    form.goal = { mode: 'none', valueText: '', baseBalance: 0 };
+    const f = Number(saved.params.floor) || 0;
+    form.groupFloorMode = f > 0 ? 'manual' : 'none';
+    form.groupFloor = f > 0 ? fmtMoneyInput(f) : '';
+    form.followGroup = g.routine.action === 'bet' ? saved.params.followRoutineId === routineId : true;
+  } else {
+    form.followGroup = true;
+  }
+  // (20) Guardar rollover de cada plataforma (do plano salvo dela, se for deste grupo).
+  form.groupReserve = {};
+  g.ids.forEach(id => {
+    const sp = getSavedPlan(id);
+    if (sp && sp.params && sp.params.group && sp.params.group.routineId === routineId && sp.params.reserve) {
+      const r = reserveToForm(sp.params.reserve);
+      if (r.mode !== 'none') form.groupReserve[id] = r;
+    }
+  });
+  renderChips();
+  syncInputs();
+  renderPlatformInfo();
+  renderCaution();
+  formSnap = snapForm();
   schedulePreview(0);
 }
 
@@ -1325,11 +1647,22 @@ function bindControls() {
   controlsBound = true;
   const on = (id, ev, fn) => { const e = $(id); if (e) e.addEventListener(ev, fn); };
 
-  on('planPlatform', 'change', (e) => selectPlatform(e.target.value));
+  on('planPlatform', 'change', async (e) => {
+    const v = e.target.value;
+    // (19) Alterações não salvas: pergunta antes de trocar.
+    if ((form.platformId || form.groupId) && formSnap !== null && snapForm() !== formSnap) {
+      const ok = await showAppConfirm('Trocar sem salvar? As alterações feitas neste plano serão descartadas.');
+      if (!ok) { e.target.value = form.groupId ? `g:${form.groupId}` : (form.platformId || ''); return; }
+    }
+    selectPlatform(v);
+  });
+  on('planGroupFollow', 'change', (e) => { form.followGroup = e.target.checked; syncInputs(); schedulePreview(0); });
+  on('planGroupFloor', 'input', (e) => { form.groupFloor = e.target.value; schedulePreview(); });
+  on('planReserveValue', 'input', (e) => { form.reserve.valueText = e.target.value; reapplyReserve(); syncInputs(); schedulePreview(); });
   on('planTarget', 'input', (e) => { form.target = e.target.value; schedulePreview(); });
   on('planUseRollover', 'click', () => {
     if (!world || world.rolloverC === null) return;
-    form.target = fmtMoneyInput(fromCents(Math.round(world.rolloverC * speedBase())));
+    setTargetFromBase(Math.round(world.rolloverC * speedBase())); // (20) respeita o Guardar
     syncInputs();
     schedulePreview(0);
   });
@@ -1339,7 +1672,7 @@ function bindControls() {
     const inf = computeInflows(platform, form.endKey);
     const total = Math.round((world.rolloverC + inf.items.reduce((s, x) => s + x.valueC, 0)) * speedBase());
     if (total <= 0) return;
-    form.target = fmtMoneyInput(fromCents(total));
+    setTargetFromBase(total); // (20) respeita o Guardar
     syncInputs();
     schedulePreview(0);
   });
@@ -1411,6 +1744,7 @@ function describeLines(lines) {
 }
 
 function renderActions(plan) {
+  if (isGroupMode()) { renderGroupActions(); return; }
   const platform = findPlatform(form.platformId);
   const saved = platform ? getSavedPlan(platform.id) : null;
   const saveBtn = $('planSave');
@@ -1423,7 +1757,10 @@ function renderActions(plan) {
     saveBtn.textContent = saved ? '💾 Salvar alterações' : '💾 Salvar plano';
   }
   if (delBtn) delBtn.classList.toggle('app-hidden', !saved);
-  if (recalcBtn) recalcBtn.classList.toggle('app-hidden', !saved);
+  if (recalcBtn) {
+    recalcBtn.classList.toggle('app-hidden', !saved);
+    recalcBtn.textContent = '↻ Recalcular a partir de amanhã';
+  }
   if (status) {
     if (!platform) status.textContent = 'Escolha uma plataforma pra começar.';
     else if (!saved) status.textContent = 'Plano novo — ainda não salvo.';
@@ -1433,6 +1770,10 @@ function renderActions(plan) {
 
 function renderPreview() {
   if (!mounted || !rootEl || loadStatus !== 'ok') return;
+  const glist = $('planGroupList');
+  if (isGroupMode()) { renderGroupPreview(); return; }
+  if (glist) { glist.classList.add('app-hidden'); glist.replaceChildren(); }
+  lastGroup = null;
   renderPlatformInfo(); // (7b) o Rollover previsto depende do fim do período
   const errEl = $('planError');
   const kpis = $('planKpis');
@@ -1628,18 +1969,372 @@ function renderChart(plan, proj) {
   });
 }
 
+// ---------- (Sub-entrega 19) PLANO DE GRUPO ----------
+
+function groupBaseParams() {
+  const palette = getPalette();
+  const stakes = Array.isArray(form.stakes) && form.stakes.length
+    ? form.stakes.filter(x => palette.stakes.includes(x))
+    : palette.stakes.slice();
+  const cap = parseMoneyInput(form.cap);
+  const fl = form.groupFloorMode === 'manual' ? parseMoneyInput(form.groupFloor) : 0;
+  return {
+    startKey: form.startKey,
+    endKey: form.endKey,
+    weekdaysOff: form.weekdaysOff.slice(),
+    weekMode: form.weekMode,
+    curve: form.curve,
+    intensity: form.intensity,
+    rhythm: form.rhythm,
+    seed: form.seed,
+    floor: Number.isFinite(fl) && fl > 0 ? fl : 0,
+    cap: Number.isFinite(cap) && cap > 0 ? cap : null,
+    stakes,
+    buy: { enabled: form.buy.enabled, multiplier: form.buy.multiplier },
+    skipEmissions: form.skipEmissions.slice()
+  };
+}
+
+// Membros com meta (Rollover × peso) e dias bloqueados de CADA plataforma.
+function groupMembers(g) {
+  const routines = isRoutinesLoaded(state.currentUid) ? getRoutines() : [];
+  const speedCfg = getSpeedConfig();
+  const t = todayKey();
+  const now = new Date();
+  return groupPlatforms(g).map(p => {
+    let rolloverC = null;
+    if (contextConfirmed) {
+      try { rolloverC = toCents(computeRolloverLive(p, now, resolveCtx(p) || {})); } catch (err) { rolloverC = null; }
+    }
+    const base = getPlatformSpeed(speedCfg, p.id).base;
+    const valid = form.startKey && form.endKey && form.startKey <= form.endKey;
+    // (20) 🔒 Guardar rollover desta plataforma.
+    const reserve = reserveFromForm(form.groupReserve[p.id]);
+    const baseC = rolloverC === null ? 0 : Math.max(0, Math.round(rolloverC * base));
+    const res = rolloverC === null ? { targetC: 0, reservedC: 0 } : applyReserve(baseC, reserve, valid ? activationC(p, form.endKey) : 0);
+    const target = fromCents(res.targetC);
+    const m = {
+      platformId: p.id,
+      name: p.name,
+      target,
+      rolloverC,
+      speed: base,
+      reserve,
+      reservedC: res.reservedC,
+      excludeKeys: valid ? forbiddenBetDays(routines, p, form.startKey, form.endKey) : [],
+      skipEmissions: form.skipEmissions.slice(),
+      skipKeys: valid ? emissionKeysInRange(p, form.startKey, form.endKey, form.skipEmissions) : [],
+      pauseKeys: valid ? offCycleKeys(p, form.startKey, form.endKey, t) : [],
+      dayBoost: valid ? dayBoostsFor(speedCfg, p.id, form.startKey, form.endKey) : {}
+    };
+    if (g.routine.action === 'bet' && form.followGroup && valid) {
+      m.followRoutineId = g.routine.id;
+      m.onlyKeys = routineBetDays(g.routine, p, form.startKey, form.endKey);
+    }
+    return m;
+  });
+}
+
+function savedGroupIds(g) {
+  return (g ? g.ids : []).filter(id => {
+    const sp = getSavedPlan(id);
+    return sp && sp.params && sp.params.group && sp.params.group.routineId === g.routine.id;
+  });
+}
+
+function renderGroupPreview() {
+  const errEl = $('planError');
+  const kpis = $('planKpis');
+  const warnBox = $('planWarnings');
+  const daysBox = $('planDays');
+  const chartWrap = $('planChartWrap');
+  const list = $('planGroupList');
+  const g = currentGroup();
+  lastPlan = null;
+  if (daysBox) daysBox.replaceChildren();
+  if (!g) { lastGroup = null; renderGroupActions(); return; }
+  const members = groupMembers(g);
+  const unchanged = formSnap !== null && snapForm() === formSnap && savedGroupIds(g).length > 0;
+  const res = buildGroupPlan(groupBaseParams(), members, { routineId: g.routine.id, name: g.routine.name }, unchanged ? null : todayKey());
+  // Motivo amigável pra quem ficou sem meta.
+  res.members.forEach((m, i) => {
+    if (m.plan) return;
+    const src = members[i];
+    if (src.rolloverC === null) m.error = 'Rollover indisponível (configurações de bônus não carregadas).';
+    else if (!(src.target > 0)) m.error = src.reserve.mode === 'all'
+      ? '🔒 Rollover guardado e sem depósito de ativação no período — nada a apostar.'
+      : (src.reservedC > 0 ? '🔒 Todo o Rollover ficou guardado — nada a apostar.' : 'Sem Rollover — nada a planejar.');
+  });
+  lastGroup = { group: g, res, members };
+  if (errEl) {
+    errEl.textContent = res.ok ? '' : (res.error || 'Não foi possível montar o plano do grupo.');
+    errEl.classList.toggle('app-hidden', res.ok);
+  }
+  // Mesma validação de período pra todas: mostra o erro comum uma vez só.
+  if (!res.ok && res.members.length && res.members.every(m => m.error === res.members[0].error) && errEl) {
+    errEl.textContent = res.members[0].error;
+  }
+  if (kpis) {
+    kpis.replaceChildren();
+    if (res.totals) {
+      kpis.appendChild(kpi('Planejado (grupo)', formatCurrency(fromCents(res.totals.plannedC)), `meta ${formatCurrency(fromCents(res.totals.targetC))}`, 'plan-kpi-main'));
+      kpis.appendChild(kpi('Plataformas', `${res.totals.okCount} de ${res.members.length}`, res.totals.failCount ? `${res.totals.failCount} fora (motivo na lista)` : 'todas com plano'));
+      // (20) 🔒 total guardado pelo grupo
+      kpis.appendChild(kpi('🔒 Guardado pra jogar depois', formatCurrency(fromCents(res.totals.reservedC)), res.totals.reservingCount ? `${res.totals.reservingCount} plataforma(s) guardando` : 'nenhuma plataforma guardando', 'plan-kpi-reserve'));
+      if (res.days.length) {
+        const vals = res.days.map(d => d.plannedC);
+        kpis.appendChild(kpi('Dias com aposta', String(res.days.length), `${fmtShort(res.days[0].key)} a ${fmtShort(res.days[res.days.length - 1].key)}`));
+        kpis.appendChild(kpi('Maior / menor dia', formatCurrency(fromCents(Math.max(...vals))), `menor ${formatCurrency(fromCents(Math.min(...vals)))} · soma do grupo`));
+      }
+    }
+  }
+  if (warnBox) {
+    warnBox.replaceChildren();
+    const notes = [];
+    if (!contextConfirmed) notes.push('Configurações de bônus não carregadas: sem Rollover não dá pra calcular a meta de cada plataforma.');
+    if (routinesFailed) notes.push('⚠ Rotinas não carregadas: os dias proibidos NÃO estão sendo pulados.');
+    if (['uniforme', 'escada-up', 'escada-down'].includes(form.curve)) notes.push('Esta curva não tem pico — a escala entre as plataformas não muda nada nela.');
+    const detached = g.ids.filter(id => { const sp = getSavedPlan(id); return sp && !(sp.params && sp.params.group && sp.params.group.routineId === g.routine.id); });
+    if (detached.length) notes.push(`${detached.length} plataforma(s) do grupo têm plano próprio — salvar o plano do grupo substitui.`);
+    notes.forEach(n => warnBox.appendChild(el('p', 'graficos-note', n)));
+  }
+  if (chartWrap) chartWrap.classList.toggle('app-hidden', !res.days.length);
+  if (res.days.length) renderGroupChart(res);
+  if (list) {
+    list.classList.remove('app-hidden');
+    list.replaceChildren();
+    list.appendChild(el('p', 'plan-hint', 'Plataformas do grupo — toque pra ver os dias de cada uma.'));
+    res.members.forEach((m, i) => {
+      const row = el('div', `plan-group-row${m.plan ? '' : ' plan-group-row-err'}`);
+      const head = el('button', 'plan-group-head');
+      head.type = 'button';
+      head.setAttribute('aria-expanded', openGroupRows.has(m.platformId) ? 'true' : 'false');
+      head.appendChild(el('span', 'plan-group-name', `${openGroupRows.has(m.platformId) ? '▾' : '▸'} ${m.name}`));
+      const rsv = members[i].reserve.mode !== 'none' ? ` · 🔒 ${formatCurrency(fromCents(members[i].reservedC))}` : '';
+      if (m.plan) {
+        const sp = members[i].speed !== 1 ? ` · ⚡${formatMult(members[i].speed)}` : '';
+        head.appendChild(el('span', 'plan-group-meta', `${m.plan.days.length} dia(s)${sp}${rsv}`));
+        head.appendChild(el('span', 'plan-group-total', formatCurrency(fromCents(m.plan.totals.plannedC))));
+      } else {
+        head.appendChild(el('span', 'plan-group-meta plan-group-err', `${m.error || 'Sem plano'}${rsv}`));
+      }
+      head.addEventListener('click', () => {
+        if (openGroupRows.has(m.platformId)) openGroupRows.delete(m.platformId); else openGroupRows.add(m.platformId);
+        renderGroupPreview();
+      });
+      row.appendChild(head);
+      if (openGroupRows.has(m.platformId)) row.appendChild(renderMemberReserve(m.platformId, members[i]));
+      if (m.plan && openGroupRows.has(m.platformId)) {
+        const box = el('div', 'plan-group-days');
+        if (m.plan.warnings.length) box.appendChild(el('p', 'plan-hint', m.plan.warnings.join(' ')));
+        m.plan.days.forEach(d => {
+          const dr = el('div', `plan-day plan-day-${d.tier}`);
+          const dh = el('div', 'plan-day-head');
+          dh.appendChild(el('span', 'plan-day-date', fmtDay(d.key)));
+          dh.appendChild(el('span', `plan-tier plan-tier-${d.tier}`, TIER_LABEL[d.tier]));
+          dh.appendChild(el('span', 'plan-day-amount', formatCurrency(fromCents(d.plannedC))));
+          dr.appendChild(dh);
+          dr.appendChild(el('div', 'plan-day-lines', describeLines(d.lines)));
+          box.appendChild(dr);
+        });
+        row.appendChild(box);
+      }
+      list.appendChild(row);
+    });
+  }
+  renderGroupActions();
+}
+
+// (20) 🔒 Guardar rollover de UMA plataforma do grupo (dentro da linha dela).
+function renderMemberReserve(pid, member) {
+  const box = el('div', 'plan-group-reserve');
+  const cur = form.groupReserve[pid] || { mode: 'none', valueText: '' };
+  box.appendChild(el('span', 'plan-label', '🔒 Guardar rollover desta plataforma'));
+  const chips = el('div', 'plan-chips');
+  RESERVE_MODES.forEach(m => chips.appendChild(chip(m.label, cur.mode === m.id, () => {
+    if (m.id === 'none') delete form.groupReserve[pid];
+    else form.groupReserve[pid] = { mode: m.id, valueText: cur.mode === m.id ? cur.valueText : '' };
+    renderGroupPreview();
+  })));
+  box.appendChild(chips);
+  if (cur.mode === 'value' || cur.mode === 'pct') {
+    const inp = el('input', 'plan-input');
+    inp.type = 'text';
+    inp.inputMode = 'decimal';
+    inp.placeholder = cur.mode === 'pct' ? 'Ex.: 50 (%)' : 'Ex.: 100,00';
+    inp.value = cur.valueText || '';
+    inp.setAttribute('aria-label', 'Quanto guardar');
+    inp.addEventListener('change', () => { form.groupReserve[pid] = { mode: cur.mode, valueText: inp.value }; renderGroupPreview(); });
+    box.appendChild(inp);
+  }
+  const roll = member.rolloverC === null ? null : Math.round(member.rolloverC * member.speed);
+  box.appendChild(el('p', 'plan-hint', roll === null
+    ? 'Rollover indisponível.'
+    : (member.reserve.mode === 'none'
+      ? `Meta = Rollover ${formatCurrency(fromCents(roll))}${member.speed !== 1 ? ' (com o peso ⚡)' : ''}.`
+      : (member.reserve.mode === 'all'
+        ? `Guarda o Rollover inteiro (${formatCurrency(fromCents(member.reservedC))}); a meta cobre só os depósitos de ativação previstos: ${formatCurrency(member.target)}.`
+        : `Guarda ${formatCurrency(fromCents(member.reservedC))} de ${formatCurrency(fromCents(roll))}; meta ${formatCurrency(member.target)}.`))));
+  return box;
+}
+
+function renderGroupChart(res) {
+  const canvas = $('planChart');
+  if (!canvas || !window.Chart) return;
+  const labels = res.days.map(d => fmtShort(d.key));
+  const datasets = [{
+    type: 'bar',
+    label: 'Aposta do dia (soma do grupo)',
+    data: res.days.map(d => fromCents(d.plannedC)),
+    backgroundColor: '#3b82f6',
+    borderRadius: 4,
+    yAxisID: 'y',
+    order: 2
+  }];
+  if (chart) {
+    chart.data.labels = labels;
+    chart.data.datasets = datasets;
+    chart.options.scales.y1.display = false;
+    chart.update('none');
+    return;
+  }
+  chart = new window.Chart(canvas, {
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { boxWidth: 12 } },
+        tooltip: {
+          callbacks: {
+            label: (c) => `${c.dataset.label}: ${formatCurrency(c.parsed.y)}`,
+            afterBody: (items) => {
+              if (lastGroup && isGroupMode()) {
+                const d = lastGroup.res.days[items[0].dataIndex];
+                return d ? [`${d.platforms} plataforma(s)`] : [];
+              }
+              const d = lastPlan && lastPlan.plan.days[items[0].dataIndex];
+              return d ? [TIER_LABEL[d.tier], describeLines(d.lines)] : [];
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { maxRotation: 0, autoSkip: true, autoSkipPadding: 8 } },
+        y: { beginAtZero: true, position: 'left' },
+        y1: { beginAtZero: true, position: 'right', display: false, grid: { drawOnChartArea: false } }
+      }
+    }
+  });
+}
+
+function renderGroupActions() {
+  const saveBtn = $('planSave');
+  const delBtn = $('planDelete');
+  const recalcBtn = $('planRecalc');
+  const status = $('planStatusLine');
+  const g = currentGroup();
+  const ok = !!(lastGroup && lastGroup.res.ok);
+  const savedIds = savedGroupIds(g);
+  if (saveBtn) {
+    saveBtn.disabled = busy || !ok;
+    saveBtn.textContent = ok ? `💾 Salvar plano do grupo (${lastGroup.res.totals.okCount})` : '💾 Salvar plano do grupo';
+  }
+  if (delBtn) {
+    delBtn.classList.toggle('app-hidden', savedIds.length === 0);
+    delBtn.textContent = 'Excluir plano do grupo';
+  }
+  if (recalcBtn) {
+    recalcBtn.classList.toggle('app-hidden', savedIds.length === 0);
+    recalcBtn.textContent = '↻ Recalcular grupo a partir de amanhã';
+  }
+  if (status) {
+    if (!g) status.textContent = 'Escolha uma plataforma ou um grupo pra começar.';
+    else if (!savedIds.length) status.textContent = 'Plano do grupo novo — ainda não salvo.';
+    else {
+      const dirty = formSnap !== null && snapForm() !== formSnap;
+      status.textContent = `${dirty ? '● Alterações não salvas · ' : ''}${savedIds.length} de ${g.ids.length} plataforma(s) com o plano deste grupo salvo.`;
+    }
+  }
+}
+
+async function onSaveGroup(btn) {
+  if (busy || !lastGroup || !lastGroup.res.ok) return;
+  const { group: g, res } = lastGroup;
+  const okMembers = res.members.filter(m => m.plan);
+  const replaced = okMembers.filter(m => getSavedPlan(m.platformId)).length;
+  const failed = res.members.length - okMembers.length;
+  const first = res.days[0];
+  const last = res.days[res.days.length - 1];
+  const msg = `Salvar o plano do grupo "${g.routine.name}"? ${okMembers.length} plataforma(s), ${formatCurrency(fromCents(res.totals.plannedC))} no total (${fmtShort(first.key)} a ${fmtShort(last.key)}).`
+    + (replaced ? ` ${replaced} já têm plano salvo e serão substituídas (os dias passados ficam no histórico).` : '')
+    + (failed ? ` ${failed} fica(m) de fora (motivo na lista) e mantêm o que já tinham.` : '');
+  const ok = await showAppConfirm(msg);
+  if (!ok || !mounted) return;
+  busy = true;
+  btn.disabled = true;
+  try {
+    const nowIso = new Date().toISOString();
+    const docs = [];
+    for (const m of okMembers) {
+      const p = findPlatform(m.platformId);
+      if (!p) { await showAppAlert(`Plataforma ${m.name} não encontrada. Nada foi salvo.`); return; }
+      docs.push(planToDoc(p, m.params, m.plan, nowIso));
+    }
+    const result = await saveGroupPlans(state.currentUid, docs);
+    if (!result.ok) { await showAppAlert(result.error); return; }
+    formSnap = snapForm();
+  } finally {
+    busy = false;
+    btn.disabled = false;
+    if (mounted) {
+      fillPlatformSelect();
+      renderGroupActions();
+    }
+  }
+}
+
+async function onDeleteGroup(btn) {
+  if (busy) return;
+  const g = currentGroup();
+  const ids = savedGroupIds(g);
+  if (!g || !ids.length) return;
+  const ok = await showAppConfirm(`Excluir o plano do grupo "${g.routine.name}"? ${ids.length} plano(s) deixam de existir (os dias que já passaram ficam no histórico). Plataformas com plano próprio não são tocadas.`);
+  if (!ok || !mounted) return;
+  busy = true;
+  btn.disabled = true;
+  try {
+    const result = await deleteGroupPlans(state.currentUid, ids);
+    if (!result.ok) await showAppAlert(result.error);
+  } finally {
+    busy = false;
+    btn.disabled = false;
+    if (mounted) {
+      fillPlatformSelect();
+      renderGroupActions();
+    }
+  }
+}
+
 // ---------- ações (gravam no banco) ----------
 
 async function onSavePlan(btn) {
+  if (isGroupMode()) { await onSaveGroup(btn); return; }
   if (busy || !lastPlan) return;
   const platform = findPlatform(form.platformId);
   if (!platform) return;
-  const { params, plan } = lastPlan;
+  // (19) Salvar sozinha uma plataforma do plano de grupo = sai do grupo.
+  const detach = form.groupRef;
+  const params = detach ? { ...lastPlan.params, group: null } : lastPlan.params;
+  const { plan } = lastPlan;
   const saved = getSavedPlan(platform.id);
   const summary = `${plan.totals.activeDays} dia(s), ${formatCurrency(fromCents(plan.totals.plannedC))} (${fmtShort(plan.days[0].key)} a ${fmtShort(plan.days[plan.days.length - 1].key)})`;
+  const detachText = detach ? ` ⚠ ${platform.name} faz parte do plano do grupo "${detach.name || ''}": salvar aqui TIRA ela do grupo (as outras continuam).` : '';
   const ok = await showAppConfirm(saved
-    ? `${platform.name} já tem um plano salvo (${fmtFull(saved.updatedAt)}). Substituir pelo novo? ${summary}. O anterior deixa de existir.`
-    : `Salvar o plano de ${platform.name}? ${summary}.`);
+    ? `${platform.name} já tem um plano salvo (${fmtFull(saved.updatedAt)}). Substituir pelo novo? ${summary}. O anterior deixa de existir.${detachText}`
+    : `Salvar o plano de ${platform.name}? ${summary}.${detachText}`);
   if (!ok || !mounted) return;
 
   busy = true;
@@ -1649,6 +2344,8 @@ async function onSavePlan(btn) {
     if (!target) { await showAppAlert('Plataforma não encontrada. Nada foi salvo.'); return; }
     const result = await savePlan(state.currentUid, planToDoc(target, params, plan, new Date().toISOString()));
     if (!result.ok) { await showAppAlert(result.error); return; }
+    if (detach) form.groupRef = null;
+    formSnap = snapForm();
   } finally {
     busy = false;
     btn.disabled = false;
@@ -1661,6 +2358,7 @@ async function onSavePlan(btn) {
 }
 
 async function onDeletePlan(btn) {
+  if (isGroupMode()) { await onDeleteGroup(btn); return; }
   if (busy) return;
   const platform = findPlatform(form.platformId);
   const saved = platform ? getSavedPlan(platform.id) : null;
@@ -1685,6 +2383,7 @@ async function onDeletePlan(btn) {
 
 // Mantém curva/limites/valores e refaz a partir de amanhã com o Rollover de agora.
 function onRecalc() {
+  if (isGroupMode()) { onRecalcGroup(); return; }
   const platform = findPlatform(form.platformId);
   if (!platform) return;
   world = computeWorld(platform);
@@ -1692,9 +2391,20 @@ function onRecalc() {
   const tomorrow = addDaysKey(todayKey(), 1);
   form.startKey = tomorrow;
   if (form.endKey < tomorrow) form.endKey = addDaysKey(tomorrow, Math.min(span, PLAN_MAX_DAYS - 1));
-  if (world && world.rolloverC !== null) form.target = fmtMoneyInput(fromCents(Math.round(world.rolloverC * speedBase())));
+  if (world && world.rolloverC !== null) setTargetFromBase(Math.round(world.rolloverC * speedBase())); // (20)
   syncInputs();
   renderPlatformInfo();
+  schedulePreview(0);
+}
+
+// (20) ↻ Recalcular grupo: a partir de amanhã, metas com o Rollover de
+// agora (o grupo sempre calcula a meta ao vivo).
+function onRecalcGroup() {
+  const span = Math.max(0, Math.round((dayKeyToDate(form.endKey) - dayKeyToDate(form.startKey)) / 86400000));
+  const tomorrow = addDaysKey(todayKey(), 1);
+  form.startKey = tomorrow;
+  if (form.endKey < tomorrow) form.endKey = addDaysKey(tomorrow, Math.min(span, PLAN_MAX_DAYS - 1));
+  syncInputs();
   schedulePreview(0);
 }
 

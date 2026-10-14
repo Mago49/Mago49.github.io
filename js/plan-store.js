@@ -42,6 +42,10 @@
 // plano antigo são gravados no histórico (plan-log-store.js). Se isso
 // falhar, o plano NÃO é substituído/excluído — nunca perde o planejado.
 //
+// (Sub-entrega 19) saveGroupPlans/deleteGroupPlans: plano de GRUPO —
+// continua 1 documento por plataforma (params.group marca o grupo), mas
+// todos gravados/excluídos num ÚNICO lote (tudo ou nada).
+//
 // LEITURA: loadPlannerData LANÇA em falha (a tela mostra o motivo e
 // "Tentar de novo" e NÃO deixa salvar — nunca grava em cima do que não viu).
 // Documento inválido é ignorado e contado em `invalidPlans`.
@@ -234,6 +238,66 @@ export async function deletePlan(uid, platformId) {
   if (!cache || cache.uid !== uid) return { ok: false, error: 'A sessão mudou durante a gravação — recarregue a página.' };
   cache.plans.delete(platformId);
   return { ok: true };
+}
+
+// ============================================================
+// (Sub-entrega 19) PLANO DE GRUPO — gravação ÚNICA (tudo ou nada)
+// ============================================================
+// 1) confere todos os documentos; 2) guarda no histórico (planLog) os dias
+// passados dos planos que vão ser substituídos/excluídos — falhou, NADA é
+// gravado; 3) um writeBatch só com todos os set/delete (máx. 300 < 500 do
+// Firestore). A memória só muda depois do commit.
+
+export async function saveGroupPlans(uid, planDocs) {
+  if (!uid) return { ok: false, error: 'Nenhum usuário logado.' };
+  if (!isPlannerLoaded(uid)) return { ok: false, error: 'Os planos ainda não foram carregados — recarregue a tela antes de salvar.' };
+  const docs = Array.isArray(planDocs) ? planDocs : [];
+  if (docs.length === 0) return { ok: false, error: 'Nenhum plano pra salvar.' };
+  if (docs.length > 300) return { ok: false, error: 'Plataformas demais no grupo.' };
+  const ids = new Set();
+  for (const d of docs) {
+    if (!d || !isSafeId(d.platformId) || !isValidPlanDoc(d.platformId, d)) return { ok: false, error: `Plano inválido (${d && d.platformName ? d.platformName : 'plataforma'}). Nada foi salvo.` };
+    if (ids.has(d.platformId)) return { ok: false, error: 'Plataforma repetida no grupo. Nada foi salvo.' };
+    ids.add(d.platformId);
+  }
+  const previous = docs.map(d => cache.plans.get(d.platformId)).filter(Boolean);
+  if (previous.length) {
+    const logged = await logPlanPastDays(uid, previous, toLocalDateString(new Date()), getCalendarSettings().retentionDays);
+    if (!logged.ok) return { ok: false, error: `${logged.error} Nenhum plano foi substituído.` };
+  }
+  try {
+    const batch = writeBatch(db);
+    docs.forEach(d => batch.set(doc(plansCol(uid), d.platformId), { ...d }));
+    await batch.commit();
+  } catch (err) {
+    console.error('Erro ao salvar o plano do grupo:', err);
+    return { ok: false, error: 'Não foi possível salvar o plano do grupo no banco de dados. Nada mudou. Verifique a internet e tente de novo.' };
+  }
+  if (!cache || cache.uid !== uid) return { ok: false, error: 'A sessão mudou durante a gravação — recarregue a página.' };
+  docs.forEach(d => cache.plans.set(d.platformId, { ...d }));
+  return { ok: true, saved: docs.length };
+}
+
+export async function deleteGroupPlans(uid, platformIds) {
+  if (!uid) return { ok: false, error: 'Nenhum usuário logado.' };
+  if (!isPlannerLoaded(uid)) return { ok: false, error: 'Os planos ainda não foram carregados — recarregue a tela.' };
+  const ids = [...new Set((platformIds || []).filter(isSafeId))].filter(id => cache.plans.has(id));
+  if (ids.length === 0) return { ok: true, deleted: 0 };
+  if (ids.length > 300) return { ok: false, error: 'Plataformas demais.' };
+  const previous = ids.map(id => cache.plans.get(id));
+  const logged = await logPlanPastDays(uid, previous, toLocalDateString(new Date()), getCalendarSettings().retentionDays);
+  if (!logged.ok) return { ok: false, error: `${logged.error} Nenhum plano foi excluído.` };
+  try {
+    const batch = writeBatch(db);
+    ids.forEach(id => batch.delete(doc(plansCol(uid), id)));
+    await batch.commit();
+  } catch (err) {
+    console.error('Erro ao excluir o plano do grupo:', err);
+    return { ok: false, error: 'Não foi possível excluir o plano do grupo no banco de dados. Nada mudou. Verifique a internet e tente de novo.' };
+  }
+  if (!cache || cache.uid !== uid) return { ok: false, error: 'A sessão mudou durante a gravação — recarregue a página.' };
+  ids.forEach(id => cache.plans.delete(id));
+  return { ok: true, deleted: ids.length };
 }
 
 /**

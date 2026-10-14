@@ -63,12 +63,21 @@ export function isWithinEditableWindow(eventDateKey, today = new Date()) {
 // senão, o MÍNIMO do patamar alcançado naquela data (sem trava
 // automática — vale pra sempre até alguém editar). 0 se não alcançou
 // nenhum patamar.
+//
+// (Sub-entrega 20) A faixa vale pelos depósitos do ciclo até o FIM DO DIA
+// ANTERIOR à emissão (a emissão sai à 00:00). Depósito feito no próprio
+// dia da emissão só conta pras emissões seguintes — antes ele mudava o
+// bônus do dia na hora (ex.: R$ 30 às 12h no dia 7 "criava" o bônus do
+// dia 7).
+export function misteriosoCutoff(dateKey) {
+  return new Date(new Date(`${dateKey}T00:00:00`).getTime() - 1);
+}
+
 export function getEffectiveMisteriosoValue(platform, dateKey, template) {
   const log = (platform.misteriosoBonusLog || []).find(entry => entry.date === dateKey);
   if (log) return log.value;
 
-  const eventDate = new Date(`${dateKey}T23:59:59`);
-  const totalAtEvent = sumDepositsUpTo(platform, eventDate);
+  const totalAtEvent = sumDepositsUpTo(platform, misteriosoCutoff(dateKey));
   const range = getMisteriosoRangeForDeposit(template, totalAtEvent);
   return range ? range.min : 0;
 }

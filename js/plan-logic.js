@@ -61,6 +61,40 @@
 // Misterioso (encerrada até a volta prevista) ou perto da virada do mês
 // (instável) — cycle-history-logic.js offCycleKeys. Pulados como os
 // outros; gravados no plano.
+//
+// === (Sub-entrega 19) SEMANA, ESCALA E GRUPO ===
+// a) params.weekMode: 'all' (Sempre assim — todos os dias marcados, como
+//    antes) | 'alternate' (Intercalar — 1 dia por semana, revezando entre
+//    os dias marcados: semana 1 o 1º dia marcado, semana 2 o 2º...). Semana
+//    = segunda a domingo (mesma do Financeiro). Dia da vez bloqueado
+//    (proibido, emissão, fora do ciclo) -> o próximo dia marcado da mesma
+//    semana; semana toda bloqueada = semana sem aposta (avisado). A curva
+//    continua variando os valores nos dois modos.
+// b) params.phase / params.phaseCount (ESCALA do grupo): posição da
+//    plataforma no grupo (0..n-1). Onda/Pulso: o pico é deslocado; Caos:
+//    sorteio próprio (semente + posição); Intercalar: o revezamento começa
+//    num dia diferente. Escada/Uniforme não têm pico — a escala não muda
+//    nada nelas. Sem phase = 0 (igual antes).
+// c) params.group = { routineId, name } | null: o plano faz parte do plano
+//    de GRUPO (rotina com 2+ plataformas). Continua 1 documento por
+//    plataforma (Calendário, Aderência e histórico leem igual).
+//    buildGroupPlan monta todos de uma vez + o total somado por dia.
+// Planos antigos (sem esses campos) = 'all', phase 0, sem grupo: sameParams
+// continua igual (não aparecem como "alterados").
+//
+// === (Sub-entrega 20) 🔒 GUARDAR ROLLOVER ===
+// params.reserve = { mode: 'none'|'all'|'value'|'pct', value } — quanto do
+// Rollover NÃO entra na meta (plataforma sem saque à vista: o Rollover
+// fica guardado pra jogar depois). applyReserve faz a conta:
+//   none  meta = Rollover (× peso)
+//   value meta = Rollover − R$ guardado (nunca abaixo de 0)
+//   pct   meta = Rollover − % guardada
+//   all   meta = só os depósitos de ATIVAÇÃO previstos no período (rotinas
+//         🗓️ semanal / 🎁 mensal) — o Rollover inteiro fica guardado.
+// params.reservedC = quanto ficou guardado (centavos) na hora em que a
+// meta foi calculada — gravado no plano (o grupo soma "guardado pra jogar
+// depois"). A meta só é recalculada quando o usuário mexe (mesmo padrão do
+// "Usar Rollover"): plano salvo não vira "alterado" sozinho no dia seguinte.
 
 import { toLocalDateString, getWeekStart } from './finance-logic.js';
 import { getCycleStart } from './cycle-logic.js';
@@ -88,6 +122,21 @@ export const CURVES = Object.freeze([
 ]);
 
 export const WEEKDAY_LABELS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+// (Sub-entrega 19)
+export const WEEK_MODES = Object.freeze([
+  { id: 'all', label: 'Sempre assim' },
+  { id: 'alternate', label: 'Intercalar' }
+]);
+const WEEK_ORDER_MON = [1, 2, 3, 4, 5, 6, 0]; // segunda primeiro
+export const GROUP_MAX_MEMBERS = 300;
+// (20)
+export const RESERVE_MODES = Object.freeze([
+  { id: 'none', label: 'Não guardar' },
+  { id: 'all', label: 'Tudo' },
+  { id: 'value', label: 'Valor (R$)' },
+  { id: 'pct', label: '%' }
+]);
 
 const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -170,13 +219,78 @@ export function listActiveDays(startKey, endKey, weekdaysOff = [], onlyKeys = nu
   return days;
 }
 
+// (19) Segunda-feira da semana de uma chave (semana seg–dom, como o Financeiro).
+function weekMondayKey(key) {
+  const d = dayKeyToDate(key);
+  const back = (d.getDay() + 6) % 7; // seg = 0 ... dom = 6
+  return addDaysKey(key, -back);
+}
+
+/**
+ * (19) Intercalar: de `candidates` (dias já filtrados — folgas, rotina,
+ * proibidos, emissões, fora do ciclo), escolhe 1 por semana. A semana w
+ * (contada a partir da semana de startKey) prefere o dia marcado
+ * marked[(w + phase) % n] (ordem seg→dom); se ele não está disponível,
+ * o próximo dia marcado da mesma semana (dando a volta). `allMarked` =
+ * dias que existiriam sem bloqueios (pra contar semanas bloqueadas).
+ * @returns {{ days: Array<{key, weekday}>, weeks: number, blockedWeeks: number }}
+ */
+export function pickAlternateDays(startKey, weekdaysOff, candidates, allMarked, phase = 0) {
+  const off = new Set((weekdaysOff || []).map(Number));
+  // Dias que de fato podem receber aposta (folgas e "Seguir rotina" já
+  // aplicados em allMarked) — o revezamento é entre ELES.
+  const present = new Set((allMarked || []).map(d => d.weekday));
+  const marked = WEEK_ORDER_MON.filter(d => !off.has(d) && present.has(d));
+  const out = { days: [], weeks: 0, blockedWeeks: 0 };
+  if (!marked.length || !isValidDayKey(startKey)) return out;
+  const firstMonday = weekMondayKey(startKey);
+  const byWeek = new Map();
+  (candidates || []).forEach(d => {
+    const wk = weekMondayKey(d.key);
+    if (!byWeek.has(wk)) byWeek.set(wk, []);
+    byWeek.get(wk).push(d);
+  });
+  const markedWeeks = [...new Set((allMarked || []).map(d => weekMondayKey(d.key)))].sort();
+  const p = Math.max(0, Math.round(Number(phase) || 0));
+  markedWeeks.forEach(wk => {
+    out.weeks++;
+    const list = byWeek.get(wk);
+    if (!list || !list.length) { out.blockedWeeks++; return; }
+    const w = Math.round((dayKeyToDate(wk) - dayKeyToDate(firstMonday)) / (7 * 86400000));
+    const startPos = (w + p) % marked.length;
+    const byWd = new Map(list.map(d => [d.weekday, d]));
+    let chosen = null;
+    for (let j = 0; j < marked.length && !chosen; j++) {
+      const wd = marked[(startPos + j) % marked.length];
+      if (byWd.has(wd)) chosen = byWd.get(wd);
+    }
+    // Rotina seguida pode cair num dia fora dos marcados: usa o 1º disponível.
+    out.days.push(chosen || list[0]);
+  });
+  out.days.sort((a, b) => a.key.localeCompare(b.key));
+  return out;
+}
+
 // Peso de cada dia (1 = dia mais baixo possível, k = mais alto).
-export function computeWeights(n, curve, intensity, rhythm, seed) {
+// (19) phase/phaseCount: escala do grupo — desloca o pico (Onda/Pulso) e
+// muda o sorteio (Caos). phase 0 = igual antes.
+export function phaseShift(curve, rhythm, phase = 0, phaseCount = 1) {
+  const r = Math.max(2, Math.min(14, Math.round(Number(rhythm) || 4)));
+  const p = Math.max(0, Math.round(Number(phase) || 0));
+  const n = Math.max(1, Math.round(Number(phaseCount) || 1));
+  if (!p || !['onda', 'pulso'].includes(curve)) return 0;
+  return Math.round((p * r) / n) % r;
+}
+
+export function computeWeights(n, curve, intensity, rhythm, seed, phase = 0, phaseCount = 1) {
   const k = Math.max(1, Math.min(10, Number(intensity) || 1));
   const r = Math.max(2, Math.min(14, Math.round(Number(rhythm) || 4)));
   const w = [];
-  const rand = mulberry32(seed);
-  for (let i = 0; i < n; i++) {
+  const p = Math.max(0, Math.round(Number(phase) || 0));
+  const rand = mulberry32(curve === 'caos' && p ? (Number(seed) || 1) + p * 7919 : seed);
+  const shift = phaseShift(curve, rhythm, phase, phaseCount);
+  for (let idx = 0; idx < n; idx++) {
+    const i = idx + shift;
     let v = 1;
     if (curve === 'onda') v = 1 + (k - 1) * (0.5 - 0.5 * Math.cos((2 * Math.PI * i) / r));
     else if (curve === 'pulso') v = (i % r === r - 1) ? k : 1;
@@ -347,19 +461,27 @@ export function buildPlan(params, todayKey = null) {
   const skipKeys = Array.isArray(p.skipKeys) ? p.skipKeys : [];
   const pauseKeys = Array.isArray(p.pauseKeys) ? p.pauseKeys : []; // (11c)
   const excluded = [...(Array.isArray(p.excludeKeys) ? p.excludeKeys : []), ...skipKeys, ...pauseKeys];
-  const days = listActiveDays(p.startKey, p.endKey, p.weekdaysOff, p.onlyKeys, excluded);
+  const filtered = listActiveDays(p.startKey, p.endKey, p.weekdaysOff, p.onlyKeys, excluded);
+  let days = filtered;
+  // (19) Intercalar: 1 dia por semana, revezando entre os dias marcados.
+  const alternate = p.weekMode === 'alternate';
+  let alt = null;
+  if (alternate) {
+    alt = pickAlternateDays(p.startKey, p.weekdaysOff, filtered, listActiveDays(p.startKey, p.endKey, p.weekdaysOff, p.onlyKeys, null), p.phase);
+    days = alt.days;
+  }
   if (days.length === 0) return { ok: false, error: 'Nenhum dia ativo no período (folgas, dias proibidos, dias de emissão ou rotina sem dias).' };
   const baseDays = listActiveDays(p.startKey, p.endKey, p.weekdaysOff, p.onlyKeys, null).length;
   const skippedForbidden = baseDays - listActiveDays(p.startKey, p.endKey, p.weekdaysOff, p.onlyKeys, p.excludeKeys).length;
   const withEmission = [...(Array.isArray(p.excludeKeys) ? p.excludeKeys : []), ...skipKeys];
   const skippedEmission = listActiveDays(p.startKey, p.endKey, p.weekdaysOff, p.onlyKeys, p.excludeKeys).length - listActiveDays(p.startKey, p.endKey, p.weekdaysOff, p.onlyKeys, withEmission).length;
-  const skippedPause = listActiveDays(p.startKey, p.endKey, p.weekdaysOff, p.onlyKeys, withEmission).length - days.length;
+  const skippedPause = listActiveDays(p.startKey, p.endKey, p.weekdaysOff, p.onlyKeys, withEmission).length - filtered.length;
 
   const stakesC = normalizeStakes(p.stakes);
   const targetC = toCents(p.target);
   const floorC = toCents(p.floor || 0);
   const capC = (p.cap === null || p.cap === undefined || p.cap === '' || !(Number(p.cap) > 0)) ? null : toCents(p.cap);
-  const { weights, k } = computeWeights(days.length, p.curve, p.intensity, p.rhythm, p.seed);
+  const { weights, k } = computeWeights(days.length, p.curve, p.intensity, p.rhythm, p.seed, p.phase, p.phaseCount);
   // (11a) Épocas: multiplica o peso dos dias cobertos.
   const boost = p.dayBoost && typeof p.dayBoost === 'object' ? p.dayBoost : null;
   let boostedDays = 0;
@@ -380,6 +502,10 @@ export function buildPlan(params, todayKey = null) {
   if (skippedEmission > 0) warnings.push(`${skippedEmission} dia(s) de emissão do Misterioso pulado(s).`);
   if (skippedPause > 0) warnings.push(`${skippedPause} dia(s) fora do ciclo (encerrado ou virada do mês instável) pulado(s).`);
   if (boostedDays > 0) warnings.push(`${boostedDays} dia(s) em época de velocidade recebem fatia maior da meta.`);
+  if (alt) {
+    warnings.push(`Intercalar: ${days.length} dia(s) de aposta — 1 por semana, revezando entre os dias marcados.`);
+    if (alt.blockedWeeks > 0) warnings.push(`${alt.blockedWeeks} semana(s) sem aposta: todos os dias marcados estavam bloqueados (proibido, emissão ou fora do ciclo).`);
+  }
 
   // Fechamento carregado: cada dia cobre o que falta até o acumulado
   // desejado — a sobra de um dia abate o seguinte (nunca se acumula).
@@ -425,6 +551,82 @@ export function buildPlan(params, todayKey = null) {
       spins: out.reduce((s, d) => s + d.lines.filter(l => l.kind === 'spin').reduce((a, l) => a + l.count, 0), 0)
     },
     warnings
+  };
+}
+
+// ---------- (19) plano de GRUPO ----------
+
+/**
+ * Monta os planos de todas as plataformas do grupo de uma vez.
+ *   base     parâmetros comuns (período, folgas, modo da semana, curva,
+ *            intensidade, ritmo, semente, piso, teto, valores, compra)
+ *   members  [{ platformId, name, target (R$), excludeKeys, onlyKeys,
+ *              followRoutineId, skipKeys, skipEmissions, pauseKeys, dayBoost }]
+ *            — a ORDEM define a escala (posição 0..n-1).
+ *   group    { routineId, name }
+ * Cada plataforma vira um plano próprio (o mesmo buildPlan de sempre) com
+ * phase = posição e phaseCount = total. Plataforma que não fecha (sem
+ * meta, sem dias...) fica de fora com o motivo — as outras seguem.
+ * @returns {{ ok, error?, members: Array<{platformId, name, params, plan?, error?}>,
+ *   days: Array<{key, plannedC, platforms}>, totals: {targetC, plannedC, activeDays, okCount, failCount} }}
+ */
+export function buildGroupPlan(base, members, group, todayKey = null) {
+  const list = Array.isArray(members) ? members : [];
+  const ref = cleanGroupRef(group);
+  if (!ref) return { ok: false, error: 'Grupo inválido.', members: [], days: [], totals: null };
+  if (list.length < 2) return { ok: false, error: 'O grupo precisa de pelo menos 2 plataformas.', members: [], days: [], totals: null };
+  if (list.length > GROUP_MAX_MEMBERS) return { ok: false, error: 'Plataformas demais no grupo.', members: [], days: [], totals: null };
+  const n = list.length;
+  const out = list.map((m, i) => {
+    const params = {
+      ...base,
+      target: m.target,
+      excludeKeys: m.excludeKeys || [],
+      onlyKeys: m.onlyKeys || [],
+      followRoutineId: m.followRoutineId || null,
+      skipEmissions: m.skipEmissions || base.skipEmissions || [],
+      skipKeys: m.skipKeys || [],
+      pauseKeys: m.pauseKeys || [],
+      dayBoost: m.dayBoost || {},
+      reserve: cleanReserve(m.reserve),
+      reservedC: Math.max(0, Math.round(Number(m.reservedC) || 0)),
+      goal: { mode: 'none', value: 0, baseBalance: 0 },
+      phase: i,
+      phaseCount: n,
+      group: ref
+    };
+    const plan = buildPlan(params, todayKey);
+    return plan.ok
+      ? { platformId: m.platformId, name: m.name, params, plan }
+      : { platformId: m.platformId, name: m.name, params, error: plan.error };
+  });
+  const byDay = new Map();
+  let targetC = 0;
+  let plannedC = 0;
+  out.forEach(m => {
+    if (!m.plan) return;
+    targetC += m.plan.totals.targetC;
+    plannedC += m.plan.totals.plannedC;
+    m.plan.days.forEach(d => {
+      const cur = byDay.get(d.key) || { key: d.key, plannedC: 0, platforms: 0 };
+      cur.plannedC += d.plannedC;
+      cur.platforms += 1;
+      byDay.set(d.key, cur);
+    });
+  });
+  const days = [...byDay.values()].sort((a, b) => a.key.localeCompare(b.key));
+  const okCount = out.filter(m => m.plan).length;
+  return {
+    ok: okCount > 0,
+    error: okCount > 0 ? null : 'Nenhuma plataforma do grupo conseguiu montar o plano — veja o motivo de cada uma.',
+    members: out,
+    days,
+    totals: {
+      targetC, plannedC, activeDays: days.length, okCount, failCount: out.length - okCount,
+      // (20) 🔒 guardado pra jogar depois (todas do grupo, inclusive as sem plano)
+      reservedC: list.reduce((s2, m) => s2 + Math.max(0, Math.round(Number(m.reservedC) || 0)), 0),
+      reservingCount: list.filter(m => cleanReserve(m.reserve).mode !== 'none').length
+    }
   };
 }
 
@@ -583,8 +785,51 @@ export function sanitizeParams(p) {
     skipEmissions: [...new Set((Array.isArray(p.skipEmissions) ? p.skipEmissions : []).map(Number).filter(n => EMISSION_CYCLE_DAYS.includes(n)))].sort((a, b) => a - b),
     skipKeys: cleanKeyList(p.skipKeys, startKey, endKey),
     pauseKeys: cleanKeyList(p.pauseKeys, startKey, endKey),
-    dayBoost: cleanBoost(p.dayBoost, startKey, endKey)
+    dayBoost: cleanBoost(p.dayBoost, startKey, endKey),
+    // (19)
+    weekMode: p.weekMode === 'alternate' ? 'alternate' : 'all',
+    phase: Math.max(0, Math.min(GROUP_MAX_MEMBERS, Math.round(Number(p.phase) || 0))),
+    phaseCount: Math.max(1, Math.min(GROUP_MAX_MEMBERS, Math.round(Number(p.phaseCount) || 1))),
+    group: cleanGroupRef(p.group),
+    // (20)
+    reserve: cleanReserve(p.reserve),
+    reservedC: Math.max(0, Math.round(Number(p.reservedC) || 0))
   };
+}
+
+// (20) Guardar rollover — tipos garantidos.
+export function cleanReserve(r) {
+  const mode = r && ['all', 'value', 'pct'].includes(r.mode) ? r.mode : 'none';
+  let value = 0;
+  if (mode === 'value') value = Math.max(0, fromCents(toCents(r.value)));
+  if (mode === 'pct') value = Math.max(0, Math.min(100, Math.round(Number(r.value) * 100) / 100 || 0));
+  if ((mode === 'value' || mode === 'pct') && !(value > 0)) return { mode: 'none', value: 0 };
+  return { mode, value };
+}
+
+/**
+ * (20) Meta depois de guardar parte do Rollover.
+ *   rolloverC   Rollover (já × peso), centavos
+ *   reserve     { mode, value }
+ *   activationC depósitos de ativação previstos no período (modo 'all')
+ * @returns {{ targetC, reservedC }}
+ */
+export function applyReserve(rolloverC, reserve, activationC = 0) {
+  const r = cleanReserve(reserve);
+  const roll = Math.max(0, Math.round(Number(rolloverC) || 0));
+  if (r.mode === 'all') return { targetC: Math.max(0, Math.round(Number(activationC) || 0)), reservedC: roll };
+  let reservedC = 0;
+  if (r.mode === 'value') reservedC = Math.min(roll, toCents(r.value));
+  if (r.mode === 'pct') reservedC = Math.min(roll, Math.round((roll * r.value) / 100));
+  return { targetC: roll - reservedC, reservedC };
+}
+
+// (19) Referência ao plano de grupo — { routineId, name } ou null.
+export function cleanGroupRef(g) {
+  if (!g || typeof g !== 'object') return null;
+  const routineId = typeof g.routineId === 'string' ? g.routineId.trim() : '';
+  if (!routineId || routineId.length > 100 || routineId.includes('/')) return null;
+  return { routineId, name: String(g.name || '').slice(0, 40) };
 }
 
 function cleanBoost(b, startKey, endKey) {

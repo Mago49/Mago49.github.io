@@ -37,6 +37,10 @@
 // ganho × peso; ganho, custo e Rollover mostrados continuam os REAIS.
 // Sem priorityOf (ou peso 1 pra todas) = exatamente o resultado de antes.
 
+//
+// (Sub-entrega 20) Emissão do Misterioso vale pelos depósitos até o fim
+// do dia ANTERIOR: depositar hoje só sobe as emissões a partir de amanhã
+// (otimizador, emissões de hoje e projeção do Planejador).
 import { getCycleStart, computeEmissionDates } from './cycle-logic.js';
 import { MISTERIOSO_DEPOSIT_THRESHOLDS, findMisteriosoTierIndex } from './misterioso-logic.js';
 import { toLocalDateString } from './finance-logic.js';
@@ -154,6 +158,11 @@ export function analyzeMisteriosoPlatform(platform, template, now = new Date()) 
   const totalC = cycleDepositsC(platform, now, now);
   const tierIndex = findMisteriosoTierIndex(fromC(totalC));
   const tierMinC = minC(template, tierIndex);
+  // (Sub-entrega 20) A emissão de HOJE vale pelos depósitos até ontem —
+  // depósito de hoje só sobe as emissões seguintes.
+  const startToday = keyToDate(todayKey);
+  const beforeTodayC = cycleDepositsC(platform, now, new Date(startToday.getTime() - 1));
+  const todayTierIndex = findMisteriosoTierIndex(fromC(beforeTodayC));
   const cycleStartKey = dayKey(getCycleStart(platform, now));
 
   const info = {
@@ -168,12 +177,15 @@ export function analyzeMisteriosoPlatform(platform, template, now = new Date()) 
     tierMinC,
     // Emissões restantes já editadas à mão não mudam com depósito.
     lockedKeys: remaining.filter(k => loggedEmissionValue(platform, k) !== null),
-    autoReset: !platform.lastResetDate
+    autoReset: !platform.lastResetDate,
+    todayTierIndex,
+    todayTierMinC: minC(template, todayTierIndex)
   };
 
   if (remaining.length === 0) return { ...info, status: 'no-emissions' };
 
-  const free = remaining.filter(k => !info.lockedKeys.includes(k));
+  // (20) Depositar agora não muda a emissão de hoje.
+  const free = remaining.filter(k => k > todayKey && !info.lockedKeys.includes(k));
   for (let j = tierIndex + 1; j < MISTERIOSO_DEPOSIT_THRESHOLDS.length; j++) {
     const needC = toC(MISTERIOSO_DEPOSIT_THRESHOLDS[j]) - totalC;
     if (!(needC > 0)) continue;
@@ -330,7 +342,9 @@ export function buildMisteriosoStrategy(platforms, resolveCtx, settings, now = n
     budgetC: toC(s.budget),
     remainingC,
     plan,
+    // (20) Faixa da emissão de hoje = depósitos até ontem.
     emissionsToday: analyses.filter(a => a.status === 'ok' && a.remainingKeys[0] === dayKey(now))
+      .map(a => ({ ...a, tierIndex: a.todayTierIndex, tierMinC: a.todayTierMinC }))
   };
 }
 
@@ -412,17 +426,18 @@ export { KIND_IDS };
 export function projectMisteriosoInflows(platform, template, extraDeposits = [], toKey = null, now = new Date()) {
   if (!platform || !validRanges(template) || platform.cycleEnded) return [];
   const todayKey = dayKey(now);
-  const keys = cycleEmissionKeys(platform, now).filter(k => k >= todayKey && (!toKey || k <= toKey));
+  // (20) A emissão de hoje já está no Rollover e não muda com depósito de
+  // hoje: só as emissões a partir de amanhã.
+  const keys = cycleEmissionKeys(platform, now).filter(k => k > todayKey && (!toKey || k <= toKey));
   if (keys.length === 0) return [];
   const actualC = cycleDepositsC(platform, now, now);
   const extras = (extraDeposits || []).filter(x => x && typeof x.key === 'string' && x.key >= todayKey && Number(x.valueC) > 0);
   const out = [];
   keys.forEach(k => {
     if (loggedEmissionValue(platform, k) !== null) return; // valor fixado à mão
-    const projectedC = actualC + extras.filter(x => x.key <= k).reduce((s, x) => s + Math.round(x.valueC), 0);
-    const valueC = minC(template, findMisteriosoTierIndex(fromC(projectedC)));
-    const baselineC = k === todayKey ? minC(template, findMisteriosoTierIndex(fromC(actualC))) : 0;
-    const deltaC = valueC - baselineC;
+    // (20) Depósito previsto no PRÓPRIO dia da emissão só conta pra seguinte.
+    const projectedC = actualC + extras.filter(x => x.key < k).reduce((s, x) => s + Math.round(x.valueC), 0);
+    const deltaC = minC(template, findMisteriosoTierIndex(fromC(projectedC)));
     if (deltaC > 0) out.push({ key: k, valueC: deltaC });
   });
   return out;

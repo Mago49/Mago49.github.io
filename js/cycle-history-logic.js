@@ -98,7 +98,10 @@ export function recordCycleEvent(platform, type, dateKey, source = 'auto', now =
 export function knownResets(platform) {
   const set = new Set(sortedHistory(platform).filter(e => e.type === 'reset').map(e => e.date));
   if (platform && platform.lastResetDate) {
-    const k = dayKeyOf(platform.lastResetDate);
+    // (Sub-entrega 19) Só a parte da data (dia LOCAL) — '...Z' ou só a
+    // data viravam o dia anterior no Brasil.
+    const raw = String(platform.lastResetDate);
+    const k = /^\d{4}-\d{2}-\d{2}/.test(raw) ? raw.slice(0, 10) : dayKeyOf(platform.lastResetDate);
     if (KEY_RE.test(k)) set.add(k);
   }
   return [...set].sort();

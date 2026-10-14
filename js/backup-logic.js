@@ -28,6 +28,9 @@
 //    Só os históricos com id por data são filtrados, com 7 dias de folga
 //    antes do completo; todo o resto vem inteiro sempre.
 
+// (Sub-entrega 19) groupArchive (grupos encerrados da competição) entra na
+// lista. Formato inalterado — só uma coleção a mais.
+
 export const BACKUP_FORMAT = 'painel-tigrinho-backup';
 export const BACKUP_VERSION = 1;
 
@@ -46,7 +49,9 @@ export const COLLECTIONS = [
   'routines', 'routineLog', 'routineMarks',
   'planLog',
   'gameCatalog', 'gameConfig',
-  'platformTraits'
+  'platformTraits',
+  // (Sub-entrega 19) grupos encerrados da competição (🏆 Grupos).
+  'groupArchive'
 ];
 export const META_DOCS = ['initialized', 'cardCustomization', 'obrigadoConfig', 'preferences', 'backupInfo'];
 
@@ -77,6 +82,7 @@ export const COLLECTION_LABELS = Object.freeze({
   gameCatalog: 'Biblioteca de jogos',
   gameConfig: 'Provedores',
   platformTraits: 'Características das plataformas',
+  groupArchive: 'Grupos encerrados',
   meta: 'Configurações gerais'
 });
 

@@ -131,6 +131,10 @@
 // scale }]: a diferença positiva entra no Rollover parte a parte, cada uma
 // na sua escala (positiveDiffRollover). Saldo continua 1:1.
 
+//
+// (Sub-entrega 20) sumRolloverAdjustments: ⬇️ Abatimento (soma dos
+// rolloverAdjustments por período); computeOverallTotalsPeriod devolve
+// totals.abatimento na janela do modo (ao vivo / fechadas / total).
 import {
   computeAutoAccruedBonusForWeek, getAccumulatedBonusThisWeek, getExpectedBonusForDate,
   sumEffectiveOtherBonus, getEffectiveOtherBonusEntries,
@@ -1279,8 +1283,28 @@ function sumPlatformDays(platform, loKey, hiKey, ctx) {
   return roundTotals(res);
 }
 
+// (Sub-entrega 20) ⬇️ ABATIMENTO — soma dos abatimentos de rollover
+// (rolloverAdjustments: lançado à mão, conferência de saldo, sessão ou
+// lote) com data entre loKey e hiKey (inclusivos, dia LOCAL). null = sem
+// limite. keyFilter opcional (ex.: só dias de semanas fechadas). Só
+// leitura — nada é gravado.
+export function sumRolloverAdjustments(platform, loKey = null, hiKey = null, keyFilter = null) {
+  let total = 0;
+  (platform && platform.rolloverAdjustments || []).forEach(e => {
+    if (!e || !e.date) return;
+    const d = new Date(e.date);
+    if (isNaN(d.getTime())) return;
+    const k = toLocalDateString(d);
+    if (loKey && k < loKey) return;
+    if (hiKey && k > hiKey) return;
+    if (keyFilter && !keyFilter(k)) return;
+    total += Number(e.value) || 0;
+  });
+  return roundMoney(total);
+}
+
 export function computeOverallTotalsPeriod(platforms, from = null, to = null, resolveCtx = () => ({}), refDate = new Date(), phaseFilter = null, mode = 'total') {
-  const totals = { deposit: 0, withdrawal: 0, difference: 0, wagered: 0, betCount: 0, bonus: 0, resultBetting: 0, rbPlusBonus: 0, balance: 0, rollover: 0 };
+  const totals = { deposit: 0, withdrawal: 0, difference: 0, wagered: 0, betCount: 0, bonus: 0, resultBetting: 0, rbPlusBonus: 0, balance: 0, rollover: 0, abatimento: 0 };
   const estimatedWeeks = [];
   const excludedBackfill = [];
   let unclosedPastWeeks = 0;
@@ -1313,6 +1337,21 @@ export function computeOverallTotalsPeriod(platforms, from = null, to = null, re
     } else {
       totals.balance += computeLiveBalance(platform, refDate, ctx);
       totals.rollover += computeRolloverLive(platform, refDate, ctx);
+    }
+
+    // (Sub-entrega 20) ⬇️ Abatimento do período (mesma janela do modo):
+    // ao vivo = semana atual; fechado = só dias de semanas fechadas;
+    // total = tudo até hoje. Filtro de fase limita às datas da fase.
+    {
+      let lo = from || null;
+      let hi = to && to < todayKey ? to : todayKey;
+      if (mode === 'live' && (!lo || lo < currentWeekStartKey)) lo = currentWeekStartKey;
+      if (phaseLo && (!lo || lo < phaseLo)) lo = phaseLo;
+      if (phaseHi && hi > phaseHi) hi = phaseHi;
+      const inClosed = mode === 'closed'
+        ? (k => (platform.financeWeeks || []).some(w => w && w.weekStart <= k && k <= w.weekEnd))
+        : null;
+      totals.abatimento += sumRolloverAdjustments(platform, lo, hi, inClosed);
     }
 
     // --- Semanas fechadas ---

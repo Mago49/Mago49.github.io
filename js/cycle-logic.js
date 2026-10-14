@@ -237,12 +237,28 @@ export function isBetDayEffective(platform, dateKey) {
   return getEffectiveBetDayKeys(platform, start, end).has(dateKey);
 }
 
-export function getCycleStart(platform, refDate = new Date()) {
-  if (platform.lastResetDate) {
-    const resetDate = new Date(platform.lastResetDate);
-    resetDate.setHours(0, 0, 0, 0);
-    return resetDate;
+// (Sub-entrega 19) DATA DO REINÍCIO SEMPRE LOCAL. O Reinício é escolhido
+// como DIA ('AAAA-MM-DD'); a hora não significa nada. Valores gravados em
+// UTC ('...Z') ou só com a data ('2026-10-13', que o navegador lê como
+// UTC) viravam o DIA ANTERIOR no Brasil (UTC−3) — o ciclo começava um dia
+// antes e a 1ª emissão do Misterioso caía no próprio dia do Reinício.
+// Agora vale só a parte da data, em qualquer formato.
+export function parseResetDate(value) {
+  if (!value) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value));
+  if (m) {
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 0, 0, 0, 0);
+    return isNaN(d.getTime()) ? null : d;
   }
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return null;
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+export function getCycleStart(platform, refDate = new Date()) {
+  const resetDate = platform.lastResetDate ? parseResetDate(platform.lastResetDate) : null;
+  if (resetDate) return resetDate;
   return new Date(refDate.getFullYear(), refDate.getMonth(), 1, 0, 0, 0, 0);
 }
 

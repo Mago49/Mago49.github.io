@@ -12,6 +12,9 @@
 // misterioso-logic.js) conta até 23:59:59 do mesmo dia. Um depósito feito
 // no próprio dia da emissão mudava o patamar na aba Misterioso mas não a
 // cor no calendário. Agora os dois contam até o fim do dia.
+// (Sub-entrega 20) REGRA CONFIRMADA PELO USUÁRIO: a emissão sai à 00:00 e
+// vale pelos depósitos até o fim do dia ANTERIOR. Valor e cor continuam
+// iguais entre si — os dois agora param em 23:59:59.999 da véspera.
 //
 // (Sub-entrega 11c) Plataforma marcada "🚫 Sem ciclo do Misterioso"
 // (misteriosoCycle === 'no') fica fora do calendário.
@@ -25,14 +28,6 @@ function toLocalDayKey(date) {
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
-}
-
-// (Sub-entrega H) 23:59:59 do mesmo dia — mesmo instante usado por
-// getEffectiveMisteriosoValue (misterioso-logic.js).
-function endOfDay(date) {
-  const d = new Date(date);
-  d.setHours(23, 59, 59, 0);
-  return d;
 }
 
 // Cria a instância do FullCalendar e guarda em state.calendar.
@@ -133,8 +128,9 @@ export function updateCalendarEvents(onDone) {
     const emissionDates = computeEmissionDates(platform, now);
     emissionDates.forEach((emDate, emIndex) => {
       if (emDate >= windowFrom && emDate <= windowTo) {
-        // (Sub-entrega H) até o fim do dia da emissão — ver nota no topo.
-        const totalAtEmission = sumDepositsUpTo(platform, endOfDay(emDate));
+        // (Sub-entrega 20) Faixa = depósitos até o fim do dia ANTERIOR à
+        // emissão (mesma regra do valor — misterioso-logic.js).
+        const totalAtEmission = sumDepositsUpTo(platform, new Date(emDate.getTime() - 1));
         const bg = colorForLevel(totalAtEmission);
         const isDay30 = emIndex === emissionDates.length - 1; // último item = bônus do dia 30
 

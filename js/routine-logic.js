@@ -42,6 +42,22 @@
 // depositRoutineInflows: depósitos de rotina previstos (pro Rollover
 // projetado do Planejador) — só leitura.
 
+// === (Sub-entrega 19) GRUPOS: PARTICIPAÇÃO E COMPETIÇÃO ===
+// a) memberPeriods: [{ platformId, from: 'AAAA-MM-DD', to: 'AAAA-MM-DD'|null }]
+//    — quando cada plataforma fez parte da rotina (o "grupo"). to = null:
+//    ainda participa. Entrou: abre um período a partir da data escolhida
+//    (hoje, uma data passada pra "trazer os resultados", ou desde sempre).
+//    Saiu: o período fecha no dia da saída — os resultados ATÉ ali
+//    continuam no grupo — ou é apagado ("apagar a participação"). Voltou:
+//    período novo. Rotina antiga sem o campo: as plataformas de hoje contam
+//    desde a criação da rotina (getMemberPeriods deriva; gravado no próximo
+//    "Salvar" — decisão do usuário).
+// b) competition: true/false — "🏆 Participar da competição". Ausente: liga
+//    sozinho com 2+ plataformas (routineCompetes).
+// O campo é gravado SEMPRE junto (cleanRoutine): a regra do Firestore não
+// deixa ele sumir depois de existir (versão antiga do app em outro aparelho
+// não apaga o histórico).
+
 import { toLocalDateString, roundMoney } from './finance-logic.js';
 import { getLevelAt, BET_MINIMUM_BY_LEVEL } from './cycle-logic.js';
 import { isDepositKind, getDepositKindId } from './deposit-kinds.js';
@@ -54,6 +70,8 @@ export const ROUTINE_NAME_MAX = 40;
 export const ROUTINE_NOTES_MAX = 200;
 export const ROUTINE_DATES_MAX = 366;
 export const ROUTINE_HISTORY_DAYS = 30;
+export const MEMBER_PERIODS_MAX = 2000;
+export const SINCE_ALWAYS_KEY = '2000-01-01'; // "desde sempre"
 
 export const ROUTINE_ACTIONS = Object.freeze([
   { id: 'deposit', label: 'Depositar', emoji: '💰', usesMin: true, auto: true },
@@ -184,6 +202,13 @@ export function validateRoutine(r) {
   if (s.type === 'since-last' && !['deposit', 'bet'].includes(r.action)) {
     return { ok: false, error: '"Desde o último" só vale pra depositar ou apostar.' };
   }
+  if (r.memberPeriods !== undefined && r.memberPeriods !== null) {
+    const chk = validateMemberPeriods(r.memberPeriods);
+    if (!chk.ok) return chk;
+  }
+  if (r.competition !== undefined && r.competition !== null && typeof r.competition !== 'boolean') {
+    return { ok: false, error: 'Opção de competição inválida.' };
+  }
   if (s.type === 'dates') {
     if (!Array.isArray(s.dates) || s.dates.length === 0) return { ok: false, error: 'Escolha pelo menos uma data.' };
     if (s.dates.length > ROUTINE_DATES_MAX) return { ok: false, error: `Máximo de ${ROUTINE_DATES_MAX} datas.` };
@@ -214,6 +239,9 @@ export function cleanRoutine(r) {
     platformIds: [...new Set((r.platformIds || []).map(String))],
     // (7b) null = qualquer tipo.
     depositKind: routineDepositKind(r),
+    // (19) participação e competição — SEMPRE gravados.
+    memberPeriods: cleanMemberPeriods(r.memberPeriods !== undefined && r.memberPeriods !== null ? r.memberPeriods : getMemberPeriods(r)),
+    competition: routineCompetes(r),
     schedule: {
       type: s.type,
       weekdays: s.type === 'weekdays' ? [...new Set((s.weekdays || []).map(Number))].filter(n => n >= 0 && n <= 6).sort() : [],
@@ -489,4 +517,115 @@ export function depositRoutineInflows(routines, platform, todayKey, toKey) {
   });
   out.items.sort((a, b) => a.key.localeCompare(b.key));
   return out;
+}
+
+// ============================================================
+// (Sub-entrega 19) PARTICIPAÇÃO NOS GRUPOS E COMPETIÇÃO
+// ============================================================
+
+function cleanPeriod(x) {
+  if (!x || typeof x !== 'object') return null;
+  const platformId = typeof x.platformId === 'string' ? x.platformId : '';
+  if (!platformId || platformId.length > 100 || platformId.includes('/')) return null;
+  if (!isValidDayKey(x.from)) return null;
+  const to = x.to === null || x.to === undefined || x.to === '' ? null : x.to;
+  if (to !== null && (!isValidDayKey(to) || to < x.from)) return null;
+  return { platformId, from: x.from, to };
+}
+
+export function validateMemberPeriods(list) {
+  if (!Array.isArray(list)) return { ok: false, error: 'Participação inválida.' };
+  if (list.length > MEMBER_PERIODS_MAX) return { ok: false, error: 'Períodos de participação demais.' };
+  for (const x of list) {
+    if (!cleanPeriod(x)) return { ok: false, error: 'Período de participação inválido (confira as datas: o início vem antes do fim).' };
+  }
+  // Períodos da MESMA plataforma não podem se sobrepor.
+  const byP = new Map();
+  list.forEach(x => { if (!byP.has(x.platformId)) byP.set(x.platformId, []); byP.get(x.platformId).push(x); });
+  for (const arr of byP.values()) {
+    const sorted = arr.slice().sort((a, b) => a.from.localeCompare(b.from));
+    for (let i = 1; i < sorted.length; i++) {
+      const prevTo = sorted[i - 1].to;
+      if (prevTo === null || prevTo >= sorted[i].from) return { ok: false, error: 'Dois períodos da mesma plataforma se sobrepõem.' };
+    }
+  }
+  return { ok: true };
+}
+
+export function cleanMemberPeriods(list) {
+  return (Array.isArray(list) ? list : []).map(cleanPeriod).filter(Boolean)
+    .sort((a, b) => a.platformId.localeCompare(b.platformId) || a.from.localeCompare(b.from));
+}
+
+/**
+ * Períodos da rotina. Rotina antiga (sem o campo): as plataformas de hoje,
+ * desde o dia em que a rotina foi criada (decisão 1a), em aberto.
+ */
+export function getMemberPeriods(routine) {
+  if (!routine) return [];
+  if (Array.isArray(routine.memberPeriods)) return cleanMemberPeriods(routine.memberPeriods);
+  const from = createdDayKey(routine) || toLocalDateString(new Date());
+  return cleanMemberPeriods((routine.platformIds || []).map(pid => ({ platformId: pid, from, to: null })));
+}
+
+/** 🏆 Participa da competição? Sem escolha gravada: 2+ plataformas. */
+export function routineCompetes(routine) {
+  if (!routine) return false;
+  if (typeof routine.competition === 'boolean') return routine.competition;
+  return (routine.platformIds || []).length >= 2;
+}
+
+/** Rotina vale como GRUPO no Planejador (2+ plataformas que existem). */
+export function isPlanGroup(routine, existingIds = null) {
+  const ids = (routine && routine.platformIds) || [];
+  const n = existingIds ? ids.filter(id => existingIds.has(id)).length : ids.length;
+  return n >= 2;
+}
+
+/** A plataforma fazia parte do grupo naquele dia? */
+export function isMemberOn(periods, platformId, dayKey) {
+  return (periods || []).some(x => x.platformId === platformId && x.from <= dayKey && (x.to === null || dayKey <= x.to));
+}
+
+/** Plataformas que entraram/saíram comparando a rotina salva com a nova lista. */
+export function diffMembers(prevIds, nextIds) {
+  const a = new Set(prevIds || []);
+  const b = new Set(nextIds || []);
+  return { added: [...b].filter(x => !a.has(x)), removed: [...a].filter(x => !b.has(x)) };
+}
+
+/**
+ * Aplica entradas e saídas nos períodos (puro — devolve uma lista nova).
+ *   joins:  { [platformId]: 'AAAA-MM-DD' }   início do período novo
+ *   leaves: { [platformId]: 'keep' | 'erase' } keep = fecha em todayKey;
+ *                                               erase = apaga a participação
+ * Entrada com data ANTES do fim de um período fechado da mesma plataforma
+ * emenda os dois (sem sobreposição).
+ */
+export function applyMemberChanges(periods, joins, leaves, todayKey) {
+  let list = cleanMemberPeriods(periods).map(x => ({ ...x }));
+  Object.entries(leaves || {}).forEach(([pid, mode]) => {
+    if (mode === 'erase') { list = list.filter(x => x.platformId !== pid); return; }
+    list.forEach(x => { if (x.platformId === pid && x.to === null) x.to = x.from > todayKey ? x.from : todayKey; });
+  });
+  Object.entries(joins || {}).forEach(([pid, fromKey]) => {
+    if (!isValidDayKey(fromKey)) return;
+    if (list.some(x => x.platformId === pid && x.to === null)) return; // já participa
+    const mine = list.filter(x => x.platformId === pid);
+    // Começa dentro/antes de um período antigo: emenda (pega o menor início).
+    const overlapping = mine.filter(x => x.to !== null && x.to >= fromKey);
+    if (overlapping.length) {
+      const minFrom = [fromKey, ...overlapping.map(x => x.from)].sort()[0];
+      list = list.filter(x => !(x.platformId === pid && x.to !== null && x.to >= fromKey));
+      list.push({ platformId: pid, from: minFrom, to: null });
+    } else {
+      list.push({ platformId: pid, from: fromKey, to: null });
+    }
+  });
+  return cleanMemberPeriods(list);
+}
+
+/** Fecha todos os períodos abertos em todayKey (rotina virando grupo encerrado). */
+export function closeAllPeriods(periods, todayKey) {
+  return cleanMemberPeriods(periods).map(x => (x.to === null ? { ...x, to: x.from > todayKey ? x.from : todayKey } : x));
 }

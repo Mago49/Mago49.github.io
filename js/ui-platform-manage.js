@@ -156,9 +156,12 @@
 // cycle-logic.js); "Ainda não" = desde hoje. Troca agendada aparece como
 // aviso ⏳ embaixo do template.
 
+//
+// (Sub-entrega 20) Reinício com data passada: os depósitos feitos desde
+// essa data (depositLog) voltam pro ciclo (deposits) — avisado na tela.
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
-import { getMonthStart, getCurrentCycleDay, getTotalDepositsSinceCycle, getDaysSinceLastDeposit, colorForLevel, getEffectiveBetDayKeys, recordLevelChange, getCurrentVipTemplateId, getVipChangeDate, getPendingLevelChange } from './cycle-logic.js';
+import { getMonthStart, getCurrentCycleDay, getTotalDepositsSinceCycle, getDaysSinceLastDeposit, colorForLevel, getEffectiveBetDayKeys, recordLevelChange, getCurrentVipTemplateId, getVipChangeDate, getPendingLevelChange, parseResetDate } from './cycle-logic.js';
 import { askVipChangeTiming } from './ui-vip-change.js'; // (Sub-entrega 12)
 import { savePlatform, deletePlatformDoc } from './platforms-store.js';
 import { filterAndSortForManage } from './platform-sort.js';
@@ -611,8 +614,10 @@ function buildActionsSection(p) {
 
   const resetInfo = document.createElement('div');
   resetInfo.className = 'reset-date';
-  if (p.lastResetDate) {
-    const resetDateObj = new Date(p.lastResetDate);
+  // (Sub-entrega 19) Data do Reinício lida como DIA LOCAL (parseResetDate,
+  // cycle-logic.js) — a mesma leitura do ciclo/Misterioso.
+  const resetDateObj = p.lastResetDate ? parseResetDate(p.lastResetDate) : null;
+  if (resetDateObj) {
     const dia = String(resetDateObj.getDate()).padStart(2, '0');
     const mes = String(resetDateObj.getMonth() + 1).padStart(2, '0');
     resetInfo.textContent = `Ciclo iniciado: ${dia}/${mes}`;
@@ -1774,13 +1779,28 @@ export function initModalListeners() {
       currentResetPlatform.cycleEnded = false;
       // (11c) Registra o Reinício no histórico de ciclos (mesma gravação).
       recordCycleEvent(currentResetPlatform, 'reset', resetDateInput.value, 'auto');
-      // Reinício também zera os depósitos — garantia extra caso alguém
-      // clique direto em "Reinício" sem passar por "Fim" antes. NÃO mexe
-      // em betDays de propósito: "Apostei hoje" é contado por mês
+      // Reinício também refaz os depósitos do ciclo — garantia extra caso
+      // alguém clique direto em "Reinício" sem passar por "Fim" antes. NÃO
+      // mexe em betDays de propósito: "Apostei hoje" é contado por mês
       // (getMonthStart), não pelo ciclo.
-      currentResetPlatform.deposits = [];
+      // (Sub-entrega 20) Reinício com data PASSADA: os depósitos feitos
+      // desde essa data (histórico permanente depositLog) VOLTAM pro ciclo
+      // — antes eram zerados e a faixa do Misterioso ficava menor que a
+      // real. Reinício com a data de hoje: só os depósitos de hoje (feitos
+      // antes do clique) entram.
+      const resetStart = parseResetDate(currentResetPlatform.lastResetDate);
+      const nowMs = Date.now();
+      const restored = (currentResetPlatform.depositLog || []).filter(e => {
+        const t = e && e.date ? new Date(e.date).getTime() : NaN;
+        return Number.isFinite(t) && resetStart && t >= resetStart.getTime() && t <= nowMs;
+      }).map(e => ({ ...e }));
+      currentResetPlatform.deposits = restored;
+      const restoredTotal = restored.reduce((sum, e) => sum + (Number(e.value) || 0), 0);
       openRowId = currentResetPlatform.id;
       savePlatform(state.currentUid, currentResetPlatform, { allowShrink: ['deposits'] });
+      if (restored.length) {
+        showAppAlert(`${restored.length} depósito(s) feito(s) desde ${resetDateInput.value.split('-').reverse().join('/')} voltaram pro ciclo (${formatCurrency(restoredTotal)}) — eles contam pra faixa do Misterioso.`);
+      }
       // lastResetDate/cycleEnded podem afetar filtros de Ativas/Inativas e
       // ordenação por dias no ciclo — atualiza a linha e reconcilia a lista.
       refreshRow(currentResetPlatform.id);

@@ -15,6 +15,15 @@
 // GRAVAÇÕES: writeBatch/deleteDoc de firebase-init.js (SAFE_MODE vale),
 // NÃO otimistas — a memória só muda depois do commit confirmar.
 //
+// === (Sub-entrega 19) GRUPO ENCERRADO ===
+//   users/{uid}/groupArchive/{routineId}
+//     { name, emoji, color, action, memberPeriods[], createdAt, archivedAt, updatedAt }
+// Excluir uma rotina que participa da competição (🏆) NÃO apaga o grupo:
+// num ÚNICO lote, o grupo é guardado aqui (períodos fechados no dia) e a
+// rotina sai — ou acontecem as duas coisas, ou nenhuma. O grupo encerrado
+// continua na aba 🏆 Grupos (editável/excluível lá). Nenhuma outra tela lê
+// esta coleção (Planejador, Caixa, Agenda e Hoje continuam iguais).
+//
 // Leitura por intervalo de dia usa query/where/documentId (reexportados em
 // firebase-init.js desde a Sub-entrega 3).
 
@@ -23,7 +32,11 @@ import {
   query, where, orderBy, limit, documentId
 } from './firebase-init.js';
 import { state } from './state.js';
-import { validateRoutine, cleanRoutine } from './routine-logic.js';
+import {
+  validateRoutine, cleanRoutine, routineCompetes, getMemberPeriods, closeAllPeriods,
+  validateMemberPeriods, cleanMemberPeriods, ROUTINE_NAME_MAX
+} from './routine-logic.js';
+import { toLocalDateString } from './finance-logic.js';
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -143,19 +156,123 @@ export async function saveRoutine(uid, routine) {
   return { ok: true, id };
 }
 
-/** Exclui a rotina. O histórico (routineLog) FICA. */
+/** Exclui a rotina. O histórico (routineLog) FICA. (19) Rotina 🏆 vira
+ *  grupo encerrado no MESMO lote (archived: true no retorno). */
 export async function deleteRoutine(uid, routineId) {
   if (!uid) return { ok: false, error: 'Nenhum usuário logado.' };
   if (!isRoutinesLoaded(uid)) return { ok: false, error: 'As rotinas ainda não foram carregadas — recarregue a tela.' };
   if (!isSafeId(routineId)) return { ok: false, error: 'Rotina inválida.' };
+  const routine = cache.routines.find(r => r.id === routineId) || null;
+  const archive = routine && routineCompetes(routine) ? buildArchiveDoc(routine) : null;
   try {
-    await deleteDoc(doc(col(uid, 'routines'), routineId));
+    const batch = writeBatch(db);
+    if (archive) batch.set(doc(col(uid, 'groupArchive'), routineId), archive);
+    batch.delete(doc(col(uid, 'routines'), routineId));
+    await batch.commit();
   } catch (err) {
     console.error('Erro ao excluir rotina:', err);
     return { ok: false, error: 'Não foi possível excluir a rotina no banco de dados. Nada mudou. Verifique a internet e tente de novo.' };
   }
   if (!cache || cache.uid !== uid) return { ok: false, error: 'A sessão mudou durante a gravação — recarregue a página.' };
   cache.routines = cache.routines.filter(r => r.id !== routineId);
+  if (archive && archiveCache && archiveCache.uid === uid) archiveCache.groups.set(routineId, { ...archive, id: routineId });
+  return { ok: true, archived: !!archive };
+}
+
+// ---------- (Sub-entrega 19) grupos encerrados ----------
+
+let archiveCache = null; // { uid, groups: Map<id, doc> }
+
+function buildArchiveDoc(routine) {
+  const today = toLocalDateString(new Date());
+  const nowIso = new Date().toISOString();
+  return {
+    name: String(routine.name || '').slice(0, ROUTINE_NAME_MAX) || 'Grupo',
+    emoji: String(routine.emoji || '').slice(0, 16),
+    color: /^#[0-9a-fA-F]{6}$/.test(String(routine.color || '')) ? routine.color : '#475569',
+    action: String(routine.action || ''),
+    memberPeriods: closeAllPeriods(getMemberPeriods(routine), today),
+    createdAt: typeof routine.createdAt === 'string' ? routine.createdAt : nowIso,
+    archivedAt: nowIso,
+    updatedAt: nowIso
+  };
+}
+
+function isValidArchive(data) {
+  return !!data && typeof data.name === 'string' && data.name.length > 0 && Array.isArray(data.memberPeriods)
+    && typeof data.archivedAt === 'string' && validateMemberPeriods(data.memberPeriods).ok;
+}
+
+/** Lê os grupos encerrados. LANÇA em falha (quem chama decide). */
+export async function loadGroupArchive(uid) {
+  if (!uid) throw new Error('Nenhum usuário logado.');
+  const snap = await getDocs(col(uid, 'groupArchive'));
+  const groups = new Map();
+  let invalid = 0;
+  snap.docs.forEach(d => {
+    const data = d.data() || {};
+    if (isValidArchive(data)) groups.set(d.id, { ...data, id: d.id, memberPeriods: cleanMemberPeriods(data.memberPeriods) });
+    else { invalid++; console.error(`Grupo encerrado "${d.id}" ignorado (dados inválidos).`); }
+  });
+  if (state.currentUid !== uid) throw new Error('A sessão mudou durante a leitura.');
+  archiveCache = { uid, groups, invalid };
+  return archiveCache;
+}
+
+export function isGroupArchiveLoaded(uid = state.currentUid) {
+  return !!archiveCache && archiveCache.uid === uid;
+}
+
+export function getArchivedGroups() {
+  return archiveCache ? [...archiveCache.groups.values()].map(g => ({ ...g, memberPeriods: g.memberPeriods.map(x => ({ ...x })) })) : [];
+}
+
+/** Edita um grupo encerrado (nome e/ou períodos). Espera o commit. */
+export async function updateArchivedGroup(uid, id, patch) {
+  if (!uid) return { ok: false, error: 'Nenhum usuário logado.' };
+  if (!isGroupArchiveLoaded(uid)) return { ok: false, error: 'Os grupos encerrados ainda não foram carregados — recarregue a tela.' };
+  if (!isSafeId(id) || !archiveCache.groups.has(id)) return { ok: false, error: 'Grupo não encontrado — recarregue a tela.' };
+  const cur = archiveCache.groups.get(id);
+  const next = { ...cur };
+  delete next.id;
+  if (patch && 'name' in patch) {
+    const name = String(patch.name || '').trim();
+    if (!name || name.length > ROUTINE_NAME_MAX) return { ok: false, error: `Nome de 1 a ${ROUTINE_NAME_MAX} caracteres.` };
+    next.name = name;
+  }
+  if (patch && 'memberPeriods' in patch) {
+    const chk = validateMemberPeriods(patch.memberPeriods);
+    if (!chk.ok) return chk;
+    if (patch.memberPeriods.some(x => !x.to)) return { ok: false, error: 'Grupo encerrado: todo período precisa ter data de fim.' };
+    next.memberPeriods = cleanMemberPeriods(patch.memberPeriods);
+  }
+  next.updatedAt = new Date().toISOString();
+  try {
+    const batch = writeBatch(db);
+    batch.set(doc(col(uid, 'groupArchive'), id), next);
+    await batch.commit();
+  } catch (err) {
+    console.error('Erro ao salvar grupo encerrado:', err);
+    return { ok: false, error: 'Não foi possível salvar no banco de dados. Nada mudou. Verifique a internet e tente de novo.' };
+  }
+  if (!archiveCache || archiveCache.uid !== uid) return { ok: false, error: 'A sessão mudou durante a gravação — recarregue a página.' };
+  archiveCache.groups.set(id, { ...next, id });
+  return { ok: true };
+}
+
+/** Exclui DE VEZ um grupo encerrado (sai do histórico da competição). */
+export async function deleteArchivedGroup(uid, id) {
+  if (!uid) return { ok: false, error: 'Nenhum usuário logado.' };
+  if (!isGroupArchiveLoaded(uid)) return { ok: false, error: 'Os grupos encerrados ainda não foram carregados — recarregue a tela.' };
+  if (!isSafeId(id)) return { ok: false, error: 'Grupo inválido.' };
+  try {
+    await deleteDoc(doc(col(uid, 'groupArchive'), id));
+  } catch (err) {
+    console.error('Erro ao excluir grupo encerrado:', err);
+    return { ok: false, error: 'Não foi possível excluir no banco de dados. Nada mudou. Verifique a internet e tente de novo.' };
+  }
+  if (!archiveCache || archiveCache.uid !== uid) return { ok: false, error: 'A sessão mudou durante a gravação — recarregue a página.' };
+  archiveCache.groups.delete(id);
   return { ok: true };
 }
 

@@ -28,6 +28,19 @@
 //   (getStrategyPriority — plannerConfig/speed).
 // - Lista: aviso das plataformas sem rotina 🗓️ de ativação semanal (ficam
 //   fora do "Caixa do período" do Planejador).
+//
+// === (Sub-entrega 19) GRUPOS ===
+// a) DESCARTE: Cancelar e trocar de visão com alterações perguntam antes
+//    ("Descartar as alterações?"); sem alteração, sai direto. Sair da aba
+//    NÃO apaga mais o rascunho — volta como estava.
+// b) PARTICIPAÇÃO: ao salvar, quem ENTROU na rotina abre a pergunta "a
+//    partir de quando considerar os resultados" (Hoje / Data / Desde
+//    sempre — aplicar a todas ou uma a uma); quem SAIU: manter os
+//    resultados até hoje (padrão) ou apagar a participação. Seção
+//    "👥 Membros" (rotina já salva): períodos editáveis/excluíveis.
+// c) 🏆 "Participar da competição": ligado por padrão com 2+ plataformas.
+//    Excluir rotina 🏆 = vira "Grupo encerrado" (routine-store.js, mesmo
+//    lote) e continua na aba 🏆 Grupos.
 
 import { state } from './state.js';
 import { formatCurrency, showAppAlert, showAppConfirm } from './utils.js';
@@ -37,7 +50,8 @@ import {
   ROUTINE_ACTIONS, SCHEDULE_TYPES, STATUS_INFO, ROUTINE_COLOR_SUGGESTIONS, ROUTINE_EMOJI_SUGGESTIONS,
   ROUTINE_NAME_MAX, ROUTINE_NOTES_MAX, ROUTINE_HISTORY_DAYS, ROUTINE_DATES_MAX,
   evaluateRoutineDay, summarizeItems, summarizeLogRoutine, buildDayLog, listMissingLogDays,
-  validateRoutine, addDaysKey
+  validateRoutine, addDaysKey,
+  getMemberPeriods, routineCompetes, diffMembers, applyMemberChanges, validateMemberPeriods, SINCE_ALWAYS_KEY
 } from './routine-logic.js';
 import {
   loadRoutineData, isRoutinesLoaded, getRoutines, getRoutineLogs, getMarks, getInvalidRoutineCount,
@@ -60,6 +74,8 @@ let loadStatus = 'idle';
 let loadToken = 0;
 let view = 'hoje';      // sessão
 let draft = null;       // rotina em edição (null = lista)
+let draftSnap = null;   // (19) foto do rascunho ao abrir — pra saber se mudou
+let draftUid = null;
 let pickerSearch = '';
 let historyNote = '';
 let resolveCtx = () => ({});     // (7b) contexto de bônus (templates do Misterioso)
@@ -240,10 +256,13 @@ function renderViews() {
   if (!box) return;
   box.replaceChildren();
   [['hoje', 'Hoje'], ['rotinas', `Rotinas (${getRoutines().length})`], ['historico', 'Histórico']].forEach(([id, label]) => {
-    const b = button(label, `plan-chip${view === id ? ' active' : ''}`, () => {
+    const b = button(label, `plan-chip${view === id ? ' active' : ''}`, async () => {
       if (busy) return;
+      if (view === id && !draft) return;
+      if (!(await confirmDiscardDraft())) return;
       view = id;
       draft = null;
+      draftSnap = null;
       renderAll();
     });
     b.setAttribute('role', 'tab');
@@ -512,13 +531,17 @@ function renderList(body) {
 
 async function onDelete(routine, btn) {
   if (busy) return;
-  const ok = await showAppConfirm(`Excluir a rotina "${routine.name}"? O histórico dos dias já gravados continua guardado.`);
+  const competes = routineCompetes(routine);
+  const ok = await showAppConfirm(competes
+    ? `Excluir a rotina "${routine.name}"? Ela participa da 🏆 competição: sai das rotinas e vira "Grupo encerrado" na aba 🏆 Grupos, com os resultados guardados. O histórico dos dias também continua.`
+    : `Excluir a rotina "${routine.name}"? O histórico dos dias já gravados continua guardado.`);
   if (!ok || !mounted) return;
   busy = true;
   btn.disabled = true;
   try {
     const result = await deleteRoutine(state.currentUid, routine.id);
     if (!result.ok) await showAppAlert(result.error);
+    else if (result.archived) await showAppAlert(`"${routine.name}" agora é um Grupo encerrado na aba 🏆 Grupos.`);
   } finally {
     busy = false;
     if (mounted) renderAll();
@@ -551,6 +574,13 @@ function startDraft(routine) {
   };
   if (!draft.schedule.everyDays) draft.schedule.everyDays = 8;
   if (!draft.schedule.fromKey) draft.schedule.fromKey = todayKey();
+  // (19) Participação e competição. Cópia (Duplicar) começa sem períodos.
+  draft.memberPeriods = base && base.id ? getMemberPeriods(base) : [];
+  draft.savedIds = base && base.id ? [...(base.platformIds || [])] : [];
+  draft.competition = base ? routineCompetes(base) : null; // null = automático (2+)
+  draft.membersOpen = false;
+  draftSnap = snapDraft(draft);
+  draftUid = state.currentUid;
   pickerSearch = '';
   view = 'rotinas';
   renderAll();
@@ -705,6 +735,24 @@ function renderEditor(body) {
   // Plataformas
   body.appendChild(field(d.action === 'reminder' ? 'Plataformas (opcional — vazio = lembrete geral)' : 'Plataformas', renderPicker(d)));
 
+  // (19) 🏆 Competição
+  const compOn = draft.competition === null ? (d.platformIds.length >= 2) : draft.competition;
+  const compLabel = el('label', 'plan-toggle rt-comp');
+  const compCb = el('input');
+  compCb.type = 'checkbox';
+  compCb.checked = compOn;
+  compCb.addEventListener('change', () => { d.competition = compCb.checked; renderAll(); });
+  compLabel.appendChild(compCb);
+  compLabel.appendChild(document.createTextNode(' 🏆 Participar da competição'));
+  body.appendChild(field('Competição', compLabel,
+    compOn
+      ? 'Entra no ranking da aba 🏆 Grupos. Se a rotina for excluída, vira "Grupo encerrado" e os resultados ficam guardados.'
+      : (d.platformIds.length >= 2 ? 'Fora do ranking.' : 'Rotina de 1 plataforma: ligue pra ela competir contra os grupos.')));
+
+  // (19) 👥 Membros — só rotina já salva (os períodos de quem entrar/sair
+  // são definidos ao salvar).
+  if (d.id) body.appendChild(renderMembers(d));
+
   // Observação
   const notes = el('textarea', 'plan-input rt-notes-input');
   notes.rows = 2;
@@ -715,7 +763,12 @@ function renderEditor(body) {
   body.appendChild(field('Observação', notes));
 
   const actions = el('div', 'plan-actions');
-  actions.appendChild(button('Cancelar', 'bet-manage-btn', () => { draft = null; renderAll(); }));
+  actions.appendChild(button('Cancelar', 'bet-manage-btn', async () => {
+    if (!(await confirmDiscardDraft())) return;
+    draft = null;
+    draftSnap = null;
+    renderAll();
+  }));
   actions.appendChild(button(d.id ? 'Salvar alterações' : 'Criar rotina', 'btn-confirm', (e) => onSaveDraft(e.target)));
   body.appendChild(actions);
 }
@@ -823,6 +876,22 @@ async function onSaveDraft(btn) {
     schedule: { ...d.schedule, everyDays: Number(d.schedule.everyDays) }
   };
   if (!candidate.id) delete candidate.id;
+  // (19) Competição: automático = 2+ plataformas.
+  candidate.competition = d.competition === null ? candidate.platformIds.length >= 2 : !!d.competition;
+  const pre = validateRoutine(candidate);
+  if (!pre.ok) { await showAppAlert(pre.error); return; }
+  const periodsCheck = validateMemberPeriods(d.memberPeriods);
+  if (!periodsCheck.ok) { await showAppAlert(`👥 Membros: ${periodsCheck.error}`); return; }
+
+  // (19) Quem entrou / saiu -> pergunta e aplica nos períodos.
+  const { added, removed } = diffMembers(d.savedIds, candidate.platformIds);
+  let periods = d.memberPeriods;
+  if (added.length || removed.length) {
+    const answer = await askMemberChanges(added, removed, !d.id);
+    if (!answer || !mounted) return;
+    periods = applyMemberChanges(periods, answer.joins, answer.leaves, todayKey());
+  }
+  candidate.memberPeriods = periods;
   const check = validateRoutine(candidate);
   if (!check.ok) { await showAppAlert(check.error); return; }
 
@@ -836,8 +905,190 @@ async function onSaveDraft(btn) {
   } finally {
     busy = false;
     btn.disabled = false;
-    if (saved && mounted) { draft = null; renderAll(); }
+    if (saved && mounted) { draft = null; draftSnap = null; renderAll(); }
   }
+}
+
+// ---------- (Sub-entrega 19) descarte, participação ----------
+
+function snapDraft(d) {
+  if (!d) return null;
+  const { membersOpen, ...rest } = d;
+  return JSON.stringify(rest);
+}
+
+/** true = pode seguir (sem rascunho, sem alteração ou o usuário confirmou). */
+async function confirmDiscardDraft() {
+  if (!draft) return true;
+  if (snapDraft(draft) === draftSnap) return true;
+  return showAppConfirm('Descartar as alterações desta rotina? O que você mudou não foi salvo.');
+}
+
+function platformName(id) {
+  const p = state.platforms.find(x => x.id === id);
+  return p ? p.name : '(plataforma excluída)';
+}
+
+function renderMembers(d) {
+  const wrap = el('details', 'rt-members');
+  wrap.open = !!d.membersOpen;
+  wrap.addEventListener('toggle', () => { d.membersOpen = wrap.open; });
+  const periods = d.memberPeriods;
+  wrap.appendChild(el('summary', '', `👥 Membros — ${periods.length} período(s)`));
+  wrap.appendChild(el('p', 'plan-hint', 'Desde quando (e até quando) os resultados de cada plataforma contam pro grupo. Sem fim = participa hoje.'));
+  const byP = new Map();
+  periods.forEach((x, i) => { if (!byP.has(x.platformId)) byP.set(x.platformId, []); byP.get(x.platformId).push({ x, i }); });
+  const ids = [...byP.keys()].sort((a, b) => platformName(a).localeCompare(platformName(b), 'pt-BR', { numeric: true }));
+  if (!ids.length) wrap.appendChild(el('p', 'plan-hint', 'Nenhum período.'));
+  ids.forEach(pid => {
+    byP.get(pid).forEach(({ x, i }) => {
+      const row = el('div', 'rt-member-row');
+      row.appendChild(el('span', 'rt-member-name', platformName(pid)));
+      const from = el('input', 'plan-input');
+      from.type = 'date';
+      from.value = x.from === SINCE_ALWAYS_KEY ? '' : x.from;
+      from.setAttribute('aria-label', `Início — ${platformName(pid)}`);
+      from.addEventListener('change', () => { d.memberPeriods[i] = { ...d.memberPeriods[i], from: from.value || SINCE_ALWAYS_KEY }; });
+      const to = el('input', 'plan-input');
+      to.type = 'date';
+      to.value = x.to || '';
+      to.setAttribute('aria-label', `Fim — ${platformName(pid)}`);
+      to.addEventListener('change', () => { d.memberPeriods[i] = { ...d.memberPeriods[i], to: to.value || null }; });
+      const dates = el('div', 'rt-member-dates');
+      dates.appendChild(from);
+      dates.appendChild(el('span', 'plan-sep', 'até'));
+      dates.appendChild(to);
+      row.appendChild(dates);
+      row.appendChild(button('Excluir', 'btn-remove-modal rt-member-del', async () => {
+        const ok = await showAppConfirm(`Excluir este período de ${platformName(pid)}? Os resultados dele saem do grupo (só vale depois de "Salvar alterações").`);
+        if (!ok) return;
+        d.memberPeriods.splice(i, 1);
+        renderAll();
+      }));
+      wrap.appendChild(row);
+    });
+  });
+  wrap.appendChild(el('p', 'plan-hint', 'Vazio no início = desde sempre. Vazio no fim = ainda participa.'));
+  return wrap;
+}
+
+/**
+ * Mini-contêiner: a partir de quando contam os resultados de quem ENTROU
+ * e o que fazer com quem SAIU. Resolve { joins, leaves } ou null (cancelou).
+ */
+function askMemberChanges(added, removed, isNew) {
+  return new Promise(resolve => {
+    const today = todayKey();
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const overlay = el('div', 'sp-overlay');
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    const box = el('div', 'sp-box rt-mc-box');
+    overlay.appendChild(box);
+    const joinMode = {};   // pid -> 'today' | 'date' | 'always'
+    const joinDate = {};
+    const leaveMode = {};  // pid -> 'keep' | 'erase'
+    added.forEach(pid => { joinMode[pid] = 'today'; joinDate[pid] = today; });
+    removed.forEach(pid => { leaveMode[pid] = 'keep'; });
+    let done = false;
+    function finish(v) {
+      if (done) return;
+      done = true;
+      document.removeEventListener('keydown', onKey, true);
+      overlay.remove();
+      document.body.style.overflow = previousOverflow;
+      resolve(v);
+    }
+    function onKey(e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(null); } }
+    document.addEventListener('keydown', onKey, true);
+
+    const joinChips = (current, onPick) => {
+      const row = el('div', 'plan-chips');
+      [['today', 'Hoje'], ['date', 'Escolher data'], ['always', 'Desde sempre']].forEach(([id, label]) => {
+        row.appendChild(button(label, `plan-chip${current === id ? ' active' : ''}`, () => onPick(id)));
+      });
+      return row;
+    };
+
+    function render() {
+      box.replaceChildren();
+      box.appendChild(el('h3', 'sp-title', isNew ? '👥 Participação no grupo' : '👥 Mudou quem participa'));
+      if (added.length) {
+        box.appendChild(el('p', 'sp-note', `${isNew ? 'Plataformas da rotina' : 'Entraram'} (${added.length}): a partir de quando os resultados delas contam pro grupo? "Hoje" = entra sem trazer o passado; uma data antiga traz os resultados a partir dela.`));
+        if (added.length > 1) {
+          box.appendChild(el('span', 'sp-label', 'Aplicar a todas'));
+          const allMode = added.every(pid => joinMode[pid] === joinMode[added[0]]) ? joinMode[added[0]] : null;
+          box.appendChild(joinChips(allMode, id => { added.forEach(pid => { joinMode[pid] = id; }); render(); }));
+          if (allMode === 'date') {
+            const di = el('input', 'sp-input');
+            di.type = 'date';
+            di.max = today;
+            di.value = joinDate[added[0]] || today;
+            di.setAttribute('aria-label', 'Data pra todas');
+            di.addEventListener('change', () => { added.forEach(pid => { joinDate[pid] = di.value; }); });
+            box.appendChild(di);
+          }
+        }
+        // 1 plataforma: direto; várias: "Uma a uma" recolhível.
+        const det = added.length > 1 ? el('details', 'rt-mc-list') : el('div', 'rt-mc-list');
+        if (added.length > 1) {
+          det.open = added.length <= 3;
+          det.appendChild(el('summary', '', 'Uma a uma'));
+        }
+        added.forEach(pid => {
+          const r = el('div', 'rt-mc-row');
+          r.appendChild(el('span', 'rt-member-name', platformName(pid)));
+          r.appendChild(joinChips(joinMode[pid], id => { joinMode[pid] = id; render(); }));
+          if (joinMode[pid] === 'date') {
+            const di = el('input', 'sp-input');
+            di.type = 'date';
+            di.max = today;
+            di.value = joinDate[pid] || today;
+            di.setAttribute('aria-label', `Data — ${platformName(pid)}`);
+            di.addEventListener('change', () => { joinDate[pid] = di.value; });
+            r.appendChild(di);
+          }
+          det.appendChild(r);
+        });
+        box.appendChild(det);
+      }
+      if (removed.length) {
+        box.appendChild(el('p', 'sp-note', `Saíram (${removed.length}): os resultados até hoje continuam no grupo — ou apague a participação (como se nunca tivesse participado).`));
+        removed.forEach(pid => {
+          const r = el('div', 'rt-mc-row');
+          r.appendChild(el('span', 'rt-member-name', platformName(pid)));
+          const row = el('div', 'plan-chips');
+          [['keep', 'Manter resultados'], ['erase', 'Apagar participação']].forEach(([id, label]) => {
+            row.appendChild(button(label, `plan-chip${leaveMode[pid] === id ? ' active' : ''}`, () => { leaveMode[pid] = id; render(); }));
+          });
+          r.appendChild(row);
+          box.appendChild(r);
+        });
+      }
+      const err = el('p', 'sp-error app-hidden');
+      box.appendChild(err);
+      const footer = el('div', 'sp-footer');
+      footer.appendChild(button('Voltar', 'sp-cancel', () => finish(null)));
+      footer.appendChild(button('Confirmar', 'btn-confirm', () => {
+        const joins = {};
+        for (const pid of added) {
+          const m = joinMode[pid];
+          const k = m === 'today' ? today : (m === 'always' ? SINCE_ALWAYS_KEY : joinDate[pid]);
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(String(k || '')) || k > today) {
+            err.textContent = `Escolha uma data válida (até hoje) pra ${platformName(pid)}.`;
+            err.classList.remove('app-hidden');
+            return;
+          }
+          joins[pid] = k;
+        }
+        finish({ joins, leaves: { ...leaveMode } });
+      }));
+      box.appendChild(footer);
+    }
+    document.body.appendChild(overlay);
+    render();
+  });
 }
 
 // ---------- HISTÓRICO ----------
@@ -931,6 +1182,7 @@ export function mountRotinas(root, options = {}) {
   unmountRotinas();
   rootEl = root;
   mounted = true;
+  if (draft && draftUid !== state.currentUid) { draft = null; draftSnap = null; }
   resolveCtx = typeof options.resolveCtx === 'function' ? options.resolveCtx : () => ({});
   contextConfirmed = options.contextConfirmed === true;
   renderSkeleton();
@@ -952,6 +1204,8 @@ export function unmountRotinas() {
   mounted = false;
   rootEl = null;
   busy = false;
-  draft = null;
+  // (19) O rascunho FICA (volta como estava ao reabrir a aba). Usuário
+  // diferente: apaga.
+  if (draft && draftUid !== state.currentUid) { draft = null; draftSnap = null; }
   if (loadStatus === 'loading') loadStatus = 'idle';
 }

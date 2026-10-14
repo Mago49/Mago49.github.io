@@ -8,9 +8,12 @@
 //   [Cancelar] [Salvar]
 //
 // Grava só plannerConfig/speed (plan-store.js savePlatformSpeed).
+// (Sub-entrega 19) Cancelar / Esc / toque fora COM alteração perguntam
+// "Descartar as alterações?" antes de fechar (sem alteração, fecha direto).
 // Segurança: textos por textContent/value.
 
 import { state } from './state.js';
+import { showAppConfirm } from './utils.js';
 import { parseMoneyInput } from './wager-total-logic.js';
 import { getSpeedConfig, savePlatformSpeed } from './plan-store.js';
 import {
@@ -71,10 +74,25 @@ export function openSpeedEditor({ platform } = {}) {
     }
     activeClose = close;
     function onKey(e) {
-      if (e.key === 'Escape' && !busy) { e.preventDefault(); e.stopPropagation(); close({ status: 'cancelled' }); }
+      if (e.key === 'Escape' && !busy) { e.preventDefault(); e.stopPropagation(); requestCancel(); }
     }
     function onRoute() { close({ status: 'cancelled' }); }
-    overlay.addEventListener('click', e => { if (e.target === overlay && !busy) close({ status: 'cancelled' }); });
+    overlay.addEventListener('click', e => { if (e.target === overlay && !busy) requestCancel(); });
+    // (Sub-entrega 19) Cancelar / Esc / toque fora: com alteração, pergunta
+    // antes de descartar (sem alteração, fecha direto).
+    let initialSnap = null;
+    let confirming = false;
+    async function requestCancel() {
+      if (busy || confirming || closed) return;
+      const dirty = initialSnap !== null && JSON.stringify(draft) !== initialSnap;
+      if (dirty) {
+        confirming = true;
+        const ok = await showAppConfirm('Descartar as alterações? O que você mudou aqui não foi salvo.');
+        confirming = false;
+        if (!ok) return;
+      }
+      close({ status: 'cancelled' });
+    }
     document.addEventListener('keydown', onKey, true);
     window.addEventListener('hashchange', onRoute);
     window.addEventListener('popstate', onRoute);
@@ -157,7 +175,7 @@ export function openSpeedEditor({ platform } = {}) {
 
       if (error) box.appendChild(el('p', 'sp-error', error));
       const footer = el('div', 'sp-footer');
-      footer.appendChild(btn('Cancelar', 'sp-cancel', () => { if (!busy) close({ status: 'cancelled' }); }));
+      footer.appendChild(btn('Cancelar', 'sp-cancel', () => { if (!busy) requestCancel(); }));
       const save = btn(busy ? 'Salvando…' : 'Salvar', 'btn-confirm', onSave);
       save.disabled = busy;
       footer.appendChild(save);
@@ -192,5 +210,6 @@ export function openSpeedEditor({ platform } = {}) {
 
     document.body.appendChild(overlay);
     render();
+    initialSnap = JSON.stringify(draft);
   });
 }
