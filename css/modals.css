@@ -2077,6 +2077,8 @@
   border-top: 1px dashed #cbd5e1;
 }
 
+.bb-edit > .be-field:has(.bb-edit-game) { grid-column: 1 / -1; }
+
 .bb-edit-ok {
   grid-column: 1 / -1;
   min-height: 42px;
