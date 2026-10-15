@@ -96,7 +96,7 @@ export function parseDayField(raw, refDate = new Date()) {
 // ---------- leitura do texto ----------
 
 const FIELD_RES = [
-  ['count', /^(contagem\s+de\s+apostas|quantidade\s+de\s+apostas|n[º°o.]?\s*de\s+apostas|n[uú]mero\s+de\s+apostas|rodadas|giros)\b/i],
+  ['count', /^(contagem(\s+de\s+apostas)?|quantidade\s+de\s+apostas|n[º°o.]?\s*de\s+apostas|n[uú]mero\s+de\s+apostas|rodadas|giros)\b/i],
   ['date', /^(data|dia)\b/i],
   ['wagered', /^(apostas|valor\s+apostado|total\s+apostado|apostado|aposta\s+total|valor\s+das\s+apostas)\b/i],
   ['rb', /^(total\s+de\s+vit[óo]rias?\s*\/\s*derrotas?|vit[óo]rias?\s*\/\s*derrotas?|ganhos?\s*\/\s*perdas?|lucro(\s*\/\s*preju[ií]zo)?|resultado|ganho\s+l[ií]quido|r\.?\s*b\.?)\b/i]
@@ -120,43 +120,127 @@ function splitHeader(line) {
   return { provider: words.join(' ').slice(0, 40), game: game.slice(0, 60) };
 }
 
+// Marcadores de lista no começo da linha: "1.", "2)", "-", "•", "*".
+const LIST_MARK = /^\s*(?:\d{1,3}\s*[.)]|[-–•*·]+)\s+/;
+// Linhas de resumo/filtro do próprio histórico (nunca viram jogo).
+const SKIP_LINE = /^(filtros?|resumo|total\s+de\s+apostas|total\s+apostado|resultado\s+total|provedor\s*\/\s*jogo)\b/i;
+const MONEY = '[+-]?\\d{1,3}(?:\\.\\d{3})*,\\d{2}';
+// Linha de TABELA colada sem separador: "PG Slot | Lucky Neko282026-10-1511,20-1,04"
+const TABLE_ROW = new RegExp(`^(.+?\\|\\s*.*?\\D)(\\d+)(\\d{4}-\\d{2}-\\d{2})(${MONEY})(${MONEY})$`);
+
+function tableRow(line) {
+  // Com tabulação (cópia de tabela que manteve as colunas).
+  const cols = line.split('\t').map(c => c.trim()).filter(Boolean);
+  if (cols.length >= 5 && cols[0].includes('|')) {
+    const h = splitHeader(cols[0]);
+    return { ...h, raw: { count: cols[1], date: cols[2], wagered: cols[3], rb: cols[4] } };
+  }
+  const m = line.replace(/\s+$/, '').match(TABLE_ROW);
+  if (!m) return null;
+  // "Lucky Jaguar 500" + "10" chega como "Lucky Jaguar 50010": quando há
+  // um espaço antes dos números, o nome termina com número e não dá pra
+  // saber onde ele acaba — a linha vem marcada pra conferir (✏️ na prévia).
+  const ambiguous = /\s$/.test(m[1]);
+  const h = splitHeader(m[1].trimEnd());
+  return { ...h, ambiguous, raw: { count: m[2], date: m[3], wagered: m[4], rb: m[5] } };
+}
+
+// Formato em UMA linha: "PG Slot | Lucky Neko | Contagem: 28 | Data: … | Apostas: … | Resultado: …"
+// (vários jogos separados por "||").
+function inlineRecords(line) {
+  if (!line.includes('|')) return null;
+  const firstColon = line.indexOf(':');
+  const firstPipe = line.indexOf('|');
+  if (firstColon >= 0 && firstColon < firstPipe) return null; // "Filtros: Hoje | …"
+  const out = [];
+  line.split('||').forEach(rec => {
+    const segs = rec.split('|').map(x => x.trim()).filter(Boolean);
+    if (segs.length < 3) return;
+    const raw = {};
+    segs.slice(2).forEach(sg => { const f = fieldOf(sg); if (f && f.value) raw[f.name] = f.value; });
+    if (!Object.keys(raw).length) return;
+    out.push({ ...splitHeader(`${segs[0]} | ${segs[1]}`), raw });
+  });
+  return out.length ? out : null;
+}
+
 /**
- * Lê o texto colado.
- * @returns {{ rows: object[], ignored: string[] }}
- *   row: { provider, game, count, dayKey, wagered, rb, raw:{...}, errors:[] }
- *   (os números vêm em reais; inválidos = NaN, apontados em errors)
+ * Lê o texto colado. Entende 3 jeitos:
+ *   a) blocos (cabeçalho "PROVEDOR Slot | Jogo" + 1 campo por linha, com
+ *      ou sem numeração "1." / marcador "-");
+ *   b) uma linha por jogo com "|" ("… | Contagem: 10 | Data: … ||" …);
+ *   c) tabela copiada (colunas com tab ou grudadas).
+ * Linhas de filtro/resumo são ignoradas. Blocos IGUAIS repetidos no texto
+ * (mesmo jogo, dia e números) contam 1 vez só.
+ * @returns {{ rows: object[], ignored: string[], truncated: boolean, repeated: number }}
+ *   row: { provider, game, count, dayKey, wagered, rb, raw:{...}, ambiguous? }
  */
 export function parseBatchText(text, refDate = new Date()) {
-  const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n').map(l => l.trim());
+  const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n').map(l => l.replace(/\u00a0/g, ' ').trim());
   const blocks = [];
   const ignored = [];
   let cur = null;
   let pending = null; // campo cujo valor veio na linha de baixo
+  let skipping = false; // dentro do "Resumo"
   const open = (hdr) => { cur = { provider: hdr ? hdr.provider : '', game: hdr ? hdr.game : '', raw: {} }; blocks.push(cur); };
 
-  lines.forEach(line => {
-    if (!line) return;
+  lines.forEach(rawLine => {
+    if (!rawLine || /^[-=_]{3,}$/.test(rawLine)) return;
+    const line = rawLine.replace(LIST_MARK, '');
     if (pending) {
       cur.raw[pending] = line;
       pending = null;
       return;
     }
+    if (SKIP_LINE.test(line)) {
+      if (/^resumo\b/i.test(line)) skipping = true;
+      ignored.push(rawLine);
+      return;
+    }
+    const inline = inlineRecords(line);
+    if (inline) {
+      skipping = false;
+      inline.forEach(r => { blocks.push(r); });
+      cur = null;
+      return;
+    }
+    const t = tableRow(line);
+    if (t) {
+      skipping = false;
+      blocks.push(t);
+      cur = null;
+      return;
+    }
     const f = fieldOf(line);
     if (f) {
+      if (skipping) { ignored.push(rawLine); return; }
       if (!cur || cur.raw[f.name] !== undefined) open(null); // campo repetido = bloco novo
       if (f.value) cur.raw[f.name] = f.value;
       else pending = f.name;
       return;
     }
     if (line.includes('|')) {
+      skipping = false;
       open(splitHeader(line));
       return;
     }
-    ignored.push(line);
+    ignored.push(rawLine);
   });
 
-  const rows = blocks.slice(0, BATCH_MAX_ROWS).map(b => buildRow(b, refDate));
-  return { rows, ignored, truncated: blocks.length > BATCH_MAX_ROWS };
+  // Blocos idênticos (o mesmo histórico colado em 2 formatos, por exemplo)
+  // contam 1 vez só.
+  const seen = new Set();
+  let repeated = 0;
+  const rows = [];
+  blocks.forEach(b => {
+    const r = buildRow(b, refDate);
+    if (!r.game && !Object.keys(b.raw || {}).length) return;
+    const sig = [normalizeKey(r.provider), normalizeKey(r.game), r.dayKey, r.count, r.wagered, r.rb].join('|');
+    if (seen.has(sig)) { repeated++; return; }
+    seen.add(sig);
+    rows.push(r);
+  });
+  return { rows: rows.slice(0, BATCH_MAX_ROWS), ignored, truncated: rows.length > BATCH_MAX_ROWS, repeated };
 }
 
 function buildRow(b, refDate) {
@@ -169,6 +253,7 @@ function buildRow(b, refDate) {
     rb: parseSignedMoney(b.raw.rb),
     raw: { ...b.raw }
   };
+  if (b.ambiguous) row.ambiguous = true;
   if (b.raw.count !== undefined && !/\d/.test(String(b.raw.count))) row.count = NaN;
   return row;
 }
@@ -182,6 +267,7 @@ function buildRow(b, refDate) {
 export function rowErrors(row, lim) {
   const e = [];
   if (!row.game) e.push('sem o nome do jogo');
+  if (row.ambiguous) e.push('confira o nome do jogo e o nº de apostas (vieram grudados na tabela) e toque em ✏️');
   if (!(Number.isInteger(row.count) && row.count > 0)) e.push('nº de apostas inválido');
   if (!(Number.isFinite(row.wagered) && row.wagered > 0)) e.push('valor apostado inválido');
   if (!Number.isFinite(row.rb)) e.push('vitórias/derrotas inválido');

@@ -110,7 +110,7 @@ export function openBetEntry({ platform, initial = null } = {}) {
       e.preventDefault();
       e.stopPropagation();
       // 1º Esc fecha a lista de sugestões; o seguinte fecha o contêiner.
-      if (suggestOpen) {
+      if (suggestOpen && mode === 'single') {
         suggest.replaceChildren();
         suggestOpen = false;
         return;
@@ -148,6 +148,7 @@ export function openBetEntry({ platform, initial = null } = {}) {
       singleWrap.classList.toggle('app-hidden', m !== 'single');
       batchWrap.classList.toggle('app-hidden', m !== 'batch');
       box.classList.toggle('be-box-wide', m === 'batch');
+      if (m === 'batch' && suggestOpen) { suggest.replaceChildren(); suggestOpen = false; }
       if (m === 'batch' && !batchApi) {
         batchApi = mountBatchView(batchWrap, {
           platform,

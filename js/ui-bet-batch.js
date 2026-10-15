@@ -74,6 +74,7 @@ export function mountBatchView(container, { platform, initial = null, onSubmit, 
   let editing = null; // _id da linha em edição
   let busy = false;
   let error = '';
+  let repeatedNote = '';
 
   container.replaceChildren();
   const body = el('div', 'bb-body');
@@ -101,6 +102,7 @@ export function mountBatchView(container, { platform, initial = null, onSubmit, 
     ta.addEventListener('input', () => { text = ta.value; });
     f.appendChild(ta);
     body.appendChild(f);
+    body.appendChild(el('p', 'be-note', 'Aceita o histórico em blocos (um campo por linha, com ou sem numeração), uma linha por jogo com "|" ou a tabela copiada. Resumo e filtros do texto são ignorados.'));
     body.appendChild(el('p', 'be-note', 'Pode colar vários jogos de uma vez. Cada jogo vira uma aposta no histórico (o "Por jogo" continua funcionando). Colou o mesmo dia de novo mais tarde? Só a diferença é registrada.'));
     const err = el('p', 'be-error', error);
     body.appendChild(err);
@@ -114,7 +116,8 @@ export function mountBatchView(container, { platform, initial = null, onSubmit, 
         render();
         return;
       }
-      rows = parsed.rows.map(r => withId({ provider: r.provider, game: r.game, count: r.count, dayKey: r.dayKey, wagered: r.wagered, rb: r.rb }));
+      rows = parsed.rows.map(r => withId({ provider: r.provider, game: r.game, count: r.count, dayKey: r.dayKey, wagered: r.wagered, rb: r.rb, ...(r.ambiguous ? { ambiguous: true } : {}) }));
+      repeatedNote = parsed.repeated ? `${parsed.repeated} bloco(s) repetido(s) no texto (o mesmo jogo, dia e valores) foram contados 1 vez só.` : '';
       if (parsed.truncated) error = 'Texto muito grande: só os primeiros 60 jogos foram lidos.';
       whenTime = hhmm(new Date());
       render();
@@ -146,6 +149,7 @@ export function mountBatchView(container, { platform, initial = null, onSubmit, 
     plan.items.forEach(it => list.appendChild(rowCard(it)));
     body.appendChild(list);
 
+    if (repeatedNote) body.appendChild(el('p', 'be-note', repeatedNote));
     if (plan.items.some(it => it.row.dayKey && it.row.dayKey !== todayKey && it.status !== 'error')) {
       body.appendChild(el('p', 'be-note', 'Jogos de outro dia entram às 23:58 daquele dia (o texto não tem hora) e ficam fora da métrica do Telegram.'));
     }
@@ -232,6 +236,8 @@ export function mountBatchView(container, { platform, initial = null, onSubmit, 
       wrap.appendChild(f);
       return i;
     };
+    const fGame = field('Jogo', src.game || '', 'text');
+    fGame.classList.add('bb-edit-game');
     const fCount = field('Nº de apostas', Number.isFinite(src.count) ? String(src.count) : '', 'numeric');
     const fW = field('Apostado', inputMoney(src.wagered));
     const fR = field('R.B.', inputMoney(src.rb), 'text');
@@ -239,7 +245,7 @@ export function mountBatchView(container, { platform, initial = null, onSubmit, 
     const save = btn('OK', 'btn-confirm bb-edit-ok', () => {
       const next = {
         provider: src.provider,
-        game: src.game,
+        game: fGame.value.replace(/\s+/g, ' ').trim().slice(0, 60),
         _id: src._id,
         count: /^\d+$/.test(fCount.value.trim()) ? Number(fCount.value.trim()) : NaN,
         wagered: parseSignedMoney(fW.value),
