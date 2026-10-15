@@ -89,6 +89,15 @@
 // métrica, filtro de período, gráficos de comparação e grupos encerrados
 // (editar/excluir). Usa Chart.js — monta SOB DEMANDA. Grava só
 // groupArchive (edição de grupo encerrado) — nunca em plataformas.
+//
+// === (📨 Telegram — Sub-entrega 21) ===
+// Aba "📨 Telegram" (ui-telegram.js + telegram-logic.js +
+// telegram-store.js): o que os canais marcados mandaram hoje (ao vivo),
+// métrica de acerto (horários × apostas) e a lista de canais do bot. Sem
+// Chart.js: monta na primeira abertura (como Rotinas). Só aparece com
+// TELEGRAM_FEATURE ligado (dev-flags.js) — na versão da loja, a aba nem
+// existe. Grava só telegramSources/telegramDays(excluded)/telegramFeed
+// (exclusão) — nunca em plataformas.
 
 import { state } from './state.js';
 import { formatCurrency } from './utils.js';
@@ -110,6 +119,8 @@ import {
 } from './ui-calendario-analytics.js';
 import { mountGameCatalog, refreshGameCatalog, unmountGameCatalog } from './ui-game-catalog.js';
 import { mountGrupos, refreshGrupos, resizeGrupos, unmountGrupos } from './ui-grupos.js';
+import { mountTelegram, refreshTelegram, unmountTelegram } from './ui-telegram.js';
+import { TELEGRAM_FEATURE } from './dev-flags.js';
 
 let dailyTimer = null;
 let chartJsLoadPromise = null;
@@ -131,7 +142,8 @@ let misteriosoTemplates = [];
 let bonusContextConfirmed = false; // (Sub-entrega E)
 
 // (Análises — Sub-entrega 1)
-const GRAFICOS_TABS = ['geral', 'analises', 'apostado', 'planejador', 'rotinas', 'grupos', 'misterioso', 'calendario', 'jogos'];
+const GRAFICOS_TABS = ['geral', 'analises', 'apostado', 'planejador', 'rotinas', 'grupos', 'misterioso', 'calendario', 'jogos']
+  .concat(TELEGRAM_FEATURE ? ['telegram'] : []); // (21) aba só com o recurso ligado
 let activeGraficosTab = 'geral'; // lembrada durante a sessão
 let analiseMounted = false;
 let analiseMountPromise = null;
@@ -146,6 +158,7 @@ let calendarioMountPromise = null;
 let jogosMounted = false; // (Jogos — Sub-entrega 9)
 let gruposMounted = false; // (🏆 Grupos — Sub-entrega 19)
 let gruposMountPromise = null;
+let telegramMounted = false; // (📨 Telegram — Sub-entrega 21)
 
 function loadChartJsScript() {
   if (window.Chart) return Promise.resolve();
@@ -768,6 +781,17 @@ function applyGraficosTab(container, token) {
         jogosMounted = true;
       }
     }
+  } else if (activeGraficosTab === 'telegram') {
+    // (21) Sem Chart.js — monta na hora; na volta, religa o ao vivo se o dia virou.
+    if (telegramMounted) {
+      refreshTelegram();
+    } else {
+      const root = container.querySelector('#graficosTelegramRoot');
+      if (root) {
+        mountTelegram(root);
+        telegramMounted = true;
+      }
+    }
   }
 
   // Aba ativa sempre visível na faixa rolável (celular).
@@ -813,6 +837,7 @@ function scheduleDailyUpdate() {
     refreshMisterioso(); // (Misterioso) idem
     refreshCalendarioAnalytics(); // (Calendário) idem — guarda o dia que fechou
     refreshGrupos(); // (🏆 Grupos) idem
+    refreshTelegram(); // (📨 Telegram) idem — religa o ao vivo no dia novo
     scheduleDailyUpdate();
   }, nextMidnight - now);
 }
@@ -833,6 +858,7 @@ export async function mount(container) {
   jogosMounted = false;
   gruposMounted = false; // (19)
   gruposMountPromise = null;
+  telegramMounted = false; // (21)
   container.innerHTML = `
     <div class="page-header">
       <div class="page-header-text">
@@ -854,6 +880,7 @@ export async function mount(container) {
       <button type="button" class="vip-tab-btn graficos-tab-btn" role="tab" data-tab="misterioso">Misterioso</button>
       <button type="button" class="vip-tab-btn graficos-tab-btn" role="tab" data-tab="calendario">Calendário</button>
       <button type="button" class="vip-tab-btn graficos-tab-btn" role="tab" data-tab="jogos">Jogos</button>
+      ${TELEGRAM_FEATURE ? '<button type="button" class="vip-tab-btn graficos-tab-btn" role="tab" data-tab="telegram">📨 Telegram</button>' : ''}
     </div>
 
     <div class="graficos-tab-panel" data-tab-panel="geral" role="tabpanel">
@@ -986,6 +1013,10 @@ export async function mount(container) {
     <div class="graficos-tab-panel app-hidden" data-tab-panel="jogos" role="tabpanel">
       <div id="graficosJogosRoot"></div>
     </div>
+    ${TELEGRAM_FEATURE ? `
+    <div class="graficos-tab-panel app-hidden" data-tab-panel="telegram" role="tabpanel">
+      <div id="graficosTelegramRoot"></div>
+    </div>` : ''}
   `;
 
   // (Sub-entrega E) Leitura estrita do contexto de bônus. Falha não impede
@@ -1072,4 +1103,7 @@ export function unmount() {
   unmountGrupos();
   gruposMounted = false;
   gruposMountPromise = null;
+  // (📨 Telegram) desliga o ao vivo (onSnapshot) e o relógio da aba
+  unmountTelegram();
+  telegramMounted = false;
 }

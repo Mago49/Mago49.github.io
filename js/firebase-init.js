@@ -8,6 +8,10 @@
 // loadDailySnapshotsRange em daily-snapshot-store.js). Nenhuma função de
 // gravação nova: toda escrita continua passando pelo writeBatch/deleteDoc
 // abaixo (SAFE_MODE continua valendo).
+//
+// (Sub-entrega 21 — 📨 Telegram) Reexporta onSnapshot — LEITURA ao vivo,
+// usada SÓ por telegram-store.js (feed de hoje, dia de hoje e a lista do
+// bot). Nenhuma gravação nova: escrita continua só pelo writeBatch/deleteDoc.
 
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import {
@@ -16,7 +20,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
   getFirestore, collection, doc, getDoc, getDocs,
-  query, where, orderBy, limit, documentId,
+  query, where, orderBy, limit, documentId, onSnapshot,
   deleteDoc as _deleteDoc, writeBatch as _writeBatch
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 import { SAFE_MODE } from './dev-flags.js';
@@ -160,8 +164,9 @@ export function deleteDoc(ref) {
 // que já existia, só soma uma leitura pontual nova.
 // (Análises — Sub-entrega 3) query/where/orderBy/limit/documentId: só
 // leitura por intervalo, ver nota no topo.
+// (Sub-entrega 21) onSnapshot: só leitura ao vivo (telegram-store.js).
 export {
   signInWithPopup, signOut, onAuthStateChanged,
   collection, doc, getDoc, getDocs,
-  query, where, orderBy, limit, documentId,
+  query, where, orderBy, limit, documentId, onSnapshot,
 };

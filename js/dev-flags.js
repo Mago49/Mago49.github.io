@@ -13,3 +13,11 @@
 // e validadas — aí sim o sistema volta a gravar de verdade. Essa troca é
 // a ÚNICA linha que precisa mudar pra "ligar" o sistema de vez.
 export const SAFE_MODE = false;
+
+// === (Sub-entrega 21) 📨 TELEGRAM — recurso de uso PESSOAL ===
+// true  = aba "📨 Telegram" aparece em Gráficos (leitura dos canais pelo
+//         bot da máquina e2-micro + métrica de acerto).
+// false = a aba some por completo (nada é lido nem gravado). É assim que
+//         o app vai pra loja: muda SÓ esta linha pra false na versão de
+//         publicação. Os dados que já existem no banco não são tocados.
+export const TELEGRAM_FEATURE = true;

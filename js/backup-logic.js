@@ -30,6 +30,10 @@
 
 // (Sub-entrega 19) groupArchive (grupos encerrados da competição) entra na
 // lista. Formato inalterado — só uma coleção a mais.
+// (Sub-entrega 21 — 📨 Telegram) telegramSources (canais marcados) e
+// telegramDays (só os horários de cada dia — leve) entram na lista;
+// telegramDays é histórico por data (entra no "Só o novo"). O feed do dia
+// (telegramFeed, descartável) e a lista do bot (telegramDialogs) ficam FORA.
 
 export const BACKUP_FORMAT = 'painel-tigrinho-backup';
 export const BACKUP_VERSION = 1;
@@ -51,7 +55,9 @@ export const COLLECTIONS = [
   'gameCatalog', 'gameConfig',
   'platformTraits',
   // (Sub-entrega 19) grupos encerrados da competição (🏆 Grupos).
-  'groupArchive'
+  'groupArchive',
+  // (Sub-entrega 21) 📨 Telegram: canais marcados + horários por dia.
+  'telegramSources', 'telegramDays'
 ];
 export const META_DOCS = ['initialized', 'cardCustomization', 'obrigadoConfig', 'preferences', 'backupInfo'];
 
@@ -63,6 +69,7 @@ export const DIFF_COLLECTIONS = Object.freeze({
   routineLog: 'day',
   routineMarks: 'day',
   planLog: 'day',
+  telegramDays: 'day',
   vipHistory: 'month'
 });
 
@@ -83,6 +90,8 @@ export const COLLECTION_LABELS = Object.freeze({
   gameConfig: 'Provedores',
   platformTraits: 'Características das plataformas',
   groupArchive: 'Grupos encerrados',
+  telegramSources: 'Telegram: canais',
+  telegramDays: 'Telegram: horários por dia',
   meta: 'Configurações gerais'
 });
 
