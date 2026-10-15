@@ -1948,3 +1948,161 @@
 .cy-footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; }
 .cy-footer > button { min-height: 44px; padding: 0.6rem 1.1rem; border-radius: 12px; font-weight: 700; }
 .cy-cancel { border: none; background: #e5e7eb; color: #1f2937; cursor: pointer; }
+
+/* ============================================================
+   (Sub-entrega 22) 🎯 Registrar aposta: "Uma aposta / 📋 Colar em
+   lote" (.be-mode) e a prévia do lote (.bb-*) — mesmo contêiner .be-*
+   ============================================================ */
+.be-box.be-box-wide { width: min(100%, 560px); }
+
+.be-mode {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+  padding: 0.25rem;
+  border-radius: 14px;
+  background: #f1f5f9;
+}
+
+.be-mode-btn {
+  min-height: 40px;
+  padding: 0.45rem 0.6rem;
+  border: none;
+  border-radius: 11px;
+  background: transparent;
+  color: #475569;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.be-mode-btn.active {
+  background: #fff;
+  color: #1e3a8a;
+  box-shadow: 0 2px 8px rgba(15,23,42,0.1);
+}
+
+.be-single,
+.be-batch,
+.bb-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.bb-text {
+  min-height: 180px;
+  resize: vertical;
+  font-size: 0.9rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.bb-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.bb-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #e2e8f0;
+  border-left: 5px solid #2563eb;
+  border-radius: 12px;
+  background: #fff;
+  min-width: 0;
+}
+
+.bb-row.bb-update { border-left-color: #f59e0b; }
+.bb-row.bb-same { border-left-color: #94a3b8; background: #f8fafc; }
+.bb-row.bb-error { border-left-color: #dc2626; background: #fef2f2; }
+
+.bb-row-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.bb-row-title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.bb-row-name {
+  font-weight: 800;
+  color: #0f172a;
+  overflow-wrap: anywhere;
+}
+
+.bb-row-sub {
+  font-size: 0.78rem;
+  color: #475569;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.bb-row-actions {
+  display: flex;
+  gap: 0.3rem;
+  flex: 0 0 auto;
+}
+
+.bb-row-actions .be-chip-x {
+  min-width: 40px;
+  padding: 0.35rem 0.55rem;
+}
+
+.bb-badge {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #334155;
+  overflow-wrap: anywhere;
+}
+
+.bb-error .bb-badge { color: #b91c1c; }
+
+.bb-edit {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  padding-top: 0.35rem;
+  border-top: 1px dashed #cbd5e1;
+}
+
+.bb-edit-ok {
+  grid-column: 1 / -1;
+  min-height: 42px;
+  border-radius: 12px;
+  font-weight: 700;
+}
+
+.bb-total {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 12px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+
+.bb-total-label {
+  font-weight: 800;
+  color: #1e3a8a;
+}
+
+.bb-total-val {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #1e3a8a;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
