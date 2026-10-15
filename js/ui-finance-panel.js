@@ -141,6 +141,21 @@
 // vipCollectedBefore:true (o bônus entra no Rollover 1 s antes dela —
 // finance-logic.js); NÃO deixa o bônus no fim do dia. Mesmo savePlatform.
 //
+// === (Sub-entrega 22) 📋 APOSTAS EM LOTE — dentro do 🎯 Registrar aposta ===
+// Sem botão novo: a escolha "Uma aposta / 📋 Colar em lote" fica no topo
+// do próprio contêiner (ui-bet-entry.js + ui-bet-batch.js). O lote passa
+// pelo MESMO caminho do registro avulso (registerBetBatch):
+//   1) VIP diário "com aposta": a pergunta de antes do contêiner (se houve)
+//      vale pro lote; se não houve, o lote é SIMULADO numa cópia da
+//      plataforma com a mesma getVipCollectPrompt — se ele libera o VIP,
+//      pergunta. SIM = vipCollectedBefore na 1ª aposta de hoje do lote.
+//   2) Conferência de saldo (se ainda não houve hoje) com o lote somado
+//      como pendingBet — cancelar volta pra prévia sem perder nada.
+//   3) Lançamentos no MESMO formato ({ date, wagered, betCount,
+//      resultBetting } + jogo) + batchKey/noTime (bet-batch-logic.js),
+//      UM savePlatform. Rollover, saldo, VIP, fechamento, códigos, Total
+//      Apostado e Planejador leem esses lançamentos como qualquer outro.
+//
 // === CUIDADO SPA (Adendo K12) ===
 // `financeListEl`/`financeSearchEl` NÃO são resolvidos no topo do
 // módulo (isso quebraria, já que o router injeta o HTML da view DEPOIS
@@ -186,6 +201,7 @@ import { askVipCollect, vipCollectQuestion } from './ui-vip-collect.js'; // (Sub
 import { createBonusSplit } from './ui-bonus-split.js'; // (Sub-entrega 16)
 import { openBalanceCheck } from './ui-balance-check.js';
 import { openBetEntry } from './ui-bet-entry.js';
+import { planBatch, matchGame, batchVipQuestion } from './bet-batch-logic.js'; // (Sub-entrega 22)
 import { gameStamp, setEntryGame, searchGames } from './game-catalog-logic.js';
 import { loadGameCatalog, isGameCatalogLoaded, getGames } from './game-catalog-store.js';
 import { openBonusManager } from './ui-bonus-manager.js';
@@ -1212,7 +1228,18 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
       let initial = null;
       for (;;) {
         const entry = await openBetEntry({ platform: p, initial });
-        if (!entry || entry.status !== 'done') return;
+        if (!entry) return;
+        // (22) Lote: mesmo caminho (VIP → saldo → savePlatform). Cancelar
+        // qualquer passo volta pra prévia do lote sem perder nada.
+        if (entry.status === 'batch') {
+          const res = await registerBetBatch(p, ctx, entry.batch, { vipAsked: !!prompt, vipCollected });
+          if (res && res.reopen) {
+            initial = { mode: 'batch', batch: entry.batch };
+            continue;
+          }
+          return;
+        }
+        if (entry.status !== 'done') return;
         const v = entry.values;
         // (8a) Sem conferência de saldo hoje: pede antes de gravar.
         if (!hasBalanceCheckToday(p)) {
@@ -1505,6 +1532,62 @@ function openActionModal(title, subtitle, content, focusEl = null) {
     focusEl.style.minWidth = '0';
     setTimeout(() => { try { focusEl.focus({ preventScroll: true }); } catch (_) { focusEl.focus(); } }, 30);
   }
+}
+
+// (Sub-entrega 22) Grava o lote colado. { reopen:true } = voltar pra prévia.
+async function registerBetBatch(p, ctx, batch, { vipAsked = false, vipCollected = false } = {}) {
+  const now = new Date();
+  const plan = planBatch(p, batch.rows, { now, whenTime: batch.whenTime, weekStartKey: toLocalDateString(getWeekStart(now)) });
+  if (plan.errorCount > 0 || plan.entries.length === 0) {
+    await showAppAlert(plan.errorCount > 0
+      ? 'Há linhas com erro no lote — corrija ou tire antes de registrar.'
+      : 'Nada novo pra registrar: esses jogos já estão registrados com esses valores.');
+    return { reopen: true };
+  }
+
+  // 1) VIP diário "com aposta" — só se a pergunta não foi feita antes.
+  let collected = vipCollected;
+  if (!vipAsked && plan.todayEntries.length) {
+    const sim = getVipCollectPrompt({ ...p, betEntries: [...(p.betEntries || []), ...plan.todayEntries] }, now, ctx);
+    if (sim) {
+      const answer = await askVipCollect({
+        title: 'Bônus VIP diário coletado?',
+        subtitle: `${p.name} · VIP diário ${formatCurrency(sim.value)}`,
+        note: batchVipQuestion()
+      });
+      if (!answer) return { reopen: true };
+      collected = answer === 'yes';
+    }
+  }
+
+  // 2) Conferência de saldo (8a) com o lote somado — igual ao registro avulso.
+  if (!hasBalanceCheckToday(p)) {
+    const dates = plan.entries.map(e => e.date).sort();
+    const result = await openBalanceCheck({
+      platform: p, ctx, pendingRB: plan.totals.rb, mode: 'bet', bonusBefore: dates[0],
+      pendingBet: { date: dates[dates.length - 1], wagered: plan.totals.wagered, resultBetting: plan.totals.rb }
+    });
+    if (!result || result.status !== 'done') return { reopen: true };
+  }
+
+  // 3) Jogo de cada linha (a biblioteca já recebeu os novos na prévia).
+  const games = getGames();
+  plan.items.forEach(it => {
+    if (!it.entry) return;
+    Object.assign(it.entry, gameStamp(matchGame(games, it.row.game, it.row.provider)));
+  });
+  // (15) SIM: o VIP entra no Rollover 1 s antes da 1ª aposta de hoje do lote.
+  if (collected && plan.todayEntries.length) {
+    const first = plan.todayEntries.slice().sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+    first.vipCollectedBefore = true;
+  }
+  if (!p.betEntries) p.betEntries = [];
+  p.betEntries.push(...plan.entries);
+  savePlatform(state.currentUid, p);
+  openRowId = p.id;
+  refreshRow(p.id);
+  renderFinanceList();
+  return { done: true };
 }
 
 function buildActionBar(p, ctx, parts) {

@@ -165,10 +165,15 @@ export function daySignals(dayDoc, sources = {}) {
 
 const cents = v => Math.round((Number(v) || 0) * 100);
 
-/** Apostas (betEntries) da plataforma no dia, com instante em ms. */
+/**
+ * Apostas (betEntries) da plataforma no dia, com instante em ms.
+ * (Sub-entrega 22) Apostas "sem hora" (noTime — lote colado de outro dia,
+ * entram às 23:58) ficam FORA: sem hora real, distorceriam o dentro × fora.
+ */
 export function betsOfDay(platform, day) {
   if (!platform) return [];
   return (platform.betEntries || [])
+    .filter(e => e && e.noTime !== true)
     .map(e => {
       const ms = e && e.date ? new Date(e.date).getTime() : NaN;
       return { ms, wageredC: cents(e && e.wagered), rbC: cents(e && e.resultBetting) };
