@@ -2761,3 +2761,39 @@
 @media (max-width: 640px) {
   .cal-pvr-detail { padding-left: 0.6rem; padding-right: 0.6rem; }
 }
+
+/* (Sub-entrega 25) 🙈 Ignorar · 📟 Encerrados */
+.cal-pf-ignored { opacity: 0.7; border-style: dashed; background: #f8fafc; }
+.cal-badge-ignored { background: #e2e8f0; color: #475569; }
+.cal-pf-actions { display: flex; justify-content: flex-end; }
+.cal-pf-ignore,
+.cal-pvr-ignore {
+  min-height: 32px;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #fff;
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.cal-pvr-row { align-items: center; }
+.cal-pvr-ignore { min-width: 36px; padding: 0.1rem 0.4rem; flex-shrink: 0; }
+
+/* Escolha com dois botões iguais (troca de tipo de plano) */
+.plan-choice-box { width: min(100%, 440px); }
+.plan-choice-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.plan-choice-btn {
+  flex: 1 1 160px;
+  min-height: 46px;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #fff;
+  color: #0f172a;
+  font-weight: 700;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+.plan-choice-btn:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
