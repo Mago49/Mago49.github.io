@@ -95,6 +95,15 @@
 // meta foi calculada — gravado no plano (o grupo soma "guardado pra jogar
 // depois"). A meta só é recalculada quando o usuário mexe (mesmo padrão do
 // "Usar Rollover"): plano salvo não vira "alterado" sozinho no dia seguinte.
+//
+// === (Sub-entrega 24) 🔄 ATUALIZAR PLANOS ===
+// a) buildDayLines exportada (o Calendário sugere "o que falta apostar").
+// b) params.targetMode: 'auto' (meta veio do Rollover/projetado — botões,
+//    Guardar, Recalcular, grupo) | 'manual' (digitada) | 'unknown' (plano
+//    antigo, sem o campo). Planos antigos continuam iguais no sameParams.
+// c) planUpdateDiff / isSignificantChange: antes (o que o plano salvo
+//    ainda prevê de amanhã em diante) × depois (refeito a partir de amanhã)
+//    — o aviso "⚠️ Rollover mudou" só conta diferença de R$ 1,00 E 3%.
 
 import { toLocalDateString, getWeekStart } from './finance-logic.js';
 import { getCycleStart } from './cycle-logic.js';
@@ -375,7 +384,7 @@ function stakesForTier(stakesC, tier) {
 
 // Quebra a necessidade do dia (needC) em linhas de giro/compra. Sempre
 // cobre needC; passa no máximo pelo menor valor permitido.
-function buildDayLines(needC, tier, stakesC, buy) {
+export function buildDayLines(needC, tier, stakesC, buy) {
   const lines = [];
   if (needC <= 0) return { lines, plannedC: 0 };
   const smallest = stakesC[0];
@@ -591,6 +600,7 @@ export function buildGroupPlan(base, members, group, todayKey = null) {
       reserve: cleanReserve(m.reserve),
       reservedC: Math.max(0, Math.round(Number(m.reservedC) || 0)),
       targetBase: base.targetBase === 'projected' ? 'projected' : 'rollover',
+      targetMode: 'auto', // (24) o grupo sempre calcula a meta
       goal: { mode: 'none', value: 0, baseBalance: 0 },
       phase: i,
       phaseCount: n,
@@ -795,8 +805,47 @@ export function sanitizeParams(p) {
     // (20)
     targetBase: p.targetBase === 'projected' ? 'projected' : 'rollover',
     reserve: cleanReserve(p.reserve),
-    reservedC: Math.max(0, Math.round(Number(p.reservedC) || 0))
+    reservedC: Math.max(0, Math.round(Number(p.reservedC) || 0)),
+    // (24)
+    targetMode: TARGET_MODES.includes(p.targetMode) ? p.targetMode : 'unknown'
   };
+}
+
+// (24) Origem da meta.
+export const TARGET_MODES = Object.freeze(['auto', 'manual', 'unknown']);
+export const UPDATE_MIN_DELTA_C = 100;  // R$ 1,00
+export const UPDATE_MIN_DELTA_PCT = 3;  // 3%
+
+// (24) Diferença que vale avisar: pelo menos R$ 1,00 E 3% do "antes".
+export function isSignificantChange(beforeC, afterC) {
+  const a = Math.max(0, Math.round(Number(beforeC) || 0));
+  const b = Math.max(0, Math.round(Number(afterC) || 0));
+  const d = Math.abs(b - a);
+  return d >= UPDATE_MIN_DELTA_C && d * 100 >= UPDATE_MIN_DELTA_PCT * Math.max(a, 1);
+}
+
+// (24) O que o plano salvo ainda prevê DEPOIS de hoje (centavos).
+export function plannedAfterC(planDoc, todayKey) {
+  return (planDoc && Array.isArray(planDoc.days) ? planDoc.days : [])
+    .filter(d => d && isValidDayKey(d.key) && d.key > todayKey)
+    .reduce((s2, d) => s2 + Math.max(0, Math.round(Number(d.plannedC) || 0)), 0);
+}
+
+// (24) Dia de hoje do plano salvo (ou null).
+export function planDayOf(planDoc, dayKey) {
+  return (planDoc && Array.isArray(planDoc.days) ? planDoc.days : []).find(d => d && d.key === dayKey) || null;
+}
+
+/**
+ * (24) Antes × depois de UM plano (centavos).
+ *   saved   plano salvo
+ *   plan    resultado de buildPlan refeito a partir de amanhã (ou null)
+ * @returns {{ beforeC, afterC, deltaC, significant }}
+ */
+export function planUpdateDiff(saved, plan, todayKey) {
+  const beforeC = plannedAfterC(saved, todayKey);
+  const afterC = plan && plan.ok ? plan.totals.plannedC : 0;
+  return { beforeC, afterC, deltaC: afterC - beforeC, significant: isSignificantChange(beforeC, afterC) };
 }
 
 // (20) Guardar rollover — tipos garantidos.

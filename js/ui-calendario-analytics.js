@@ -19,14 +19,32 @@
 // tolerantes (sem elas, a camada some com aviso). Nunca grava plataforma.
 //
 // SEGURANÇA: nomes só por textContent.
+//
+// === (Sub-entrega 23) CONTÊINER DO DIA ===
+// Uma lista ÚNICA por plataforma (antes: seções separadas Plano /
+// Depósitos / Emissão / Rotinas / Proibido). Em cada plataforma:
+//   - o PLANO é a meta de aposta do dia (real de planejado);
+//   - 👉 hoje: o que falta apostar, em giros da paleta do plano;
+//     futuro: as apostas planejadas do dia;
+//   - rotina de APOSTA vira só selo (o plano manda na aposta); rotina de
+//     aposta que vale no dia SEM plano = "⚠️ Sem plano" + "Abrir no
+//     Planejador" (abre a aba já com a plataforma escolhida);
+//   - rotinas de depósito/lembrete, depósitos feitos, 🃏 emissão e 🚫 dia
+//     proibido na mesma plataforma.
+// Pendentes primeiro (hoje: falta apostar/fazer; passado: não cumpridos;
+// futuro: sem plano).
+// Card "Resultado real": "🔎 De onde vem o planejado" lista os dias ×
+// plataformas que formam o planejado do "Real × plano" (dias fechados —
+// hoje fica de fora até fechar).
 
 import { state } from './state.js';
 import { formatCurrency, showAppAlert } from './utils.js';
 import { toLocalDateString, getWeekStart, getWeekEnd } from './finance-logic.js';
 import {
   buildMonthGrid, buildCalendarMonth, summarizePlanVsReal, computeRealMetrics,
-  monthTitle, shiftMonth, monthRange, addDaysKey
+  monthTitle, shiftMonth, monthRange, addDaysKey, buildDayPlatforms, suggestForRow, dayStatus
 } from './calendar-logic.js';
+import { requestPlanejadorFocus } from './ui-planejador.js';
 import {
   loadPlannerData, isPlannerLoaded, getSavedPlans, getCalendarSettings, saveCalendarSettings, getStrategySettings
 } from './plan-store.js';
@@ -50,6 +68,8 @@ const LAYERS = [
 const STATUS_ICON = { done: '✅', partial: '🟡', miss: '❌', today: '⏳', future: '·' };
 const STATUS_LABEL = { done: 'Cumprido', partial: 'Parcial', miss: 'Não cumprido', today: 'Em andamento', future: 'Planejado' };
 const RT_ICON = { done: '✅', ok: '🟢', pending: '⏳', missed: '❌', broken: '⚠️', due: '·' };
+const RT_ACTION_ICON = { deposit: '💰', reminder: '🔔', 'no-deposit': '🚫💰', bet: '🎲' };
+const TIER_LABEL = { baixo: 'baixo', medio: 'médio', alto: 'alto' };
 
 let rootEl = null;
 let mounted = false;
@@ -171,6 +191,7 @@ function renderSkeleton() {
         </div>
         <div id="calPeriod" class="plan-chips cal-period" role="group" aria-label="Período"></div>
         <div id="calMetrics" class="plan-kpis"></div>
+        <div id="calPvrDetail" class="cal-pvr-detail"></div>
         <div class="cal-games">
           <div class="cal-games-head">
             <strong>🎰 Por jogo</strong>
@@ -360,6 +381,111 @@ function renderGrid(days) {
 
 let detailClose = null;
 
+function fmtStakeC(c) {
+  return (Number(c) / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// "10 × R$ 0,50 + 1 compra 100× R$ 0,40"
+function describeLines(lines) {
+  return (lines || []).map(l => (l.kind === 'buy'
+    ? `1 compra ${l.multiplier}× R$ ${fmtStakeC(l.stakeC)}`
+    : `${l.count} × R$ ${fmtStakeC(l.stakeC)}`)).join(' + ');
+}
+
+// (23) "Abrir no Planejador": escolhe a plataforma lá e troca de aba.
+function openInPlanner(platformId) {
+  if (detailClose) detailClose();
+  requestPlanejadorFocus(platformId);
+  const btn = document.querySelector('.graficos-tab-btn[data-tab="planejador"]');
+  if (btn) btn.click();
+}
+
+function groupLabels(d) {
+  if (d.isFuture) return ['⚠️ Sem plano', '📅 Programado'];
+  if (d.isToday) return ['⏳ Pendentes', '✓ Em dia'];
+  return ['⚠️ Não cumprido', '✓ Cumprido'];
+}
+
+// Um cartão por plataforma no contêiner do dia.
+function platformCard(d, x) {
+  const card = el('div', `cal-pf${x.attention ? ' cal-pf-attn' : ''}${x.noPlan ? ' cal-pf-noplan' : ''}`);
+  const head = el('div', 'cal-pf-head');
+  const icon = x.plan ? (STATUS_ICON[x.plan.status] || '') : (x.noPlan ? '⚠️' : '▫️');
+  head.appendChild(el('span', 'cal-pf-name', `${icon} ${x.name}`));
+  let right = '';
+  if (x.plan) right = d.isFuture ? money(x.plan.plannedC) : `${money(x.plan.realC)} de ${money(x.plan.plannedC)}`;
+  else if (x.noPlan) right = 'sem plano';
+  head.appendChild(el('span', 'cal-pf-value', right));
+  card.appendChild(head);
+
+  // Selos: rotinas de aposta, emissão, dia proibido, acima do plano.
+  const badges = el('div', 'cal-badges');
+  x.betRoutines.forEach(it => {
+    const b = el('span', `cal-badge cal-badge-bet cal-badge-${it.status}`, `🎲 ${it.emoji ? `${it.emoji} ` : ''}${it.name} ${it.status === 'due' ? '' : (RT_ICON[it.status] || '')}`.trim());
+    if (it.minimum > 0) b.title = `Mínimo da rotina: ${formatCurrency(it.minimum)}`;
+    badges.appendChild(b);
+  });
+  if (x.emission) badges.appendChild(el('span', 'cal-badge cal-badge-em', '🃏 Emissão'));
+  if (x.forbidden) badges.appendChild(el('span', `cal-badge${x.forbidden.broken ? ' cal-badge-bad' : ' cal-badge-forb'}`, x.forbidden.broken ? '⚠️ Apostou em dia proibido' : '🚫 Não apostar'));
+  if (x.plan && x.plan.overC > 0) badges.appendChild(el('span', 'cal-badge cal-badge-over', `+${money(x.plan.overC)} acima`));
+  if (x.plan && x.plan.tier && !d.isToday && d.isFuture) badges.appendChild(el('span', 'cal-badge', `dia ${TIER_LABEL[x.plan.tier] || x.plan.tier}`));
+  if (badges.childNodes.length) card.appendChild(badges);
+
+  // 👉 o que apostar.
+  if (x.plan) {
+    if (d.isFuture) {
+      if (x.plan.lines && x.plan.lines.length) card.appendChild(el('p', 'cal-pf-tip', `🎯 ${describeLines(x.plan.lines)}`));
+    } else if (d.isToday) {
+      const sug = suggestForRow(x.plan);
+      if (sug) {
+        const txt = sug.lines.length
+          ? `👉 Falta ${money(sug.leftC)}: ${describeLines(sug.lines)}`
+          : `👉 Falta ${money(sug.leftC)}`;
+        card.appendChild(el('p', 'cal-pf-tip cal-pf-tip-now', txt));
+      } else {
+        card.appendChild(el('p', 'cal-pf-tip cal-pf-tip-ok', '✅ Meta de aposta do dia cumprida.'));
+      }
+    } else if (x.plan.lines && x.plan.lines.length && x.plan.status !== 'done') {
+      card.appendChild(el('p', 'cal-pf-tip', `Planejado: ${describeLines(x.plan.lines)}`));
+    }
+  }
+  if (x.noPlan) {
+    const row = el('div', 'cal-pf-noplan-row');
+    row.appendChild(el('span', 'cal-pf-warn', d.isFuture || d.isToday
+      ? '⚠️ Sem plano — a rotina de aposta vale neste dia, mas o Planejador não tem meta pra esta plataforma.'
+      : '⚠️ Sem plano neste dia (a rotina de aposta valia).'));
+    if (d.isFuture || d.isToday) row.appendChild(button('Abrir no Planejador', 'bet-manage-btn cal-pf-open', () => openInPlanner(x.platformId)));
+    card.appendChild(row);
+  }
+  if (x.offPlanC > 0) card.appendChild(el('p', 'cal-pf-line cal-line-muted', `↪ ${money(x.offPlanC)} apostado fora do plano`));
+
+  // Rotinas de depósito / lembrete / sem depósito.
+  x.routines.forEach(it => {
+    const r = el('div', `cal-pf-line cal-pf-rt${PROBLEM.has(it.status) ? ' cal-line-bad' : ''}`);
+    const ic = RT_ACTION_ICON[it.action] || '✔️';
+    r.appendChild(el('span', 'cal-line-l', `${RT_ICON[it.status] || '·'} ${ic} ${it.emoji ? `${it.emoji} ` : ''}${it.name}`));
+    let info = '';
+    if (it.action === 'deposit') {
+      if (d.isToday && it.amount !== null && it.amount !== undefined) info = `${formatCurrency(it.amount)}${it.minimum > 0 ? ` de ${formatCurrency(it.minimum)}` : ''}`;
+      else if (it.minimum > 0) info = `mín. ${formatCurrency(it.minimum)}`;
+    }
+    r.appendChild(el('span', 'cal-line-r', info));
+    card.appendChild(r);
+  });
+
+  // Depósitos feitos.
+  if (x.deposits.length) {
+    const parts = x.deposits.map(dp => {
+      const kind = DEPOSIT_KINDS.find(k => k.id === dp.kind);
+      return `${kind ? kind.emoji : '▫️'} ${money(dp.valueC)}`;
+    });
+    card.appendChild(el('p', 'cal-pf-line', `💰 Depositado ${money(x.depositC)} · ${parts.join(' · ')}`));
+  }
+  return card;
+}
+
+const PROBLEM = new Set(['missed', 'broken']);
+
 function openDayDetail(d) {
   if (detailClose) detailClose();
   const previousOverflow = document.body.style.overflow;
@@ -367,63 +493,47 @@ function openDayDetail(d) {
   const overlay = el('div', 'cal-overlay');
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
-  const box = el('div', 'cal-box');
+  const box = el('div', 'cal-box cal-box-day');
   overlay.appendChild(box);
 
   const head = el('div', 'cal-box-head');
-  head.appendChild(el('h3', 'cal-box-title', fmtDay(d.key)));
+  head.appendChild(el('h3', 'cal-box-title', `${fmtDay(d.key)}${d.isToday ? ' · hoje' : ''}`));
   const x = button('✕', 'cal-box-close', () => close());
   x.setAttribute('aria-label', 'Fechar');
   head.appendChild(x);
   box.appendChild(head);
 
-  const section = (title) => {
-    const s = el('div', 'cal-sec');
-    s.appendChild(el('span', 'cal-sec-title', title));
-    box.appendChild(s);
-    return s;
-  };
-  const line = (parent, left, right, cls = '') => {
-    const r = el('div', `cal-line${cls ? ` ${cls}` : ''}`);
-    r.appendChild(el('span', 'cal-line-l', left));
-    r.appendChild(el('span', 'cal-line-r', right));
-    parent.appendChild(r);
-  };
-
-  let any = false;
-  if (d.plan.rows.length || d.offPlan.length) {
-    any = true;
-    const s = section(`🎯 Plano${d.plan.status ? ` — ${STATUS_LABEL[d.plan.status]}` : ''}`);
-    d.plan.rows.forEach(r => line(s, `${STATUS_ICON[r.status] || ''} ${r.name}`,
-      d.isFuture ? money(r.plannedC) : `${money(r.realC)} de ${money(r.plannedC)}${r.overC > 0 ? ` (+${money(r.overC)})` : ''}`));
-    d.offPlan.forEach(r => line(s, `↪ ${r.name}`, `${money(r.realC)} fora do plano`, 'cal-line-muted'));
+  // Resumo do dia.
+  const sum = el('div', 'cal-day-sum');
+  if (d.plan.rows.length) {
+    const st = d.plan.status;
+    sum.appendChild(el('span', `cal-day-chip cal-st-${st}`, d.isFuture
+      ? `🎯 ${money(d.plan.plannedC)} planejado`
+      : `🎯 ${money(d.plan.realC)} de ${money(d.plan.plannedC)} · ${STATUS_ICON[st] || ''} ${STATUS_LABEL[st] || ''}`));
   }
-  if (d.deposits.totalC > 0) {
-    any = true;
-    const s = section(`💰 Depósitos — ${money(d.deposits.totalC)}`);
-    d.deposits.rows.forEach(r => {
-      const kind = DEPOSIT_KINDS.find(k => k.id === r.kind);
-      line(s, `${kind ? kind.emoji : '▫️'} ${r.name}`, money(r.valueC));
-    });
-  }
-  if (d.emissions.length) {
-    any = true;
-    const s = section('🃏 Emissão do Misterioso');
-    s.appendChild(el('p', 'cal-text', d.emissions.map(e => e.name).join(' · ')));
-  }
+  if (d.deposits.totalC > 0) sum.appendChild(el('span', 'cal-day-chip', `💰 ${money(d.deposits.totalC)} depositado`));
   if (d.routines) {
-    any = true;
     const r = d.routines;
-    const s = section(r.source === 'future' ? `✔️ Rotinas que valem (${r.total})` : `✔️ Rotinas — ${r.success} de ${r.total}`);
-    r.items.slice(0, 40).forEach(it => line(s, `${RT_ICON[it.status] || '·'} ${it.emoji || ''} ${it.name}`, it.platformName || ''));
-    if (r.items.length > 40) s.appendChild(el('p', 'cal-text', `+${r.items.length - 40}`));
+    sum.appendChild(el('span', `cal-day-chip${r.fail ? ' cal-day-chip-bad' : ''}`, r.source === 'future' ? `✔️ ${r.total} rotina(s)` : `✔️ ${r.success} de ${r.total} rotina(s)`));
   }
-  if (d.forbidden.length) {
-    any = true;
-    const s = section('🚫 Dia proibido de apostar');
-    d.forbidden.forEach(f => line(s, f.name, f.broken ? '⚠️ apostou' : 'respeitado', f.broken ? 'cal-line-bad' : ''));
+  if (sum.childNodes.length) box.appendChild(sum);
+
+  const list = buildDayPlatforms(d);
+  if (!list.length) {
+    box.appendChild(el('p', 'cal-text', 'Nada neste dia.'));
+  } else {
+    const [attnLabel, okLabel] = groupLabels(d);
+    const attn = list.filter(p => p.attention);
+    const rest = list.filter(p => !p.attention);
+    if (attn.length) {
+      box.appendChild(el('span', 'cal-sec-title cal-group-title cal-group-attn', `${attnLabel} (${attn.length})`));
+      attn.forEach(p => box.appendChild(platformCard(d, p)));
+    }
+    if (rest.length) {
+      box.appendChild(el('span', 'cal-sec-title cal-group-title', `${okLabel} (${rest.length})`));
+      rest.forEach(p => box.appendChild(platformCard(d, p)));
+    }
   }
-  if (!any) box.appendChild(el('p', 'cal-text', 'Nada neste dia.'));
 
   function close() {
     detailClose = null;
@@ -529,6 +639,7 @@ function renderMetrics() {
   if (m.sessions === 0 && m.depositC === 0) {
     box.appendChild(el('p', 'graficos-note', 'Nenhum lançamento neste período.'));
     renderGameStats(range);
+    renderPvrDetail(m);
     return;
   }
   box.appendChild(kpi('Vitórias', `${m.wins} · ${money(m.winC)}`, m.sessions ? `${pct(m.wins / m.sessions)} das sessões` : '', 'plan-kpi-bonus'));
@@ -538,11 +649,55 @@ function renderMetrics() {
   box.appendChild(kpi('Giro', m.turnover === null ? '—' : `${m.turnover.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}x`, `apostado ${money(m.wageredC)} ÷ depositado`));
   box.appendChild(kpi('Real × plano', m.overPlanPct === null ? '—' : `${m.overPlanPct >= 0 ? '+' : ''}${pct(m.overPlanPct, 1)}`, m.plannedC ? `${m.daysAbove} dia(s) acima · real ${money(m.realOnPlanC)} de ${money(m.plannedC)}` : 'sem dia com plano fechado', m.overPlanPct !== null && m.overPlanPct > 0 ? 'plan-kpi-vip' : ''));
   renderGameStats(range);
+  renderPvrDetail(m);
   if (m.limitC > 0) {
     box.appendChild(kpi('Acima do limite 🎲', m.overLimitPct > 0 ? `+${pct(m.overLimitPct, 1)}` : 'Dentro', `${money(m.betDepositC)} de ${money(m.limitC)} no mês`, m.overLimitPct > 0 ? 'cal-kpi-bad' : ''));
   } else {
     box.appendChild(kpi('Acima do limite 🎲', '—', 'defina o limite na aba Misterioso'));
   }
+}
+
+// (23) 🔎 De onde vem o planejado do "Real × plano": dias fechados ×
+// plataformas, agrupados por dia.
+let pvrOpen = false;
+
+function renderPvrDetail(m) {
+  const host = $('calPvrDetail');
+  if (!host) return;
+  host.replaceChildren();
+  const rows = (m && m.planRows) || [];
+  if (!rows.length) return;
+  const det = el('details', 'cal-settings cal-pvr');
+  det.open = pvrOpen;
+  det.addEventListener('toggle', () => { pvrOpen = det.open; });
+  det.appendChild(el('summary', '', `🔎 De onde vem o planejado do Real × plano (${money(m.plannedC)})`));
+  const body = el('div', 'cal-pvr-body');
+  body.appendChild(el('p', 'plan-hint', 'Só dias FECHADOS com plano (hoje entra quando o dia acabar). Dias passados usam o planejado congelado no histórico.'));
+  const byDay = new Map();
+  rows.forEach(r => { if (!byDay.has(r.key)) byDay.set(r.key, []); byDay.get(r.key).push(r); });
+  const th = getCalendarSettings().partialThreshold;
+  byDay.forEach((list, key) => {
+    const p = list.reduce((s2, r) => s2 + r.plannedC, 0);
+    const re = list.reduce((s2, r) => s2 + r.realC, 0);
+    const day = el('div', 'cal-pvr-day');
+    const dh = el('div', 'cal-pvr-head');
+    dh.appendChild(el('span', 'cal-line-l', `${STATUS_ICON[dayStatus(p, re, th)] || ''} ${fmtDay(key)}`));
+    dh.appendChild(el('span', 'cal-line-r', `${money(re)} de ${money(p)}`));
+    day.appendChild(dh);
+    list.forEach(r => {
+      const line = el('div', 'cal-line cal-pvr-row');
+      line.appendChild(el('span', 'cal-line-l', `${STATUS_ICON[dayStatus(r.plannedC, r.realC, th)] || ''} ${r.name}`));
+      line.appendChild(el('span', 'cal-line-r', `${money(r.realC)} de ${money(r.plannedC)}`));
+      day.appendChild(line);
+    });
+    body.appendChild(day);
+  });
+  const tot = el('div', 'cal-pvr-total');
+  tot.appendChild(el('span', '', `Total · ${byDay.size} dia(s)`));
+  tot.appendChild(el('strong', '', `${money(m.realOnPlanC)} de ${money(m.plannedC)}`));
+  body.appendChild(tot);
+  det.appendChild(body);
+  host.appendChild(det);
 }
 
 // ---------- por jogo / por provedor (Sub-entrega 9) ----------

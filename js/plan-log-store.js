@@ -22,6 +22,18 @@
 //
 // LEITURA por intervalo de id (o id começa pela data) com teto. Falha de
 // leitura LANÇA — quem chama mostra o erro e não grava nada por cima.
+//
+// === (Sub-entrega 24) ===
+// a) O fim da leitura por intervalo agora aparece escrito como \uf8ff
+//    (antes era o mesmo caractere, invisível no código) — mesmo efeito:
+//    pega todos os ids "AAAA-MM-DD_plataforma" do último dia.
+// b) O documento guarda também as linhas de aposta do dia (lines), os
+//    valores permitidos (stakes, R$) e a compra de bônus (buy) — o
+//    Calendário sugere "o que falta apostar" mesmo com o plano já refeito.
+//    Campos opcionais: documentos antigos continuam válidos.
+// c) logPlanPastDays(..., { includeTodayFor }): congela TAMBÉM o dia de
+//    HOJE das plataformas indicadas — usado quando o plano é refeito a
+//    partir de amanhã (senão a meta de hoje sumiria do Calendário).
 
 import { db, collection, doc, getDocs, writeBatch, query, where, orderBy, limit, documentId } from './firebase-init.js';
 import { state } from './state.js';
@@ -62,7 +74,7 @@ async function readRange(uid, fromKey, toKey) {
   const q = query(
     col(uid),
     where(documentId(), '>=', fromKey),
-    where(documentId(), '<=', `${toKey}`),
+    where(documentId(), '<=', `${toKey}\uf8ff`), // inclui os ids "toKey_…"
     orderBy(documentId()),
     limit(READ_MAX)
   );
@@ -103,7 +115,7 @@ export function getPlanLogsInRange(fromKey, toKey) {
 }
 
 function buildDoc(plan, day, nowIso) {
-  return {
+  const out = {
     date: day.key,
     platformId: String(plan.platformId),
     platformName: String(plan.platformName || ''),
@@ -112,6 +124,16 @@ function buildDoc(plan, day, nowIso) {
     tier: String(day.tier || ''),
     createdAt: nowIso
   };
+  // (24) linhas de aposta + valores permitidos + compra (opcionais)
+  const lines = (Array.isArray(day.lines) ? day.lines : []).filter(l => l && Number(l.stakeC) > 0).slice(0, 20).map(l => (l.kind === 'buy'
+    ? { kind: 'buy', stakeC: Math.round(Number(l.stakeC)), multiplier: Math.round(Number(l.multiplier) || 0), subtotalC: Math.round(Number(l.subtotalC) || 0) }
+    : { kind: 'spin', stakeC: Math.round(Number(l.stakeC)), count: Math.round(Number(l.count) || 0), subtotalC: Math.round(Number(l.subtotalC) || 0) }));
+  if (lines.length) out.lines = lines;
+  const params = plan.params || {};
+  const stakes = (Array.isArray(params.stakes) ? params.stakes : []).map(Number).filter(v => Number.isFinite(v) && v > 0).slice(0, 40);
+  if (stakes.length) out.stakes = stakes;
+  if (params.buy && params.buy.enabled && Number(params.buy.multiplier) >= 2) out.buy = { enabled: true, multiplier: Math.round(Number(params.buy.multiplier)) };
+  return out;
 }
 
 /**
@@ -120,14 +142,19 @@ function buildDoc(plan, day, nowIso) {
  * recusaria o lote inteiro). Espera o commit.
  * @returns {Promise<{ok:true, written:number} | {ok:false, error:string}>}
  */
-export async function logPlanPastDays(uid, plans, todayKey, retentionDays = DEFAULT_PLAN_LOG_RETENTION) {
+//   opts.includeTodayFor  Set/array de platformId: congela também o dia de
+//                         HOJE desses planos (24 — plano refeito a partir de amanhã).
+export async function logPlanPastDays(uid, plans, todayKey, retentionDays = DEFAULT_PLAN_LOG_RETENTION, opts = {}) {
   if (!uid) return { ok: false, error: 'Nenhum usuário logado.' };
   const cutoff = retentionCutoff(todayKey, retentionDays);
+  const todayFor = new Set(opts && opts.includeTodayFor ? [...opts.includeTodayFor].map(String) : []);
   const wanted = [];
   (plans || []).forEach(plan => {
     if (!plan || !Array.isArray(plan.days)) return;
+    const withToday = todayFor.has(String(plan.platformId));
     plan.days.forEach(day => {
-      if (!day || !DAY_RE.test(day.key) || day.key >= todayKey) return;
+      if (!day || !DAY_RE.test(day.key)) return;
+      if (day.key > todayKey || (day.key === todayKey && !withToday)) return;
       if (cutoff && day.key < cutoff) return;
       wanted.push({ plan, day });
     });

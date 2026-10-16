@@ -46,6 +46,13 @@
 // continua 1 documento por plataforma (params.group marca o grupo), mas
 // todos gravados/excluídos num ÚNICO lote (tudo ou nada).
 //
+// (Sub-entrega 24) CONGELA HOJE: ao substituir um plano por outro que NÃO
+// tem o dia de hoje (refeito a partir de amanhã — "Recalcular" ou
+// "🔄 Atualizar planos"), o dia de hoje do plano antigo também vai pro
+// histórico (planLog), junto com os passados — a meta de hoje continua no
+// Calendário. savePlansBatch: vários planos (individuais e de grupos) num
+// ÚNICO lote, mesmo protocolo do saveGroupPlans (tudo ou nada).
+//
 // LEITURA: loadPlannerData LANÇA em falha (a tela mostra o motivo e
 // "Tentar de novo" e NÃO deixa salvar — nunca grava em cima do que não viu).
 // Documento inválido é ignorado e contado em `invalidPlans`.
@@ -193,6 +200,19 @@ export function getInvalidPlanCount() {
  * planDoc vem pronto de planToDoc (plan-logic.js). Mantém createdAt do
  * plano anterior só se ele for da mesma plataforma (substituição).
  */
+// (24) Plataformas cujo dia de HOJE precisa ser congelado: o plano antigo
+// tem hoje e o novo não.
+function todayFreezeIds(docs, todayKey) {
+  const out = new Set();
+  docs.forEach(d => {
+    const prev = cache.plans.get(d.platformId);
+    if (!prev || !Array.isArray(prev.days) || !prev.days.some(x => x && x.key === todayKey)) return;
+    if (Array.isArray(d.days) && d.days.some(x => x && x.key === todayKey)) return;
+    out.add(d.platformId);
+  });
+  return out;
+}
+
 export async function savePlan(uid, planDoc) {
   if (!uid) return { ok: false, error: 'Nenhum usuário logado.' };
   if (!isPlannerLoaded(uid)) return { ok: false, error: 'Os planos ainda não foram carregados — recarregue a tela antes de salvar.' };
@@ -203,7 +223,8 @@ export async function savePlan(uid, planDoc) {
   // (8b) Guarda os dias passados do plano que vai ser substituído.
   const previous = cache.plans.get(planDoc.platformId);
   if (previous) {
-    const logged = await logPlanPastDays(uid, [previous], toLocalDateString(new Date()), getCalendarSettings().retentionDays);
+    const today = toLocalDateString(new Date());
+    const logged = await logPlanPastDays(uid, [previous], today, getCalendarSettings().retentionDays, { includeTodayFor: todayFreezeIds([planDoc], today) });
     if (!logged.ok) return { ok: false, error: `${logged.error} O plano não foi substituído.` };
   }
   try {
@@ -249,20 +270,31 @@ export async function deletePlan(uid, platformId) {
 // Firestore). A memória só muda depois do commit.
 
 export async function saveGroupPlans(uid, planDocs) {
+  return saveManyPlans(uid, planDocs, 'grupo');
+}
+
+// (24) 🔄 Atualizar planos: individuais + grupos num lote só.
+export async function savePlansBatch(uid, planDocs) {
+  return saveManyPlans(uid, planDocs, 'lote');
+}
+
+async function saveManyPlans(uid, planDocs, kind) {
+  const what = kind === 'grupo' ? 'o plano do grupo' : 'os planos';
   if (!uid) return { ok: false, error: 'Nenhum usuário logado.' };
   if (!isPlannerLoaded(uid)) return { ok: false, error: 'Os planos ainda não foram carregados — recarregue a tela antes de salvar.' };
   const docs = Array.isArray(planDocs) ? planDocs : [];
   if (docs.length === 0) return { ok: false, error: 'Nenhum plano pra salvar.' };
-  if (docs.length > 300) return { ok: false, error: 'Plataformas demais no grupo.' };
+  if (docs.length > 300) return { ok: false, error: kind === 'grupo' ? 'Plataformas demais no grupo.' : 'Planos demais de uma vez (máximo 300).' };
   const ids = new Set();
   for (const d of docs) {
     if (!d || !isSafeId(d.platformId) || !isValidPlanDoc(d.platformId, d)) return { ok: false, error: `Plano inválido (${d && d.platformName ? d.platformName : 'plataforma'}). Nada foi salvo.` };
-    if (ids.has(d.platformId)) return { ok: false, error: 'Plataforma repetida no grupo. Nada foi salvo.' };
+    if (ids.has(d.platformId)) return { ok: false, error: `Plataforma repetida ${kind === 'grupo' ? 'no grupo' : 'no lote'}. Nada foi salvo.` };
     ids.add(d.platformId);
   }
   const previous = docs.map(d => cache.plans.get(d.platformId)).filter(Boolean);
   if (previous.length) {
-    const logged = await logPlanPastDays(uid, previous, toLocalDateString(new Date()), getCalendarSettings().retentionDays);
+    const today = toLocalDateString(new Date());
+    const logged = await logPlanPastDays(uid, previous, today, getCalendarSettings().retentionDays, { includeTodayFor: todayFreezeIds(docs, today) });
     if (!logged.ok) return { ok: false, error: `${logged.error} Nenhum plano foi substituído.` };
   }
   try {
@@ -270,8 +302,8 @@ export async function saveGroupPlans(uid, planDocs) {
     docs.forEach(d => batch.set(doc(plansCol(uid), d.platformId), { ...d }));
     await batch.commit();
   } catch (err) {
-    console.error('Erro ao salvar o plano do grupo:', err);
-    return { ok: false, error: 'Não foi possível salvar o plano do grupo no banco de dados. Nada mudou. Verifique a internet e tente de novo.' };
+    console.error(`Erro ao salvar ${what}:`, err);
+    return { ok: false, error: `Não foi possível salvar ${what} no banco de dados. Nada mudou. Verifique a internet e tente de novo.` };
   }
   if (!cache || cache.uid !== uid) return { ok: false, error: 'A sessão mudou durante a gravação — recarregue a página.' };
   docs.forEach(d => cache.plans.set(d.platformId, { ...d }));

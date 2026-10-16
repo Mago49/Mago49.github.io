@@ -28,6 +28,19 @@
 //
 // (Sub-entrega 11c) Camada 🃏: plataforma "🚫 Sem ciclo do Misterioso"
 // (misteriosoCycle === 'no') não mostra emissões.
+//
+// === (Sub-entrega 23) CONTÊINER DO DIA ===
+// a) planDayFor: o dia planejado completo (valor, faixa, linhas de aposta,
+//    valores permitidos) — o contêiner mostra o que apostar.
+//    Hoje/futuro SEM o dia no plano salvo (plano recalculado a partir de
+//    amanhã — Sub 24) => usa o histórico: o dia de hoje fica congelado lá.
+// b) Itens de rotina levam platformId/action/amount/minimum.
+// c) buildDayPlatforms: UMA lista por plataforma (plano = meta de aposta;
+//    rotina de aposta vira só selo; rotina de aposta sem plano no dia =
+//    "⚠️ Sem plano"). Pendências primeiro.
+// d) suggestForRow: 👉 o que falta apostar, em giros da paleta do plano.
+// e) computeRealMetrics devolve planRows: os dias × plataformas que formam
+//    o planejado do "Real × plano".
 
 import { toLocalDateString } from './finance-logic.js';
 import { computeEmissionDates } from './cycle-logic.js';
@@ -35,6 +48,7 @@ import { getDepositKindId } from './deposit-kinds.js';
 import {
   evaluateRoutineDay, summarizeItems, forbiddenBetDays
 } from './routine-logic.js';
+import { buildDayLines, normalizeStakes } from './plan-logic.js';
 
 export const DEFAULT_PARTIAL_THRESHOLD = 50;
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -111,18 +125,72 @@ export function realWageredC(platform, dayKey) {
   return (platform.betEntries || []).reduce((s, e) => (entryKey(e) === dayKey ? s + toC(e.wagered) : s), 0);
 }
 
+function cleanLines(list) {
+  return (Array.isArray(list) ? list : []).filter(l => l && Number(l.stakeC) > 0).map(l => (l.kind === 'buy'
+    ? { kind: 'buy', stakeC: Math.round(Number(l.stakeC)), multiplier: Math.round(Number(l.multiplier) || 0), subtotalC: Math.round(Number(l.subtotalC) || 0) }
+    : { kind: 'spin', stakeC: Math.round(Number(l.stakeC)), count: Math.round(Number(l.count) || 0), subtotalC: Math.round(Number(l.subtotalC) || 0) }));
+}
+
+// Valores de aposta usados nas linhas (quando não há a paleta do plano).
+export function stakesFromLines(lines) {
+  return [...new Set(cleanLines(lines).map(l => l.stakeC))].sort((a, b) => a - b);
+}
+
+function cleanBuy(b) {
+  return b && b.enabled && Number(b.multiplier) >= 2 ? { enabled: true, multiplier: Math.round(Number(b.multiplier)) } : null;
+}
+
 /**
- * Planejado de (dia, plataforma), em centavos (null = sem plano no dia).
+ * (23) Dia planejado de (dia, plataforma) — null = sem plano no dia.
  * world: { todayKey, getPlanLog(dayKey, pid), plans: Map(pid → plano salvo) }
+ *   passado     → histórico congelado (planLog); sem ele, o plano salvo;
+ *   hoje/futuro → plano salvo; sem o dia no plano, o histórico (o plano foi
+ *                 refeito a partir de amanhã e hoje ficou congelado).
+ * @returns {{plannedC, targetC, tier, lines, stakesC, buy, source:'plan'|'log'} | null}
  */
-export function plannedFor(dayKey, platformId, world) {
-  if (dayKey < world.todayKey) {
-    const log = world.getPlanLog ? world.getPlanLog(dayKey, platformId) : null;
-    if (log) return Math.round(Number(log.plannedC) || 0);
-  }
+export function planDayFor(dayKey, platformId, world) {
   const plan = world.plans ? world.plans.get(platformId) : null;
-  const day = plan && Array.isArray(plan.days) ? plan.days.find(d => d.key === dayKey) : null;
-  return day ? Math.round(Number(day.plannedC) || 0) : null;
+  const pday = plan && Array.isArray(plan.days) ? plan.days.find(d => d && d.key === dayKey) : null;
+  const log = world.getPlanLog ? world.getPlanLog(dayKey, platformId) : null;
+  const fromPlan = () => {
+    const params = plan.params || {};
+    const lines = cleanLines(pday.lines);
+    const stakesC = normalizeStakes(params.stakes);
+    return {
+      plannedC: Math.round(Number(pday.plannedC) || 0),
+      targetC: Math.round(Number(pday.targetC) || 0),
+      tier: String(pday.tier || ''),
+      lines,
+      stakesC: stakesC.length ? stakesC : stakesFromLines(lines),
+      buy: cleanBuy(params.buy),
+      source: 'plan'
+    };
+  };
+  const fromLog = () => {
+    const lines = cleanLines(log.lines);
+    const stakesC = Array.isArray(log.stakes) ? normalizeStakes(log.stakes) : [];
+    return {
+      plannedC: Math.round(Number(log.plannedC) || 0),
+      targetC: Math.round(Number(log.targetC) || 0),
+      tier: String(log.tier || ''),
+      lines,
+      stakesC: stakesC.length ? stakesC : stakesFromLines(lines),
+      buy: cleanBuy(log.buy),
+      source: 'log'
+    };
+  };
+  if (dayKey < world.todayKey) {
+    if (log) return fromLog();
+    return pday ? fromPlan() : null;
+  }
+  if (pday) return fromPlan();
+  return log ? fromLog() : null;
+}
+
+/** Planejado de (dia, plataforma), em centavos (null = sem plano no dia). */
+export function plannedFor(dayKey, platformId, world) {
+  const d = planDayFor(dayKey, platformId, world);
+  return d ? d.plannedC : null;
 }
 
 /**
@@ -155,13 +223,18 @@ export function buildCalendarMonth(ym, world) {
   platforms.forEach(p => {
     // Planejado × real
     days.forEach(d => {
-      const plannedC = plannedFor(d.key, p.id, world);
+      const pd = planDayFor(d.key, p.id, world);
+      const plannedC = pd ? pd.plannedC : null;
       const realC = d.isFuture ? 0 : realWageredC(p, d.key);
       if (plannedC !== null && plannedC > 0) {
         const status = d.isFuture ? 'future' : (d.isToday && realC < plannedC ? 'today' : dayStatus(plannedC, realC, threshold));
         d.plan.plannedC += plannedC;
         d.plan.realC += realC;
-        d.plan.rows.push({ platformId: p.id, name: String(p.name || ''), plannedC, realC, status, overC: Math.max(0, realC - plannedC) });
+        // (23) faixa, linhas e valores permitidos — o contêiner do dia sugere a aposta.
+        d.plan.rows.push({
+          platformId: p.id, name: String(p.name || ''), plannedC, realC, status, overC: Math.max(0, realC - plannedC),
+          tier: pd.tier, lines: pd.lines, stakesC: pd.stakesC, buy: pd.buy, source: pd.source
+        });
       } else if (realC > 0) {
         d.offPlan.push({ platformId: p.id, name: String(p.name || ''), realC });
       }
@@ -207,17 +280,22 @@ export function buildCalendarMonth(ym, world) {
       if (d.key < world.todayKey) {
         const log = world.routineLogs ? world.routineLogs.get(d.key) : null;
         if (!log || !log.routines) return;
-        Object.values(log.routines).forEach(lr => {
-          Object.entries(lr.items || {}).forEach(([pid, it]) => {
+        Object.entries(log.routines).forEach(([rid, lr]) => {
+          Object.entries((lr && lr.items) || {}).forEach(([pid, it]) => {
             if (pid !== '_' && !ids.has(pid)) return;
-            items.push({ name: lr.name, emoji: lr.emoji, platformName: it.name, status: it.status });
+            items.push({ routineId: rid, name: lr.name, emoji: lr.emoji, action: lr.action || null, platformId: pid, platformName: it.name, status: it.status });
           });
         });
         if (items.length) d.routines = { source: 'log', items, ...summarizeItems(items) };
       } else {
         world.routines.forEach(r => {
           evaluateRoutineDay(r, platforms, d.key, d.isToday ? world.todayKey : null, d.isToday ? (world.marksToday || {}) : {})
-            .forEach(it => items.push({ name: r.name, emoji: r.emoji, platformName: it.platformName, status: d.isToday ? it.status : 'due' }));
+            .forEach(it => items.push({
+              routineId: r.id, name: r.name, emoji: r.emoji, action: r.action || null,
+              platformId: it.platformId, platformName: it.platformName,
+              status: d.isToday ? it.status : 'due',
+              amount: d.isToday ? it.amount : null, minimum: it.minimum
+            }));
         });
         if (items.length) {
           d.routines = d.isToday
@@ -235,6 +313,95 @@ export function buildCalendarMonth(ym, world) {
     }
   });
   return days;
+}
+
+// ============================================================
+// (Sub-entrega 23) CONTÊINER DO DIA — uma lista por plataforma
+// ============================================================
+
+const PROBLEM_RT = new Set(['missed', 'broken']);
+
+/**
+ * Junta tudo do dia por plataforma. Plano = meta de aposta do dia; rotina
+ * de APOSTA vira só selo (betRoutines); rotina de aposta que vale no dia
+ * sem plano = noPlan ("⚠️ Sem plano"). "Não apostar" entra como forbidden
+ * (uma vez só). attention = pendente (hoje) / com problema (passado) /
+ * sem plano (hoje e futuro) — vem primeiro.
+ * @returns {Array<{platformId, name, plan, offPlanC, deposits, depositC,
+ *   betRoutines, routines, emission, forbidden, noPlan, attention}>}
+ */
+export function buildDayPlatforms(d) {
+  const map = new Map();
+  const get = (pid, name) => {
+    const id = pid || '_';
+    if (!map.has(id)) {
+      map.set(id, {
+        platformId: id, name: id === '_' ? 'Geral' : String(name || ''),
+        plan: null, offPlanC: 0, deposits: [], depositC: 0,
+        betRoutines: [], routines: [], emission: false, forbidden: null, noPlan: false, attention: false
+      });
+    }
+    const row = map.get(id);
+    if (!row.name && name) row.name = String(name);
+    return row;
+  };
+  d.plan.rows.forEach(r => { get(r.platformId, r.name).plan = r; });
+  d.offPlan.forEach(r => { get(r.platformId, r.name).offPlanC += r.realC; });
+  d.deposits.rows.forEach(r => { const x = get(r.platformId, r.name); x.deposits.push(r); x.depositC += r.valueC; });
+  d.emissions.forEach(e => { get(e.platformId, e.name).emission = true; });
+  d.forbidden.forEach(f => { get(f.platformId, f.name).forbidden = { broken: !!f.broken }; });
+  if (d.routines) {
+    d.routines.items.forEach(it => {
+      const x = get(it.platformId, it.platformName);
+      if (it.action === 'no-bet') {
+        if (!x.forbidden) x.forbidden = { broken: it.status === 'broken' };
+        else if (it.status === 'broken') x.forbidden.broken = true;
+        return;
+      }
+      if (it.action === 'bet') x.betRoutines.push(it);
+      else x.routines.push(it);
+    });
+  }
+  const out = [...map.values()];
+  out.forEach(x => {
+    x.noPlan = !x.plan && x.betRoutines.length > 0 && x.platformId !== '_';
+    const rts = [...x.betRoutines, ...x.routines];
+    if (d.isFuture) {
+      x.attention = x.noPlan;
+    } else if (d.isToday) {
+      x.attention = (!!x.plan && x.plan.status === 'today')
+        || rts.some(it => it.status === 'pending' || PROBLEM_RT.has(it.status))
+        || (!!x.forbidden && x.forbidden.broken)
+        || (x.noPlan && x.betRoutines.some(it => it.status !== 'done'));
+    } else {
+      x.attention = (!!x.plan && (x.plan.status === 'miss' || x.plan.status === 'partial'))
+        || rts.some(it => PROBLEM_RT.has(it.status))
+        || (!!x.forbidden && x.forbidden.broken);
+    }
+  });
+  return out.sort((a, b) => {
+    if (a.attention !== b.attention) return a.attention ? -1 : 1;
+    if ((a.platformId === '_') !== (b.platformId === '_')) return a.platformId === '_' ? 1 : -1;
+    return a.name.localeCompare(b.name, 'pt-BR', { numeric: true });
+  });
+}
+
+/**
+ * 👉 O que falta apostar no dia (linha do plano). null = nada falta.
+ * Nada apostado ainda = as linhas do próprio plano; já começou = o que
+ * falta, em giros dos valores permitidos do plano (sem compra de bônus).
+ * @returns {{ leftC, lines, exact } | null}
+ */
+export function suggestForRow(row) {
+  if (!row || !(row.plannedC > 0)) return null;
+  const leftC = row.plannedC - (Number(row.realC) || 0);
+  if (leftC <= 0) return null;
+  const lines = Array.isArray(row.lines) ? row.lines : [];
+  if (!(row.realC > 0) && lines.length) return { leftC, lines, exact: true };
+  const stakesC = Array.isArray(row.stakesC) && row.stakesC.length ? row.stakesC : stakesFromLines(lines);
+  if (!stakesC.length) return { leftC, lines: [], exact: false };
+  const tier = ['baixo', 'medio', 'alto'].includes(row.tier) ? row.tier : 'medio';
+  return { leftC, lines: buildDayLines(leftC, tier, stakesC, null).lines, exact: false };
 }
 
 /** Resumo planejado × real do mês (até hoje) + série acumulada pro gráfico. */
@@ -279,7 +446,8 @@ export function computeRealMetrics(platforms, fromKey, toKey, opts = {}) {
     fromKey, toKey: hi,
     sessions: 0, wins: 0, winC: 0, losses: 0, lossC: 0, even: 0,
     wageredC: 0, rbC: 0, depositC: 0, betDepositC: 0,
-    plannedC: 0, realOnPlanC: 0, daysAbove: 0
+    plannedC: 0, realOnPlanC: 0, daysAbove: 0,
+    planRows: [] // (23) dias × plataformas que formam o planejado
   };
   if (!fromKey || !hi || fromKey > hi) return finish(m, opts);
   (platforms || []).forEach(p => {
@@ -306,6 +474,7 @@ export function computeRealMetrics(platforms, fromKey, toKey, opts = {}) {
         m.plannedC += planned;
         m.realOnPlanC += real;
         if (real > planned) m.daysAbove++;
+        m.planRows.push({ key: k, platformId: p.id, name: String(p.name || ''), plannedC: planned, realC: real });
       }
     }
   });
@@ -317,6 +486,7 @@ export function computeRealMetrics(platforms, fromKey, toKey, opts = {}) {
       if (getDepositKindId(e) === 'aposta') m.betDepositC += toC(e.value);
     }));
   }
+  m.planRows.sort((a, b) => a.key.localeCompare(b.key) || a.name.localeCompare(b.name, 'pt-BR', { numeric: true }));
   return finish(m, opts);
 }
 

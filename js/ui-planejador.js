@@ -116,6 +116,32 @@
 //    Gráfico do grupo: barras EMPILHADAS por plataforma (dá pra ver a
 //    escala/ritmo de cada uma), linha do Rollover previsto do grupo e o dia
 //    mais alto destacado; cada linha da lista mostra o pico da plataforma.
+//
+// === (Sub-entrega 24) ===
+// a) ABAS: o seletor (plataforma/grupo) e o 🔄 ficam fixos no topo; os
+//    controles se dividem em 💼 Caixa (caixa do período, ciclos, meta,
+//    🔒 guardar, base do grupo, ⚡ velocidade, meta de ganho), 🚫 Restrições
+//    (período, dias, seguir rotina, emissões, piso/teto, valores, compra) e
+//    🕹️ Modulador (curva, intensidade, ritmo, semente). A Prévia fica
+//    sempre embaixo. Cada aba mostra quantos ajustes estão ligados, ● com
+//    alteração não salva e 🔴 quando o erro da prévia vem de um campo dela.
+// b) 🔄 ATUALIZAR PLANOS: refaz TODOS os planos salvos (individuais e de
+//    grupo) a partir de amanhã com o Rollover de agora — contêiner com
+//    antes × depois, 🔒 guardado antes × depois, o que falta apostar hoje
+//    (descontado por padrão), caixa de marcar e confirmação. Grava num
+//    ÚNICO lote (plan-store savePlansBatch — tudo ou nada); o dia de HOJE
+//    de cada plano fica congelado no histórico (plan-store).
+// c) META DIGITADA: params.targetMode 'auto' | 'manual' | 'unknown' (plano
+//    antigo). Manual/desconhecido vem DESMARCADO e com a escolha "manter a
+//    meta (redistribui o que falta)" ou "usar o Rollover".
+// d) AVISO ao abrir: "⚠️ Rollover mudou em N planos — 🔄 Atualizar" (só
+//    metas automáticas/desconhecidas, diferença ≥ R$ 1,00 e ≥ 3%). Tocar no
+//    ⚠️ recolhe a frase (fica só o emoji) e expande de novo.
+// e) "↻ Recalcular a partir de amanhã" desconta o que falta apostar hoje
+//    (o dia de hoje continua com a meta dele) e, com meta digitada,
+//    pergunta se usa o Rollover ou mantém a meta.
+// f) requestPlanejadorFocus(platformId): o Calendário abre a aba já com a
+//    plataforma escolhida ("Abrir no Planejador").
 
 import { state } from './state.js';
 import { formatCurrency, showAppAlert, showAppConfirm } from './utils.js';
@@ -128,7 +154,8 @@ import {
   buildPlan, computePlanProjections, planToDoc, sanitizeParams, sameParams,
   computeGoalProgress, getCautionStatus, computeCautionStats,
   addDaysKey, toCents, fromCents, EMISSION_CYCLE_DAYS, emissionKeysInRange,
-  WEEK_MODES, buildGroupPlan, RESERVE_MODES, cleanReserve, applyReserve
+  WEEK_MODES, buildGroupPlan, RESERVE_MODES, cleanReserve, applyReserve,
+  planUpdateDiff, isSignificantChange, plannedAfterC, planDayOf
 } from './plan-logic.js';
 import { getPlatformSpeed, dayBoostsFor, formatMult } from './speed-logic.js';
 import { openSpeedEditor } from './ui-speed.js';
@@ -141,12 +168,12 @@ import {
   getInvalidPlanCount, savePlan, deletePlan, savePalette,
   getPlannerSettings, savePlannerSettings, getStrategySettings, getCalendarSettings, getSavedPlans,
   getStrategyPriority, getSpeedConfig, getNewPlatformsConfig, saveStrategySettings,
-  saveGroupPlans, deleteGroupPlans
+  saveGroupPlans, deleteGroupPlans, savePlansBatch
 } from './plan-store.js';
 import { loadRoutineData, isRoutinesLoaded, getRoutines } from './routine-store.js';
 import { forbiddenBetDays, routineBetDays, betRoutinesFor, ROUTINE_HISTORY_DAYS, depositRoutineInflows, isPlanGroup } from './routine-logic.js';
 import { buildMisteriosoStrategy, projectMisteriosoInflows } from './strategy-logic.js';
-import { computeAdherence } from './calendar-logic.js';
+import { computeAdherence, realWageredC } from './calendar-logic.js';
 import { loadPlanLogs, isPlanLogLoaded, getPlanLogEntry } from './plan-log-store.js';
 
 const PREVIEW_DEBOUNCE_MS = 120;
@@ -172,6 +199,18 @@ let cashPeriod = 'week';     // (11b) período do Caixa (sessão)
 let lastGroup = null;        // (19) último resultado de buildGroupPlan na tela
 let openGroupRows = new Set(); // (19) plataformas abertas na lista do grupo
 let formSnap = null;         // (19) foto do formulário ao escolher/salvar
+// (24)
+const PLAN_TABS = [
+  { id: 'caixa', label: '💼 Caixa' },
+  { id: 'restricoes', label: '🚫 Restrições' },
+  { id: 'modulador', label: '🕹️ Modulador' }
+];
+let activeTab = 'caixa';     // aba aberta (sessão — sobrevive à troca de plataforma)
+let lastError = '';          // erro da prévia (🔴 na aba do campo)
+let alertMin = false;        // aviso "Rollover mudou" recolhido (só o ⚠️)
+let alertRows = null;        // planos/grupos com diferença relevante (aviso)
+let pendingFocus = null;     // plataforma pedida pelo Calendário
+let updateClose = null;      // contêiner 🔄 aberto
 
 // Formulário (sessão). Datas preenchidas no primeiro mount.
 const form = {
@@ -207,7 +246,12 @@ const form = {
   reserve: { mode: 'none', valueText: '' },
   reservedC: 0,
   groupReserve: {},       // { [platformId]: { mode, valueText } } (modo grupo)
-  groupBase: 'rollover'   // 'rollover' | 'projected' (modo grupo)
+  groupBase: 'rollover',  // 'rollover' | 'projected' (modo grupo)
+  // (24)
+  targetMode: 'unknown',  // 'auto' | 'manual' | 'unknown' (modo plataforma)
+  targetBase: 'rollover', // 'rollover' | 'projected' (modo plataforma)
+  todayLeftC: 0,          // ↻ Recalcular: quanto da meta foi descontado (falta hoje)
+  groupDeductToday: false // ↻ Recalcular grupo: desconta o que falta hoje
 };
 
 function isGroupMode() {
@@ -398,7 +442,10 @@ function currentParams() {
     group: form.groupRef,
     // (20)
     reserve: reserveFromForm(form.reserve),
-    reservedC: form.reservedC
+    reservedC: form.reservedC,
+    // (24)
+    targetMode: form.targetMode,
+    targetBase: form.targetBase
   };
 }
 
@@ -425,11 +472,16 @@ function activationC(platform, endKey) {
 
 // (20) Aplica o "Guardar" sobre uma base (Rollover × peso, ou projetado)
 // e grava meta + guardado no formulário (modo plataforma).
-function setTargetFromBase(baseC, projected = false) {
+function setTargetFromBase(baseC, projected = false, deductC = 0) {
   const platform = findPlatform(form.platformId);
   const res = applyReserve(baseC, reserveFromForm(form.reserve), activationC(platform, form.endKey), projected);
+  const targetC = Math.max(0, res.targetC - Math.max(0, deductC));
   form.reservedC = res.reservedC;
-  form.target = res.targetC > 0 ? fmtMoneyInput(fromCents(res.targetC)) : '';
+  form.target = targetC > 0 ? fmtMoneyInput(fromCents(targetC)) : '';
+  // (24) meta automática (e de qual base)
+  form.targetMode = 'auto';
+  form.targetBase = projected ? 'projected' : 'rollover';
+  form.todayLeftC = Math.max(0, deductC);
 }
 
 function reapplyReserve() {
@@ -502,6 +554,9 @@ function applyParamsToForm(params) {
   form.groupRef = p.group;
   form.reserve = reserveToForm(p.reserve);
   form.reservedC = p.reservedC || 0;
+  form.targetMode = p.targetMode;   // (24)
+  form.targetBase = p.targetBase;
+  form.todayLeftC = 0;
   form.goal = {
     mode: p.goal.mode,
     valueText: p.goal.mode === 'percent' ? String(p.goal.value).replace('.', ',') : fmtMoneyInput(p.goal.value),
@@ -512,30 +567,54 @@ function applyParamsToForm(params) {
 // ---------- esqueleto ----------
 
 function renderSkeleton() {
+  // (24) Topo fixo (seletor + 🔄 + aviso + abas) · abas · Prévia sempre embaixo.
+  // data-ptab = aba do bloco (caixa | restricoes | modulador).
   rootEl.innerHTML = `
     <p id="planLoadNote" class="graficos-note app-hidden"></p>
     <button type="button" id="planRetryBtn" class="bet-manage-btn app-hidden" style="margin:0.6rem 1.1rem 0;">Tentar de novo</button>
 
     <div id="planMain" class="plan-grid app-hidden">
-      <section id="planCash" class="card-shell graficos-section plan-cash" aria-label="Caixa do período"></section>
-      <section id="planCycles" class="card-shell graficos-section plan-cash" aria-label="Ciclos"></section>
-      <section class="card-shell graficos-section plan-controls" aria-label="Controles do plano">
-        <div class="section-heading" style="padding:0 0 0.9rem;">
-          <div>
-            <h2>Modulador de Apostas</h2>
-            <p>Distribua o Rollover em dias altos e baixos. A prévia muda enquanto você ajusta.</p>
+      <section class="card-shell graficos-section plan-top" aria-label="Plano">
+        <div class="plan-top-row">
+          <div class="plan-field plan-top-select">
+            <label for="planPlatform">Plataforma ou grupo</label>
+            <select id="planPlatform" class="plan-input"></select>
           </div>
+          <button type="button" id="planUpdateAll" class="bet-manage-btn plan-update-btn">🔄 Atualizar planos</button>
         </div>
-
-        <div class="plan-field">
-          <label for="planPlatform">Plataforma</label>
-          <select id="planPlatform" class="plan-input"></select>
+        <div id="planAlert" class="plan-alert app-hidden" role="status"></div>
+        <div class="plan-top-info">
           <p id="planPlatformInfo" class="plan-hint"></p>
           <p id="planCycleInfo" class="plan-hint"></p>
           <p id="planGroupInfo" class="plan-hint app-hidden"></p>
         </div>
+        <div id="planTabs" class="plan-tabs" role="tablist" aria-label="Seções do plano"></div>
+      </section>
 
-        <div class="plan-field" id="planTargetField">
+      <section id="planCash" data-ptab="caixa" class="card-shell graficos-section plan-cash" aria-label="Caixa do período"></section>
+      <section id="planCycles" data-ptab="caixa" class="card-shell graficos-section plan-cash" aria-label="Ciclos"></section>
+
+      <section class="card-shell graficos-section plan-controls" aria-label="Controles do plano">
+        <div class="section-heading plan-tab-heading" data-ptab="caixa">
+          <div>
+            <h2>💼 Meta do plano</h2>
+            <p>Quanto apostar no período — do Rollover, do projetado ou digitado.</p>
+          </div>
+        </div>
+        <div class="section-heading plan-tab-heading" data-ptab="restricoes">
+          <div>
+            <h2>🚫 Restrições</h2>
+            <p>Quando e com quais valores o plano pode apostar.</p>
+          </div>
+        </div>
+        <div class="section-heading plan-tab-heading" data-ptab="modulador">
+          <div>
+            <h2>🕹️ Modulador de Apostas</h2>
+            <p>Distribua a meta em dias altos e baixos. A prévia muda enquanto você ajusta.</p>
+          </div>
+        </div>
+
+        <div class="plan-field" id="planTargetField" data-ptab="caixa">
           <label for="planTarget">Meta (R$)</label>
           <div class="plan-row">
             <input type="text" id="planTarget" class="plan-input" inputmode="decimal" autocomplete="off" placeholder="Ex.: 1.500,00" />
@@ -543,16 +622,38 @@ function renderSkeleton() {
           </div>
           <button type="button" id="planUseProjected" class="bet-manage-btn app-hidden">Usar projetado</button>
           <p id="planRolloverHint" class="plan-hint"></p>
+          <p id="planTargetModeHint" class="plan-hint"></p>
         </div>
 
-        <div class="plan-field" id="planReserveField">
+        <div class="plan-field" id="planReserveField" data-ptab="caixa">
           <span class="plan-label">🔒 Guardar rollover <small>pra jogar depois</small></span>
           <div id="planReserveModes" class="plan-chips" role="group" aria-label="Guardar rollover"></div>
           <input type="text" id="planReserveValue" class="plan-input app-hidden" inputmode="decimal" autocomplete="off" aria-label="Quanto guardar" />
           <p id="planReserveHint" class="plan-hint"></p>
         </div>
 
-        <div class="plan-field">
+        <div class="plan-field app-hidden" id="planGroupBaseField" data-ptab="caixa">
+          <span class="plan-label">Base da meta <small>de cada plataforma</small></span>
+          <div id="planGroupBase" class="plan-chips" role="group" aria-label="Base da meta"></div>
+          <p id="planGroupBaseHint" class="plan-hint"></p>
+        </div>
+
+        <div class="plan-field" id="planSpeedField" data-ptab="caixa">
+          <span class="plan-label">⚡ Velocidade</span>
+          <div class="plan-row">
+            <span id="planSpeedInfo" class="plan-hint plan-speed-info"></span>
+            <button type="button" id="planSpeedEdit" class="bet-manage-btn plan-btn-inline">Editar</button>
+          </div>
+        </div>
+
+        <div class="plan-field" id="planGoalField" data-ptab="caixa">
+          <span class="plan-label">Meta de ganho <small>opcional — só referência</small></span>
+          <div id="planGoalModes" class="plan-chips" role="group" aria-label="Meta de ganho"></div>
+          <input type="text" id="planGoalValue" class="plan-input app-hidden" inputmode="decimal" autocomplete="off" aria-label="Valor da meta de ganho" />
+          <p id="planGoalHint" class="plan-hint"></p>
+        </div>
+
+        <div class="plan-field" data-ptab="restricoes">
           <span class="plan-label">Período</span>
           <div class="plan-row">
             <input type="date" id="planStart" class="plan-input" aria-label="Início" />
@@ -562,65 +663,31 @@ function renderSkeleton() {
           <div id="planQuickSpan" class="plan-chips" role="group" aria-label="Duração rápida"></div>
         </div>
 
-        <div class="plan-field">
+        <div class="plan-field" data-ptab="restricoes">
           <span class="plan-label">Dias de aposta <small>(toque pra marcar folga)</small></span>
           <div id="planWeekdays" class="plan-chips" role="group" aria-label="Dias da semana"></div>
           <div id="planWeekMode" class="plan-chips plan-weekmode" role="group" aria-label="Como usar os dias"></div>
           <p id="planWeekModeHint" class="plan-hint"></p>
         </div>
 
-        <div class="plan-field app-hidden" id="planGroupBaseField">
-          <span class="plan-label">Base da meta <small>de cada plataforma</small></span>
-          <div id="planGroupBase" class="plan-chips" role="group" aria-label="Base da meta"></div>
-          <p id="planGroupBaseHint" class="plan-hint"></p>
-        </div>
-
-        <div class="plan-field app-hidden" id="planGroupFollowField">
+        <div class="plan-field app-hidden" id="planGroupFollowField" data-ptab="restricoes">
           <label class="plan-toggle"><input type="checkbox" id="planGroupFollow" /> Seguir os dias desta rotina</label>
           <p id="planGroupFollowHint" class="plan-hint"></p>
         </div>
 
-        <div class="plan-field" id="planFollowField">
+        <div class="plan-field" id="planFollowField" data-ptab="restricoes">
           <label for="planFollow">Seguir rotina <small>opcional</small></label>
           <select id="planFollow" class="plan-input"></select>
           <p id="planFollowHint" class="plan-hint"></p>
         </div>
 
-        <div class="plan-field">
+        <div class="plan-field" data-ptab="restricoes">
           <span class="plan-label">Não apostar nos dias de emissão do Misterioso <small>dia do ciclo</small></span>
           <div id="planSkipEm" class="plan-chips" role="group" aria-label="Dias de emissão a pular"></div>
           <p id="planSkipHint" class="plan-hint"></p>
         </div>
 
-        <div class="plan-field" id="planSpeedField">
-          <span class="plan-label">⚡ Velocidade</span>
-          <div class="plan-row">
-            <span id="planSpeedInfo" class="plan-hint plan-speed-info"></span>
-            <button type="button" id="planSpeedEdit" class="bet-manage-btn plan-btn-inline">Editar</button>
-          </div>
-        </div>
-
-        <div class="plan-field">
-          <span class="plan-label">Curva</span>
-          <div id="planCurves" class="plan-chips" role="group" aria-label="Curva"></div>
-        </div>
-
-        <div class="plan-field">
-          <label for="planIntensity" class="plan-label">Intensidade <strong id="planIntensityVal"></strong></label>
-          <input type="range" id="planIntensity" min="1" max="10" step="1" class="plan-range" />
-        </div>
-
-        <div class="plan-field" id="planRhythmWrap">
-          <label for="planRhythm" class="plan-label">Ritmo <strong id="planRhythmVal"></strong></label>
-          <input type="range" id="planRhythm" min="2" max="10" step="1" class="plan-range" />
-        </div>
-
-        <div class="plan-field app-hidden" id="planSeedWrap">
-          <span class="plan-label">Semente do Caos <strong id="planSeedVal"></strong></span>
-          <button type="button" id="planReseed" class="bet-manage-btn">🎲 Sortear outro</button>
-        </div>
-
-        <div class="plan-field">
+        <div class="plan-field" data-ptab="restricoes">
           <span class="plan-label">Piso diário</span>
           <div id="planFloorModes" class="plan-chips" role="group" aria-label="Piso diário"></div>
           <input type="text" id="planFloor" class="plan-input app-hidden" inputmode="decimal" autocomplete="off" placeholder="Ex.: 12,00" aria-label="Piso diário manual" />
@@ -628,12 +695,12 @@ function renderSkeleton() {
           <p id="planFloorHint" class="plan-hint"></p>
         </div>
 
-        <div class="plan-field">
+        <div class="plan-field" data-ptab="restricoes">
           <label for="planCap">Teto diário (R$) <small>opcional</small></label>
           <input type="text" id="planCap" class="plan-input" inputmode="decimal" autocomplete="off" placeholder="Sem teto" />
         </div>
 
-        <div class="plan-field">
+        <div class="plan-field" data-ptab="restricoes">
           <span class="plan-label">Valores de aposta permitidos</span>
           <div id="planStakes" class="plan-chips" role="group" aria-label="Valores de aposta"></div>
           <details class="plan-palette">
@@ -646,16 +713,29 @@ function renderSkeleton() {
           </details>
         </div>
 
-        <div class="plan-field">
+        <div class="plan-field" data-ptab="restricoes">
           <label class="plan-toggle"><input type="checkbox" id="planBuy" /> Compra de bônus nos dias altos</label>
           <div id="planBuyMult" class="plan-chips app-hidden" role="group" aria-label="Multiplicador"></div>
         </div>
 
-        <div class="plan-field" id="planGoalField">
-          <span class="plan-label">Meta de ganho <small>opcional — só referência</small></span>
-          <div id="planGoalModes" class="plan-chips" role="group" aria-label="Meta de ganho"></div>
-          <input type="text" id="planGoalValue" class="plan-input app-hidden" inputmode="decimal" autocomplete="off" aria-label="Valor da meta de ganho" />
-          <p id="planGoalHint" class="plan-hint"></p>
+        <div class="plan-field" data-ptab="modulador">
+          <span class="plan-label">Curva</span>
+          <div id="planCurves" class="plan-chips" role="group" aria-label="Curva"></div>
+        </div>
+
+        <div class="plan-field" data-ptab="modulador">
+          <label for="planIntensity" class="plan-label">Intensidade <strong id="planIntensityVal"></strong></label>
+          <input type="range" id="planIntensity" min="1" max="10" step="1" class="plan-range" />
+        </div>
+
+        <div class="plan-field" id="planRhythmWrap" data-ptab="modulador">
+          <label for="planRhythm" class="plan-label">Ritmo <strong id="planRhythmVal"></strong></label>
+          <input type="range" id="planRhythm" min="2" max="10" step="1" class="plan-range" />
+        </div>
+
+        <div class="plan-field app-hidden" id="planSeedWrap" data-ptab="modulador">
+          <span class="plan-label">Semente do Caos <strong id="planSeedVal"></strong></span>
+          <button type="button" id="planReseed" class="bet-manage-btn">🎲 Sortear outro</button>
         </div>
       </section>
 
@@ -685,6 +765,98 @@ function renderSkeleton() {
       </section>
     </div>
   `;
+}
+
+// ---------- (24) abas ----------
+
+// Campos do formulário de cada aba (● alteração não salva).
+const TAB_FORM_KEYS = {
+  caixa: ['target', 'reserve', 'goal', 'groupBase', 'groupReserve'],
+  restricoes: ['startKey', 'endKey', 'weekdaysOff', 'weekMode', 'followRoutineId', 'followGroup', 'skipEmissions', 'floorMode', 'floor', 'groupFloorMode', 'groupFloor', 'cap', 'stakes', 'buy'],
+  modulador: ['curve', 'intensity', 'rhythm', 'seed']
+};
+
+// Aba do campo que gerou o erro da prévia (🔴).
+function errorTab(msg) {
+  const m = String(msg || '').toLowerCase();
+  if (!m) return null;
+  if (m.includes('curva')) return 'modulador';
+  if (m.includes('meta') || m.includes('rollover') || m.includes('guardad')) return 'caixa';
+  if (m.includes('período') || m.includes('início') || m.includes('fim') || m.includes('dia') || m.includes('rotina')
+    || m.includes('valor') || m.includes('piso') || m.includes('teto')) return 'restricoes';
+  return null;
+}
+
+// Quantos ajustes estão ligados em cada aba.
+function tabCounts() {
+  const group = isGroupMode();
+  const palette = getPalette();
+  let r = 0;
+  if (form.weekdaysOff.length) r++;
+  if (form.weekMode === 'alternate') r++;
+  if (group ? (form.followGroup && currentGroup() && currentGroup().routine.action === 'bet') : !!form.followRoutineId) r++;
+  if (form.skipEmissions.length) r++;
+  if (group ? form.groupFloorMode === 'manual' : (form.floorMode === 'manual' || (form.floorMode === 'auto' && world && world.minimum > 0))) r++;
+  if (parseMoneyInput(form.cap) > 0) r++;
+  if (Array.isArray(form.stakes) && form.stakes.length && form.stakes.length < palette.stakes.length) r++;
+  if (form.buy.enabled) r++;
+  let c = 0;
+  if (group) {
+    c += Object.keys(form.groupReserve).length ? 1 : 0;
+    if (form.groupBase === 'projected') c++;
+  } else {
+    if (form.reserve.mode !== 'none') c++;
+    if (form.goal.mode !== 'none') c++;
+    if (form.targetBase === 'projected') c++;
+  }
+  return { caixa: c, restricoes: r };
+}
+
+function dirtyTabs() {
+  const out = new Set();
+  if (formSnap === null) return out;
+  let snap;
+  try { snap = JSON.parse(formSnap); } catch (err) { return out; }
+  Object.entries(TAB_FORM_KEYS).forEach(([tab, keys]) => {
+    if (keys.some(k => JSON.stringify(form[k]) !== JSON.stringify(snap[k]))) out.add(tab);
+  });
+  return out;
+}
+
+function renderTabs() {
+  const box = $('planTabs');
+  if (!box) return;
+  const counts = tabCounts();
+  const dirty = (form.platformId || form.groupId) ? dirtyTabs() : new Set();
+  const errTab = errorTab(lastError);
+  const curve = CURVES.find(c => c.id === form.curve);
+  box.replaceChildren();
+  PLAN_TABS.forEach(t => {
+    const b = el('button', `plan-tab${activeTab === t.id ? ' active' : ''}`);
+    b.type = 'button';
+    b.setAttribute('role', 'tab');
+    b.setAttribute('aria-selected', activeTab === t.id ? 'true' : 'false');
+    b.dataset.tab = t.id;
+    b.appendChild(el('span', 'plan-tab-label', t.label));
+    let extra = '';
+    if (t.id === 'modulador') extra = curve ? curve.label : '';
+    else if (counts[t.id]) extra = String(counts[t.id]);
+    if (extra) b.appendChild(el('span', 'plan-tab-count', `· ${extra}`));
+    if (dirty.has(t.id)) b.appendChild(el('span', 'plan-tab-dot', '●'));
+    if (errTab === t.id) b.appendChild(el('span', 'plan-tab-err', '🔴'));
+    const tips = [];
+    if (dirty.has(t.id)) tips.push('alteração não salva');
+    if (errTab === t.id) tips.push('o erro da prévia vem desta aba');
+    if (tips.length) b.title = tips.join(' · ');
+    b.addEventListener('click', () => { if (activeTab !== t.id) { activeTab = t.id; applyTab(); } });
+    box.appendChild(b);
+  });
+}
+
+function applyTab() {
+  if (!rootEl) return;
+  rootEl.querySelectorAll('[data-ptab]').forEach(n => n.classList.toggle('plan-tab-off', n.dataset.ptab !== activeTab));
+  renderTabs();
 }
 
 // ---------- carga ----------
@@ -1128,9 +1300,11 @@ function syncGroupInputs() {
   hide('planReserveField', group);
   hide('planGroupBaseField', !group);
   const gbh = $('planGroupBaseHint');
-  if (gbh) gbh.textContent = form.groupBase === 'projected'
+  if (gbh) gbh.textContent = (form.groupBase === 'projected'
     ? 'Projetado: Rollover de hoje + o que ainda vai entrar até o fim do período (depósitos das rotinas e bônus do Misterioso das próximas emissões), × peso ⚡, menos o 🔒 guardado.'
-    : 'Rollover de hoje × peso ⚡, menos o 🔒 guardado.';
+    : 'Rollover de hoje × peso ⚡, menos o 🔒 guardado.')
+    + ' O 🔒 de cada plataforma fica na linha dela, na Prévia.'
+    + (form.groupDeductToday ? ' ↻ Recalculado: a meta de cada uma desconta o que ainda falta apostar hoje.' : '');
   // (20) Guardar rollover (modo plataforma)
   const rv = $('planReserveValue');
   if (rv) {
@@ -1153,6 +1327,17 @@ function syncGroupInputs() {
       if (!parseMoneyInput(form.target)) t += ' Sem nada a apostar no período.';
     }
     rh.textContent = t;
+  }
+  // (24) Origem da meta
+  const tmh = $('planTargetModeHint');
+  if (tmh) {
+    let t2 = '';
+    if (!group && form.platformId) {
+      if (form.targetMode === 'manual') t2 = '✍️ Meta digitada — o 🔄 Atualizar planos pergunta antes de trocar pelo Rollover.';
+      else if (form.targetMode === 'auto') t2 = `Meta automática (${form.targetBase === 'projected' ? 'projetado' : 'Rollover'} × peso − 🔒 guardado).`;
+      if (form.todayLeftC > 0) t2 += ` Descontou ${formatCurrency(fromCents(form.todayLeftC))} que ainda falta apostar hoje (hoje continua com a meta dele).`;
+    }
+    tmh.textContent = t2.trim();
   }
   hide('planRadar', group);
   const isBetGroup = !!(g && g.routine.action === 'bet');
@@ -1592,10 +1777,17 @@ function selectPlatform(id) {
   form.skipEmissions = [];
   form.reserve = { mode: 'none', valueText: '' };
   form.reservedC = 0;
+  // (24) origem da meta
+  form.targetMode = 'unknown';
+  form.targetBase = 'rollover';
+  form.todayLeftC = 0;
   if (saved) {
     applyParamsToForm(saved.params);
   } else if (platform && world && world.rolloverC !== null && world.rolloverC > 0 && !parseMoneyInput(form.target)) {
     form.target = fmtMoneyInput(fromCents(Math.round(world.rolloverC * speedBase())));
+    form.targetMode = 'auto';
+  } else if (parseMoneyInput(form.target) > 0) {
+    form.targetMode = 'manual';
   }
   renderChips();
   syncInputs();
@@ -1610,6 +1802,7 @@ function selectGroup(routineId) {
   form.groupId = routineId;
   form.platformId = null;
   form.groupRef = null;
+  form.groupDeductToday = false; // (24)
   form.phase = 0;
   form.phaseCount = 1;
   form.followRoutineId = null;
@@ -1671,7 +1864,10 @@ function initControls() {
   renderPlatformInfo();
   renderCaution();
   if (!controlsBound) bindControls();
+  applyTab();       // (24)
+  refreshAlert();   // (24)
   schedulePreview(0);
+  if (pendingFocus) consumeFocus(); // (24)
 }
 
 function bindControls() {
@@ -1690,7 +1886,7 @@ function bindControls() {
   on('planGroupFollow', 'change', (e) => { form.followGroup = e.target.checked; syncInputs(); schedulePreview(0); });
   on('planGroupFloor', 'input', (e) => { form.groupFloor = e.target.value; schedulePreview(); });
   on('planReserveValue', 'input', (e) => { form.reserve.valueText = e.target.value; reapplyReserve(); syncInputs(); schedulePreview(); });
-  on('planTarget', 'input', (e) => { form.target = e.target.value; schedulePreview(); });
+  on('planTarget', 'input', (e) => { form.target = e.target.value; form.targetMode = 'manual'; form.targetBase = 'rollover'; form.todayLeftC = 0; syncGroupInputs(); schedulePreview(); }); // (24)
   on('planUseRollover', 'click', () => {
     if (!world || world.rolloverC === null) return;
     setTargetFromBase(Math.round(world.rolloverC * speedBase())); // (20) respeita o Guardar
@@ -1748,6 +1944,7 @@ function bindControls() {
   on('planSave', 'click', (e) => onSavePlan(e.target));
   on('planDelete', 'click', (e) => onDeletePlan(e.target));
   on('planRecalc', 'click', () => onRecalc());
+  on('planUpdateAll', 'click', () => openUpdatePlans()); // (24)
 }
 
 // ---------- prévia ----------
@@ -1774,8 +1971,16 @@ function describeLines(lines) {
     : `${l.count} × R$ ${fmtStake(fromCents(l.stakeC))}`)).join(' + ');
 }
 
+// (24) Erro visível da prévia (🔴 na aba) + abas.
+function syncTabState() {
+  const err = $('planError');
+  lastError = err && !err.classList.contains('app-hidden') ? err.textContent : '';
+  renderTabs();
+}
+
 function renderActions(plan) {
   if (isGroupMode()) { renderGroupActions(); return; }
+  syncTabState();
   const platform = findPlatform(form.platformId);
   const saved = platform ? getSavedPlan(platform.id) : null;
   const saveBtn = $('planSave');
@@ -2048,26 +2253,46 @@ function memberInflows(p, endKey) {
 }
 
 // Membros com meta (Rollover × peso) e dias bloqueados de CADA plataforma.
-function groupMembers(g) {
+// (24) cfg: o formulário (padrão) ou um plano de grupo SALVO (🔄 Atualizar
+// planos) — { startKey, endKey, skipEmissions, groupBase, groupReserve,
+// followGroup, deductToday, onlyIds }.
+function formGroupCfg() {
+  return {
+    startKey: form.startKey,
+    endKey: form.endKey,
+    skipEmissions: form.skipEmissions,
+    groupBase: form.groupBase,
+    groupReserve: form.groupReserve,
+    followGroup: form.followGroup,
+    deductToday: form.groupDeductToday,
+    onlyIds: null
+  };
+}
+
+function groupMembers(g, cfg = formGroupCfg()) {
   const routines = isRoutinesLoaded(state.currentUid) ? getRoutines() : [];
   const speedCfg = getSpeedConfig();
   const t = todayKey();
   const now = new Date();
-  return groupPlatforms(g).map(p => {
+  const plats = groupPlatforms(g).filter(p => !cfg.onlyIds || cfg.onlyIds.has(p.id));
+  return plats.map(p => {
     let rolloverC = null;
     if (contextConfirmed) {
       try { rolloverC = toCents(computeRolloverLive(p, now, resolveCtx(p) || {})); } catch (err) { rolloverC = null; }
     }
     const base = getPlatformSpeed(speedCfg, p.id).base;
-    const valid = form.startKey && form.endKey && form.startKey <= form.endKey;
+    const valid = cfg.startKey && cfg.endKey && cfg.startKey <= cfg.endKey;
     // (20) 🔒 Guardar rollover desta plataforma.
-    const reserve = reserveFromForm(form.groupReserve[p.id]);
+    const reserve = reserveFromForm(cfg.groupReserve[p.id]);
     // (20) Base: Rollover ou Projetado (Rollover + entradas previstas).
-    const inflows = valid ? memberInflows(p, form.endKey) : [];
+    const inflows = valid ? memberInflows(p, cfg.endKey) : [];
     const inflowC = inflows.reduce((sum, x) => sum + x.valueC, 0);
-    const baseC = rolloverC === null ? 0 : Math.max(0, Math.round((rolloverC + (form.groupBase === 'projected' ? inflowC : 0)) * base));
-    const res = rolloverC === null ? { targetC: 0, reservedC: 0 } : applyReserve(baseC, reserve, valid ? activationC(p, form.endKey) : 0, form.groupBase === 'projected');
-    const target = fromCents(res.targetC);
+    const baseC = rolloverC === null ? 0 : Math.max(0, Math.round((rolloverC + (cfg.groupBase === 'projected' ? inflowC : 0)) * base));
+    const res = rolloverC === null ? { targetC: 0, reservedC: 0 } : applyReserve(baseC, reserve, valid ? activationC(p, cfg.endKey) : 0, cfg.groupBase === 'projected');
+    // (24) ↻ / 🔄: desconta o que falta apostar hoje (do plano salvo dela).
+    const leftC = cfg.deductToday ? todayLeftC(getSavedPlan(p.id), p, t) : 0;
+    const targetC = Math.max(0, res.targetC - leftC);
+    const target = fromCents(targetC);
     const m = {
       platformId: p.id,
       name: p.name,
@@ -2078,15 +2303,16 @@ function groupMembers(g) {
       reservedC: res.reservedC,
       inflows,
       inflowC,
-      excludeKeys: valid ? forbiddenBetDays(routines, p, form.startKey, form.endKey) : [],
-      skipEmissions: form.skipEmissions.slice(),
-      skipKeys: valid ? emissionKeysInRange(p, form.startKey, form.endKey, form.skipEmissions) : [],
-      pauseKeys: valid ? offCycleKeys(p, form.startKey, form.endKey, t) : [],
-      dayBoost: valid ? dayBoostsFor(speedCfg, p.id, form.startKey, form.endKey) : {}
+      todayLeftC: leftC,
+      excludeKeys: valid ? forbiddenBetDays(routines, p, cfg.startKey, cfg.endKey) : [],
+      skipEmissions: cfg.skipEmissions.slice(),
+      skipKeys: valid ? emissionKeysInRange(p, cfg.startKey, cfg.endKey, cfg.skipEmissions) : [],
+      pauseKeys: valid ? offCycleKeys(p, cfg.startKey, cfg.endKey, t) : [],
+      dayBoost: valid ? dayBoostsFor(speedCfg, p.id, cfg.startKey, cfg.endKey) : {}
     };
-    if (g.routine.action === 'bet' && form.followGroup && valid) {
+    if (g.routine.action === 'bet' && cfg.followGroup && valid) {
       m.followRoutineId = g.routine.id;
-      m.onlyKeys = routineBetDays(g.routine, p, form.startKey, form.endKey);
+      m.onlyKeys = routineBetDays(g.routine, p, cfg.startKey, cfg.endKey);
     }
     return m;
   });
@@ -2237,6 +2463,7 @@ function renderMemberReserve(pid, member) {
       : (member.reserve.mode === 'all'
         ? `Guarda o Rollover inteiro (${formatCurrency(fromCents(member.reservedC))}); a meta cobre só os depósitos de ativação previstos: ${formatCurrency(member.target)}.`
         : `Guarda ${formatCurrency(fromCents(member.reservedC))} de ${formatCurrency(fromCents(roll))}; meta ${formatCurrency(member.target)}.`))));
+  if (member.todayLeftC > 0) box.appendChild(el('p', 'plan-hint', `↻ Descontou ${formatCurrency(fromCents(member.todayLeftC))} que ainda falta apostar hoje.`)); // (24)
   return box;
 }
 
@@ -2325,6 +2552,7 @@ function renderGroupChart(res) {
 }
 
 function renderGroupActions() {
+  syncTabState();
   const saveBtn = $('planSave');
   const delBtn = $('planDelete');
   const recalcBtn = $('planRecalc');
@@ -2386,6 +2614,7 @@ async function onSaveGroup(btn) {
     if (mounted) {
       fillPlatformSelect();
       renderGroupActions();
+      refreshAlert(); // (24)
     }
   }
 }
@@ -2408,6 +2637,7 @@ async function onDeleteGroup(btn) {
     if (mounted) {
       fillPlatformSelect();
       renderGroupActions();
+      refreshAlert(); // (24)
     }
   }
 }
@@ -2447,6 +2677,7 @@ async function onSavePlan(btn) {
       fillPlatformSelect();
       renderPlatformInfo();
       renderActions(lastPlan ? lastPlan.plan : null);
+      refreshAlert(); // (24)
     }
   }
 }
@@ -2471,33 +2702,88 @@ async function onDeletePlan(btn) {
       fillPlatformSelect();
       renderPlatformInfo();
       renderActions(lastPlan ? lastPlan.plan : null);
+      refreshAlert(); // (24)
     }
   }
 }
 
 // Mantém curva/limites/valores e refaz a partir de amanhã com o Rollover de agora.
-function onRecalc() {
+// (24) Desconta o que ainda falta apostar HOJE (hoje continua com a meta
+// dele — o dia de hoje fica congelado no histórico ao salvar). Meta
+// digitada: pergunta se usa o Rollover ou mantém a meta (redistribui o que
+// falta).
+async function onRecalc() {
   if (isGroupMode()) { onRecalcGroup(); return; }
   const platform = findPlatform(form.platformId);
   if (!platform) return;
   world = computeWorld(platform);
+  const saved = getSavedPlan(platform.id);
+  const t = todayKey();
   const span = Math.max(0, Math.round((dayKeyToDate(form.endKey) - dayKeyToDate(form.startKey)) / 86400000));
-  const tomorrow = addDaysKey(todayKey(), 1);
+  const tomorrow = addDaysKey(t, 1);
   form.startKey = tomorrow;
   if (form.endKey < tomorrow) form.endKey = addDaysKey(tomorrow, Math.min(span, PLAN_MAX_DAYS - 1));
-  if (world && world.rolloverC !== null) setTargetFromBase(Math.round(world.rolloverC * speedBase())); // (20)
+  if (world && world.rolloverC !== null) {
+    const left = todayLeftC(saved, platform, t);
+    let useRollover = true;
+    if (form.targetMode === 'manual' && saved) {
+      const keepC = plannedAfterC(saved, t);
+      useRollover = await showAppConfirm(`A meta deste plano foi digitada à mão. Trocar pela meta do Rollover de agora? OK = usar o Rollover (${formatCurrency(fromCents(autoBaseC(platform, form.endKey, form.targetBase === 'projected')))} × peso − guardado${left ? ` − ${formatCurrency(fromCents(left))} que falta hoje` : ''}). Cancelar = manter a meta digitada e redistribuir só o que falta (${formatCurrency(fromCents(keepC))}).`);
+      if (!mounted) return;
+      if (!useRollover) {
+        form.target = keepC > 0 ? fmtMoneyInput(fromCents(keepC)) : '';
+        form.todayLeftC = 0;
+      }
+    }
+    if (useRollover) {
+      const projected = form.targetBase === 'projected';
+      setTargetFromBase(Math.round(autoBaseC(platform, form.endKey, projected) * speedBase()), projected, left);
+    }
+  }
   syncInputs();
   renderPlatformInfo();
   schedulePreview(0);
 }
 
+// (24) O que ainda falta apostar HOJE do plano salvo (centavos). Plano já
+// refeito a partir de amanhã: a meta de hoje está no histórico (planLog).
+function todayLeftC(saved, platform, t = todayKey()) {
+  if (!platform) return 0;
+  const day = planDayOf(saved, t) || (isPlanLogLoaded(state.currentUid) ? getPlanLogEntry(t, platform.id) : null);
+  if (!day) return 0;
+  return Math.max(0, Math.round(Number(day.plannedC) || 0) - realWageredC(platform, t));
+}
+
+// (24) Base da meta automática: Rollover de hoje (+ entradas previstas até
+// endKey no Projetado), centavos, SEM o peso.
+function autoBaseC(platform, endKey, projected) {
+  const roll = platformRolloverC(platform);
+  if (roll === null) return 0;
+  if (!projected) return roll;
+  const ins = memberInflows(platform, endKey);
+  return roll + ins.reduce((s2, x) => s2 + x.valueC, 0);
+}
+
+// (24) Rollover ao vivo da plataforma (centavos) — null sem o contexto.
+function platformRolloverC(platform) {
+  if (!platform || !contextConfirmed) return null;
+  try {
+    return toCents(computeRolloverLive(platform, new Date(), resolveCtx(platform) || {}));
+  } catch (err) {
+    console.error('Planejador: falha ao calcular o Rollover:', err);
+    return null;
+  }
+}
+
 // (20) ↻ Recalcular grupo: a partir de amanhã, metas com o Rollover de
 // agora (o grupo sempre calcula a meta ao vivo).
+// (24) + desconta o que falta apostar hoje de cada plataforma.
 function onRecalcGroup() {
   const span = Math.max(0, Math.round((dayKeyToDate(form.endKey) - dayKeyToDate(form.startKey)) / 86400000));
   const tomorrow = addDaysKey(todayKey(), 1);
   form.startKey = tomorrow;
   if (form.endKey < tomorrow) form.endKey = addDaysKey(tomorrow, Math.min(span, PLAN_MAX_DAYS - 1));
+  form.groupDeductToday = true;
   syncInputs();
   schedulePreview(0);
 }
@@ -2538,6 +2824,508 @@ async function onSavePalette(btn) {
   }
 }
 
+// ---------- (24) 🔄 ATUALIZAR PLANOS ----------
+
+function moneyC(c) {
+  return formatCurrency(fromCents(Math.round(Number(c) || 0)));
+}
+
+function signedC(c) {
+  const v = Math.round(Number(c) || 0);
+  return `${v > 0 ? '+' : (v < 0 ? '−' : '')}${moneyC(Math.abs(v))}`;
+}
+
+// Datas que dependem do período e da plataforma (mesma conta do formulário).
+function platformDayKeys(platform, sp, startKey, endKey) {
+  const routines = isRoutinesLoaded(state.currentUid) ? getRoutines() : [];
+  const out = {
+    excludeKeys: forbiddenBetDays(routines, platform, startKey, endKey),
+    onlyKeys: [],
+    followRoutineId: null,
+    skipKeys: emissionKeysInRange(platform, startKey, endKey, sp.skipEmissions),
+    pauseKeys: offCycleKeys(platform, startKey, endKey, todayKey()),
+    dayBoost: dayBoostsFor(getSpeedConfig(), platform.id, startKey, endKey)
+  };
+  if (sp.followRoutineId) {
+    const r = routines.find(x => x.id === sp.followRoutineId && (x.platformIds || []).includes(platform.id));
+    if (r) {
+      out.followRoutineId = r.id;
+      out.onlyKeys = routineBetDays(r, platform, startKey, endKey);
+    }
+  }
+  return out;
+}
+
+// Linha de UM plano individual: antes × depois, guardado, falta hoje.
+function buildPlanRow(saved, opts, t, tomorrow) {
+  const p = findPlatform(saved.platformId);
+  const sp = sanitizeParams(saved.params || {});
+  const row = {
+    kind: 'plan', key: `p:${saved.platformId}`, id: saved.platformId,
+    name: p ? String(p.name || '') : String(saved.platformName || 'Plataforma excluída'),
+    mode: sp.targetMode, projected: sp.targetBase === 'projected',
+    reserveMode: sp.reserve.mode, beforeC: plannedAfterC(saved, t), reservedBeforeC: sp.reservedC,
+    startKey: tomorrow, endKey: sp.endKey, todayLeftC: 0, significant: false
+  };
+  if (!p) return { ...row, error: 'A plataforma não existe mais.' };
+  if (sp.endKey < tomorrow) return { ...row, ended: true, error: `O plano terminou em ${fmtShort(sp.endKey)} — nada a refazer.` };
+  row.todayLeftC = todayLeftC(saved, p, t);
+  row.speed = getPlatformSpeed(getSpeedConfig(), p.id).base;
+  row.rolloverC = platformRolloverC(p);
+  if (row.rolloverC === null) return { ...row, error: 'Rollover indisponível (configurações de bônus não carregadas).' };
+  const baseC = Math.round(autoBaseC(p, sp.endKey, row.projected) * row.speed);
+  const res = applyReserve(baseC, sp.reserve, activationC(p, sp.endKey), row.projected);
+  row.autoTargetC = Math.max(0, res.targetC - (opts.deductToday ? row.todayLeftC : 0));
+  row.autoReservedC = res.reservedC;
+  row.significant = isSignificantChange(row.beforeC, row.autoTargetC);
+  row.choice = row.mode === 'auto' ? 'rollover' : (opts.choices.get(row.key) || (row.mode === 'manual' ? 'keep' : 'rollover'));
+  const keep = row.choice === 'keep';
+  const targetC = keep ? row.beforeC : row.autoTargetC;
+  row.reservedAfterC = keep ? sp.reservedC : res.reservedC;
+  if (!(targetC > 0)) {
+    return {
+      ...row,
+      significant: false,
+      error: keep ? 'Nada previsto depois de hoje.'
+        : (sp.reserve.mode !== 'none' ? '🔒 Todo o Rollover ficou guardado — nada a apostar.' : 'Sem Rollover — nada a apostar.')
+    };
+  }
+  const params = {
+    ...sp,
+    startKey: tomorrow,
+    endKey: sp.endKey,
+    target: fromCents(targetC),
+    reservedC: row.reservedAfterC,
+    targetMode: keep ? 'manual' : 'auto',
+    ...platformDayKeys(p, sp, tomorrow, sp.endKey)
+  };
+  const plan = buildPlan(params, t);
+  if (!plan.ok) return { ...row, significant: false, error: plan.error };
+  const diff = planUpdateDiff(saved, plan, t);
+  return { ...row, params, plan, afterC: diff.afterC, deltaC: diff.deltaC, days: plan.totals.activeDays, firstKey: plan.days[0].key, lastKey: plan.days[plan.days.length - 1].key };
+}
+
+// Linha de UM grupo: soma dos membros (só os que estão com o plano deste
+// grupo — plataforma com plano próprio ou sem plano não é tocada).
+function buildGroupRow(g, opts, t, tomorrow) {
+  const ids = savedGroupIds(g);
+  const saved = ids.map(id => getSavedPlan(id)).filter(Boolean);
+  const sp = sanitizeParams(saved[0].params || {});
+  const row = {
+    kind: 'group', key: `g:${g.routine.id}`, id: g.routine.id,
+    name: `${g.routine.emoji ? `${g.routine.emoji} ` : ''}${g.routine.name}`, mode: 'auto',
+    projected: sp.targetBase === 'projected',
+    beforeC: saved.reduce((s2, x) => s2 + plannedAfterC(x, t), 0),
+    reservedBeforeC: saved.reduce((s2, x) => s2 + Math.max(0, Math.round(Number(x.params && x.params.reservedC) || 0)), 0),
+    startKey: tomorrow, endKey: sp.endKey, memberCount: ids.length, todayLeftC: 0, significant: false, members: []
+  };
+  if (ids.length < 2) return { ...row, error: 'Menos de 2 plataformas com o plano deste grupo — abra o grupo no Planejador.' };
+  if (sp.endKey < tomorrow) return { ...row, ended: true, error: `O plano do grupo terminou em ${fmtShort(sp.endKey)} — nada a refazer.` };
+  if (!contextConfirmed) return { ...row, error: 'Rollover indisponível (configurações de bônus não carregadas).' };
+  const groupReserve = {};
+  saved.forEach(x => {
+    const r = reserveToForm(x.params && x.params.reserve);
+    if (r.mode !== 'none') groupReserve[x.platformId] = r;
+  });
+  const cfg = {
+    startKey: tomorrow,
+    endKey: sp.endKey,
+    skipEmissions: sp.skipEmissions,
+    groupBase: sp.targetBase,
+    groupReserve,
+    followGroup: g.routine.action === 'bet' ? sp.followRoutineId === g.routine.id : true,
+    deductToday: opts.deductToday,
+    onlyIds: new Set(ids)
+  };
+  const members = groupMembers(g, cfg);
+  const base = {
+    startKey: tomorrow,
+    endKey: sp.endKey,
+    weekdaysOff: sp.weekdaysOff.slice(),
+    weekMode: sp.weekMode,
+    curve: sp.curve,
+    intensity: sp.intensity,
+    rhythm: sp.rhythm,
+    seed: sp.seed,
+    floor: sp.floor,
+    cap: sp.cap,
+    stakes: sp.stakes.slice(),
+    buy: { enabled: sp.buy.enabled, multiplier: sp.buy.multiplier },
+    skipEmissions: sp.skipEmissions.slice(),
+    targetBase: sp.targetBase
+  };
+  const res = buildGroupPlan(base, members, { routineId: g.routine.id, name: g.routine.name }, t);
+  row.todayLeftC = members.reduce((s2, m) => s2 + (m.todayLeftC || 0), 0);
+  row.autoTargetC = members.reduce((s2, m) => s2 + toCents(m.target), 0);
+  row.reservedAfterC = members.reduce((s2, m) => s2 + (m.reservedC || 0), 0);
+  row.significant = isSignificantChange(row.beforeC, row.autoTargetC);
+  row.members = res.members.map((m, i) => {
+    const sv = getSavedPlan(m.platformId);
+    let err = m.plan ? null : (m.error || 'Sem plano');
+    if (!m.plan && members[i] && !(members[i].target > 0)) {
+      err = members[i].rolloverC === null ? 'Rollover indisponível.'
+        : (members[i].reservedC > 0 ? '🔒 Todo o Rollover ficou guardado — nada a apostar.'
+          : (members[i].todayLeftC > 0 ? 'Sem Rollover depois de descontar o que falta hoje — nada a apostar.' : 'Sem Rollover — nada a apostar.'));
+    }
+    return { platformId: m.platformId, name: m.name, beforeC: plannedAfterC(sv, t), afterC: m.plan ? m.plan.totals.plannedC : 0, error: err };
+  });
+  if (!res.ok) return { ...row, significant: false, error: `${res.error || 'Nenhuma plataforma do grupo conseguiu montar o plano.'} Toque em "plataformas" pra ver o motivo.` };
+  row.res = res;
+  row.afterC = res.totals.plannedC;
+  row.deltaC = row.afterC - row.beforeC;
+  row.days = res.days.length;
+  row.firstKey = res.days.length ? res.days[0].key : tomorrow;
+  row.lastKey = res.days.length ? res.days[res.days.length - 1].key : sp.endKey;
+  row.failCount = res.totals.failCount;
+  return row;
+}
+
+// Todas as linhas: 1 por plano individual e 1 por grupo salvo.
+function buildUpdateRows(opts) {
+  const t = todayKey();
+  const tomorrow = addDaysKey(t, 1);
+  const groupById = new Map(planGroups().map(g => [g.routine.id, g]));
+  const seen = new Set();
+  const rows = [];
+  getSavedPlans().forEach(saved => {
+    const gref = saved && saved.params && saved.params.group;
+    if (gref && groupById.has(gref.routineId)) {
+      if (seen.has(gref.routineId)) return;
+      seen.add(gref.routineId);
+      try { rows.push(buildGroupRow(groupById.get(gref.routineId), opts, t, tomorrow)); } catch (err) {
+        console.error('Atualizar planos: falha no grupo:', err);
+        rows.push({ kind: 'group', key: `g:${gref.routineId}`, id: gref.routineId, name: gref.name || 'Grupo', mode: 'auto', beforeC: 0, error: 'Não foi possível recalcular este grupo.' });
+      }
+      return;
+    }
+    try { rows.push(buildPlanRow(saved, opts, t, tomorrow)); } catch (err) {
+      console.error('Atualizar planos: falha no plano:', err);
+      rows.push({ kind: 'plan', key: `p:${saved.platformId}`, id: saved.platformId, name: saved.platformName || 'Plano', mode: 'unknown', beforeC: 0, error: 'Não foi possível recalcular este plano.' });
+    }
+  });
+  // ⚠️ primeiro, depois os demais, os sem como atualizar por último.
+  const rank = r => (r.error ? 2 : (r.significant ? 0 : 1));
+  return rows.sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, 'pt-BR', { numeric: true }));
+}
+
+// (24) Aviso: planos com meta automática/desconhecida e diferença relevante.
+function computeAlert() {
+  if (loadStatus !== 'ok' || !contextConfirmed) { alertRows = null; return; }
+  try {
+    alertRows = buildUpdateRows({ deductToday: true, choices: new Map() })
+      .filter(r => !r.error && r.significant && r.mode !== 'manual');
+  } catch (err) {
+    console.error('Planejador: falha ao conferir os planos:', err);
+    alertRows = null;
+  }
+}
+
+function renderAlert() {
+  const box = $('planAlert');
+  if (!box) return;
+  const n = alertRows ? alertRows.length : 0;
+  box.replaceChildren();
+  box.classList.toggle('app-hidden', n === 0);
+  box.classList.toggle('plan-alert-min', alertMin);
+  if (!n) return;
+  const icon = el('button', 'plan-alert-icon', '⚠️');
+  icon.type = 'button';
+  icon.setAttribute('aria-expanded', alertMin ? 'false' : 'true');
+  icon.setAttribute('aria-label', alertMin ? `Mostrar aviso: Rollover mudou em ${n} plano(s)` : 'Recolher aviso');
+  icon.title = alertRows.map(r => r.name).join(', ');
+  icon.addEventListener('click', () => { alertMin = !alertMin; renderAlert(); });
+  box.appendChild(icon);
+  if (alertMin) return;
+  box.appendChild(el('span', 'plan-alert-text', `Rollover mudou em ${n} plano${n > 1 ? 's' : ''} —`));
+  const go = el('button', 'plan-alert-go', '🔄 Atualizar');
+  go.type = 'button';
+  go.addEventListener('click', () => openUpdatePlans());
+  box.appendChild(go);
+}
+
+function refreshAlert() {
+  computeAlert();
+  renderAlert();
+}
+
+function openUpdatePlans() {
+  if (busy || loadStatus !== 'ok') return;
+  if (updateClose) updateClose();
+  const st = { deductToday: true, choices: new Map(), checked: new Set(), openGroups: new Set(), rows: [], saving: false };
+  const recompute = (first = false) => {
+    st.rows = buildUpdateRows({ deductToday: st.deductToday, choices: st.choices });
+    if (first) st.rows.forEach(r => { if (!r.error && r.significant && r.mode === 'auto') st.checked.add(r.key); });
+    st.rows.forEach(r => { if (r.error) st.checked.delete(r.key); });
+  };
+  recompute(true);
+
+  const previousOverflow = document.body.style.overflow;
+  document.body.style.overflow = 'hidden';
+  const overlay = el('div', 'cal-overlay pu-overlay');
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-label', 'Atualizar planos');
+  const box = el('div', 'cal-box pu-box');
+  overlay.appendChild(box);
+  const tomorrow = addDaysKey(todayKey(), 1);
+
+  const draw = () => {
+    box.replaceChildren();
+    const head = el('div', 'cal-box-head');
+    head.appendChild(el('h3', 'cal-box-title', '🔄 Atualizar planos'));
+    const x = el('button', 'cal-box-close', '✕');
+    x.type = 'button';
+    x.setAttribute('aria-label', 'Fechar');
+    x.addEventListener('click', () => requestClose());
+    head.appendChild(x);
+    box.appendChild(head);
+    box.appendChild(el('p', 'plan-hint', `Refaz os planos a partir de amanhã (${fmtDay(tomorrow)}) com o Rollover de agora. Curva, dias, limites e valores de cada plano não mudam. Hoje continua com a meta de hoje — ela fica guardada no histórico, junto com os dias que já passaram.`));
+
+    const tools = el('div', 'pu-tools');
+    const ded = el('label', 'plan-toggle pu-deduct');
+    const dedIn = el('input');
+    dedIn.type = 'checkbox';
+    dedIn.checked = st.deductToday;
+    dedIn.addEventListener('change', () => { st.deductToday = dedIn.checked; recompute(); draw(); });
+    ded.appendChild(dedIn);
+    ded.appendChild(document.createTextNode(' Descontar o que ainda falta apostar hoje'));
+    tools.appendChild(ded);
+    const row2 = el('div', 'plan-chips');
+    const markSig = el('button', 'plan-chip', 'Marcar os ⚠️');
+    markSig.type = 'button';
+    markSig.addEventListener('click', () => { st.rows.forEach(r => { if (!r.error && r.significant) st.checked.add(r.key); }); draw(); });
+    const clear = el('button', 'plan-chip plan-chip-ghost', 'Desmarcar todos');
+    clear.type = 'button';
+    clear.addEventListener('click', () => { st.checked.clear(); draw(); });
+    row2.appendChild(markSig);
+    row2.appendChild(clear);
+    tools.appendChild(row2);
+    box.appendChild(tools);
+
+    if (!st.rows.length) box.appendChild(el('p', 'cal-text', 'Nenhum plano salvo.'));
+    const list = el('div', 'pu-list');
+    st.rows.forEach(r => list.appendChild(updateRow(r)));
+    box.appendChild(list);
+
+    const chosen = st.rows.filter(r => st.checked.has(r.key) && !r.error);
+    const sumAfter = chosen.reduce((s2, r) => s2 + (r.afterC || 0), 0);
+    const sumBefore = chosen.reduce((s2, r) => s2 + (r.beforeC || 0), 0);
+    const foot = el('div', 'pu-foot');
+    foot.appendChild(el('p', 'plan-hint pu-sum', chosen.length
+      ? `${chosen.length} marcado(s): ${moneyC(sumBefore)} → ${moneyC(sumAfter)} (${signedC(sumAfter - sumBefore)})`
+      : 'Nada marcado.'));
+    const actions = el('div', 'plan-actions pu-actions');
+    const ok = el('button', 'btn-confirm', chosen.length ? `Confirmar (${chosen.length})` : 'Confirmar');
+    ok.type = 'button';
+    ok.disabled = !chosen.length || st.saving;
+    ok.addEventListener('click', () => confirmUpdate(ok));
+    const cancel = el('button', 'bet-manage-btn', 'Cancelar');
+    cancel.type = 'button';
+    cancel.addEventListener('click', () => requestClose());
+    actions.appendChild(ok);
+    actions.appendChild(cancel);
+    foot.appendChild(actions);
+    box.appendChild(foot);
+  };
+
+  const updateRow = (r) => {
+    const card = el('div', `pu-row${r.significant ? ' pu-row-sig' : ''}${r.error ? ' pu-row-err' : ''}${st.checked.has(r.key) ? ' pu-row-on' : ''}`);
+    const top = el('label', 'pu-check');
+    const cb = el('input');
+    cb.type = 'checkbox';
+    cb.checked = st.checked.has(r.key);
+    cb.disabled = !!r.error || st.saving;
+    cb.addEventListener('change', () => { if (cb.checked) st.checked.add(r.key); else st.checked.delete(r.key); draw(); });
+    top.appendChild(cb);
+    top.appendChild(el('span', 'pu-name', `${r.significant ? '⚠️ ' : ''}${r.name}`));
+    if (r.kind === 'group') top.appendChild(el('span', 'pu-tag', `👥 grupo · ${r.memberCount || 0}`));
+    else if (r.mode === 'manual') top.appendChild(el('span', 'pu-tag pu-tag-manual', '✍️ meta digitada'));
+    else if (r.mode === 'unknown') top.appendChild(el('span', 'pu-tag', '❓ origem da meta desconhecida'));
+    if (r.projected) top.appendChild(el('span', 'pu-tag', 'projetado'));
+    card.appendChild(top);
+
+    const nums = el('div', 'pu-nums');
+    const line = (label, value, cls = '') => {
+      const d = el('div', `pu-line${cls ? ` ${cls}` : ''}`);
+      d.appendChild(el('span', 'pu-l', label));
+      d.appendChild(el('span', 'pu-r', value));
+      nums.appendChild(d);
+    };
+    if (r.error) {
+      line('Previsto depois de hoje', moneyC(r.beforeC));
+      if (r.todayLeftC > 0) line('⏳ Falta apostar hoje', `${moneyC(r.todayLeftC)} · ${st.deductToday ? 'descontado' : 'não descontado'}`);
+      card.appendChild(nums);
+      card.appendChild(el('p', 'pu-err', r.error));
+      if (r.kind === 'group' && r.members && r.members.length) card.appendChild(membersBlock(r));
+      return card;
+    }
+    line('Meta (amanhã em diante)', `${moneyC(r.beforeC)} → ${moneyC(r.afterC)}`);
+    line('Diferença', signedC(r.deltaC), r.deltaC > 0 ? 'pu-up' : (r.deltaC < 0 ? 'pu-down' : ''));
+    if (r.kind === 'plan' && r.rolloverC !== null && r.rolloverC !== undefined) {
+      line('Rollover agora', `${moneyC(r.rolloverC)}${r.speed && r.speed !== 1 ? ` × peso ${formatMult(r.speed)}` : ''}`);
+    }
+    if (r.reserveMode !== 'none' || r.reservedBeforeC > 0 || r.reservedAfterC > 0) {
+      line('🔒 Guardado', `${moneyC(r.reservedBeforeC)} → ${moneyC(r.reservedAfterC)}`);
+    }
+    if (r.todayLeftC > 0) line('⏳ Falta apostar hoje', `${moneyC(r.todayLeftC)} · ${st.deductToday ? 'descontado' : 'não descontado'}`);
+    line('📅 Período', `${fmtShort(r.firstKey)} a ${fmtShort(r.lastKey)} · ${r.days} dia(s)`);
+    card.appendChild(nums);
+
+    // Meta digitada / desconhecida: manter ou usar o Rollover.
+    if (r.kind === 'plan' && r.mode !== 'auto') {
+      const chips = el('div', 'plan-chips pu-choice');
+      const keepC = r.beforeC;
+      [['keep', `Manter a meta (${moneyC(keepC)})`], ['rollover', `Usar o Rollover (${moneyC(r.autoTargetC)})`]].forEach(([id, label]) => {
+        const b = el('button', `plan-chip${r.choice === id ? ' active' : ''}`, label);
+        b.type = 'button';
+        b.setAttribute('aria-pressed', r.choice === id ? 'true' : 'false');
+        b.addEventListener('click', () => { st.choices.set(r.key, id); recompute(); draw(); });
+        chips.appendChild(b);
+      });
+      card.appendChild(chips);
+      card.appendChild(el('p', 'plan-hint', r.choice === 'keep'
+        ? 'Manter: redistribui só o que o plano ainda previa depois de hoje (o 🔒 guardado não muda).'
+        : `Rollover: ${moneyC(r.rolloverC)}${r.speed && r.speed !== 1 ? ` × ${formatMult(r.speed)}` : ''} − 🔒 ${moneyC(r.reservedAfterC)}${st.deductToday && r.todayLeftC ? ` − ${moneyC(r.todayLeftC)} de hoje` : ''}.`));
+    }
+
+    if (r.kind === 'group' && r.members.length) card.appendChild(membersBlock(r));
+    return card;
+  };
+
+  // Membros do grupo (toque pra abrir).
+  const membersBlock = (r) => {
+    const wrap = el('div', 'pu-members-wrap');
+    const open = st.openGroups.has(r.key);
+    const tg = el('button', 'pu-members-toggle', `${open ? '▾' : '▸'} ${r.members.length} plataforma(s)${r.failCount && !r.error ? ` · ${r.failCount} fica(m) como está(ão)` : ''}`);
+    tg.type = 'button';
+    tg.setAttribute('aria-expanded', open ? 'true' : 'false');
+    tg.addEventListener('click', () => { if (open) st.openGroups.delete(r.key); else st.openGroups.add(r.key); draw(); });
+    wrap.appendChild(tg);
+    if (open) {
+      const ml = el('div', 'pu-members');
+      r.members.forEach(m => {
+        const d = el('div', `pu-line${m.error ? ' cal-line-bad' : ''}`);
+        d.appendChild(el('span', 'pu-l', m.name));
+        d.appendChild(el('span', 'pu-r', m.error ? m.error : `${moneyC(m.beforeC)} → ${moneyC(m.afterC)}`));
+        ml.appendChild(d);
+      });
+      wrap.appendChild(ml);
+    }
+    return wrap;
+  };
+
+  const confirmUpdate = async (btn) => {
+    if (st.saving || busy) return;
+    const chosen = st.rows.filter(r => st.checked.has(r.key) && !r.error);
+    if (!chosen.length) return;
+    const nowIso = new Date().toISOString();
+    const docs = [];
+    for (const r of chosen) {
+      if (r.kind === 'plan') {
+        const p = findPlatform(r.id);
+        if (!p) { await showAppAlert(`Plataforma ${r.name} não encontrada. Nada foi salvo.`); return; }
+        docs.push(planToDoc(p, r.params, r.plan, nowIso));
+      } else {
+        for (const m of r.res.members.filter(x => x.plan)) {
+          const p = findPlatform(m.platformId);
+          if (!p) { await showAppAlert(`Plataforma ${m.name} não encontrada. Nada foi salvo.`); return; }
+          docs.push(planToDoc(p, m.params, m.plan, nowIso));
+        }
+      }
+    }
+    const sumAfter = chosen.reduce((s2, r) => s2 + (r.afterC || 0), 0);
+    const okGo = await showAppConfirm(`Atualizar ${chosen.length} plano(s)/grupo(s) — ${docs.length} plataforma(s)? Tudo é refeito a partir de amanhã (${fmtShort(tomorrow)}): ${moneyC(sumAfter)} no total. Hoje continua com a meta de hoje (fica guardada no histórico, junto com os dias que já passaram). Tudo é gravado de uma vez: se falhar, nada muda.`);
+    if (!okGo || !mounted || !updateClose) return;
+    st.saving = true;
+    busy = true;
+    btn.disabled = true;
+    let result;
+    try {
+      result = await savePlansBatch(state.currentUid, docs);
+    } finally {
+      busy = false;
+      st.saving = false;
+    }
+    if (!result.ok) {
+      await showAppAlert(result.error);
+      if (updateClose) draw();
+      return;
+    }
+    const updatedIds = new Set(docs.map(d => d.platformId));
+    const updatedGroups = new Set(chosen.filter(r => r.kind === 'group').map(r => r.id));
+    close();
+    if (!mounted) return;
+    afterPlansChanged(updatedIds, updatedGroups);
+    await showAppAlert(`✅ ${chosen.length} plano(s)/grupo(s) atualizado(s) — ${docs.length} plataforma(s).`);
+  };
+
+  const requestClose = async () => {
+    if (st.saving) return;
+    if (st.checked.size > 0) {
+      const ok = await showAppConfirm('Fechar sem atualizar? A seleção será descartada e nenhum plano muda.');
+      if (!ok) return;
+    }
+    close();
+  };
+  function close() {
+    updateClose = null;
+    document.removeEventListener('keydown', onKey, true);
+    window.removeEventListener('hashchange', close);
+    window.removeEventListener('popstate', close);
+    overlay.remove();
+    document.body.style.overflow = previousOverflow;
+  }
+  function onKey(e) {
+    if (e.key !== 'Escape') return;
+    const modal = document.getElementById('appModal');
+    if (modal && modal.style.display === 'flex') return; // a confirmação cuida do Esc
+    e.preventDefault();
+    requestClose();
+  }
+  updateClose = close;
+  overlay.addEventListener('click', e => { if (e.target === overlay) requestClose(); });
+  document.addEventListener('keydown', onKey, true);
+  window.addEventListener('hashchange', close);
+  window.addEventListener('popstate', close);
+  draw();
+  document.body.appendChild(overlay);
+}
+
+// Depois de gravar vários planos: lista, formulário (se o plano aberto
+// mudou e não há alteração pendente) e aviso.
+function afterPlansChanged(updatedIds, updatedGroups) {
+  fillPlatformSelect();
+  const clean = formSnap === null || snapForm() === formSnap;
+  if (clean && form.groupId && updatedGroups.has(form.groupId)) selectGroup(form.groupId);
+  else if (clean && form.platformId && updatedIds.has(form.platformId)) selectPlatform(form.platformId);
+  else if (form.platformId || form.groupId) { renderPlatformInfo(); schedulePreview(0); }
+  refreshAlert();
+}
+
+// ---------- (24) "Abrir no Planejador" (Calendário) ----------
+
+export function requestPlanejadorFocus(platformId) {
+  pendingFocus = platformId ? String(platformId) : null;
+  if (mounted && loadStatus === 'ok') consumeFocus();
+}
+
+async function consumeFocus() {
+  const id = pendingFocus;
+  pendingFocus = null;
+  if (!id || !findPlatform(id)) return;
+  if (form.platformId === id && !form.groupId) { activeTab = 'caixa'; applyTab(); return; }
+  if ((form.platformId || form.groupId) && formSnap !== null && snapForm() !== formSnap) {
+    const ok = await showAppConfirm('Abrir outra plataforma sem salvar? As alterações feitas no plano aberto serão descartadas.');
+    if (!ok || !mounted) return;
+  }
+  activeTab = 'caixa';
+  const sel = $('planPlatform');
+  if (sel) sel.value = id;
+  selectPlatform(id);
+  applyTab();
+  if (rootEl && typeof rootEl.scrollIntoView === 'function') rootEl.scrollIntoView({ block: 'start' });
+}
+
 // ---------- API pública (view-graficos.js) ----------
 
 // Chamar só com window.Chart já carregado e com o painel VISÍVEL.
@@ -2564,7 +3352,9 @@ export function refreshPlanejador() {
   syncInputs();
   renderPlatformInfo();
   renderCaution();
+  refreshAlert(); // (24)
   schedulePreview(0);
+  if (pendingFocus) consumeFocus(); // (24)
 }
 
 export function resizePlanejador() {
@@ -2573,6 +3363,7 @@ export function resizePlanejador() {
 
 export function unmountPlanejador() {
   loadToken++;
+  if (updateClose) updateClose(); // (24)
   if (previewTimer) { clearTimeout(previewTimer); previewTimer = null; }
   if (chart) { chart.destroy(); chart = null; }
   mounted = false;
