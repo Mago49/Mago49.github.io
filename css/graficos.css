@@ -2728,6 +2728,7 @@
 .cal-badge-bet.cal-badge-done { background: #dcfce7; color: #166534; }
 .cal-badge-bet.cal-badge-missed { background: #fee2e2; color: #b91c1c; }
 .cal-badge-em { background: #f3e8ff; color: #6b21a8; }
+.cal-badge-rest { background: #ecfdf5; color: #047857; }
 .cal-badge-forb { background: #f1f5f9; color: #475569; }
 .cal-badge-bad { background: #fee2e2; color: #b91c1c; }
 .cal-badge-over { background: #fef3c7; color: #92400e; }
