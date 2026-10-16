@@ -410,11 +410,12 @@ function groupLabels(d) {
 function platformCard(d, x) {
   const card = el('div', `cal-pf${x.attention ? ' cal-pf-attn' : ''}${x.noPlan ? ' cal-pf-noplan' : ''}`);
   const head = el('div', 'cal-pf-head');
-  const icon = x.plan ? (STATUS_ICON[x.plan.status] || '') : (x.noPlan ? '⚠️' : '▫️');
+  const icon = x.plan ? (STATUS_ICON[x.plan.status] || '') : (x.noPlan ? '⚠️' : (x.restDay ? '😴' : '▫️'));
   head.appendChild(el('span', 'cal-pf-name', `${icon} ${x.name}`));
   let right = '';
   if (x.plan) right = d.isFuture ? money(x.plan.plannedC) : `${money(x.plan.realC)} de ${money(x.plan.plannedC)}`;
   else if (x.noPlan) right = 'sem plano';
+  else if (x.restDay) right = 'sem aposta';
   head.appendChild(el('span', 'cal-pf-value', right));
   card.appendChild(head);
 
@@ -425,6 +426,7 @@ function platformCard(d, x) {
     if (it.minimum > 0) b.title = `Mínimo da rotina: ${formatCurrency(it.minimum)}`;
     badges.appendChild(b);
   });
+  if (x.restDay) badges.appendChild(el('span', 'cal-badge cal-badge-rest', '😴 Folga do plano'));
   if (x.emission) badges.appendChild(el('span', 'cal-badge cal-badge-em', '🃏 Emissão'));
   if (x.forbidden) badges.appendChild(el('span', `cal-badge${x.forbidden.broken ? ' cal-badge-bad' : ' cal-badge-forb'}`, x.forbidden.broken ? '⚠️ Apostou em dia proibido' : '🚫 Não apostar'));
   if (x.plan && x.plan.overC > 0) badges.appendChild(el('span', 'cal-badge cal-badge-over', `+${money(x.plan.overC)} acima`));
@@ -451,9 +453,13 @@ function platformCard(d, x) {
   }
   if (x.noPlan) {
     const row = el('div', 'cal-pf-noplan-row');
+    const r = x.planRange;
+    let why = 'a plataforma não tem plano salvo';
+    if (x.noPlanReason === 'ended') why = `o plano terminou em ${fmtDay(r.endKey)}`;
+    if (x.noPlanReason === 'notStarted') why = `o plano só começa em ${fmtDay(r.startKey)}`;
     row.appendChild(el('span', 'cal-pf-warn', d.isFuture || d.isToday
-      ? '⚠️ Sem plano — a rotina de aposta vale neste dia, mas o Planejador não tem meta pra esta plataforma.'
-      : '⚠️ Sem plano neste dia (a rotina de aposta valia).'));
+      ? `⚠️ Sem plano — a rotina de aposta vale neste dia e ${why}.`
+      : `⚠️ Sem plano neste dia — a rotina de aposta valia e ${why}.`));
     if (d.isFuture || d.isToday) row.appendChild(button('Abrir no Planejador', 'bet-manage-btn cal-pf-open', () => openInPlanner(x.platformId)));
     card.appendChild(row);
   }

@@ -39,6 +39,12 @@
 //    rotina de aposta vira só selo; rotina de aposta sem plano no dia =
 //    "⚠️ Sem plano"). Pendências primeiro.
 // d) suggestForRow: 👉 o que falta apostar, em giros da paleta do plano.
+// f) (correção) O PLANO decide os dias de aposta (curva, Intercalar,
+//    escala do grupo); a rotina de aposta só dá o calendário geral. Dia
+//    DENTRO do período do plano salvo e sem aposta nele = 😴 folga do
+//    plano (sem selo da rotina, sem pendência). "⚠️ Sem plano" só quando a
+//    plataforma não tem plano cobrindo o dia (sem plano, terminou ou ainda
+//    não começou).
 // e) computeRealMetrics devolve planRows: os dias × plataformas que formam
 //    o planejado do "Real × plano".
 
@@ -219,6 +225,13 @@ export function buildCalendarMonth(ym, world) {
     });
   }
   const ids = new Set(platforms.map(p => p.id));
+  // (23f) Período de cada plano salvo — um Map só, compartilhado pelos dias.
+  const planRanges = new Map();
+  platforms.forEach(p => {
+    const r = planRangeOf(world.plans ? world.plans.get(p.id) : null);
+    if (r) planRanges.set(p.id, r);
+  });
+  days.forEach(d => { d.planRanges = planRanges; });
 
   platforms.forEach(p => {
     // Planejado × real
@@ -321,6 +334,16 @@ export function buildCalendarMonth(ym, world) {
 
 const PROBLEM_RT = new Set(['missed', 'broken']);
 
+// (23f) Período do plano salvo: { startKey, endKey } ou null.
+export function planRangeOf(plan) {
+  if (!plan) return null;
+  const params = plan.params || {};
+  const days = Array.isArray(plan.days) ? plan.days.filter(x => x && typeof x.key === 'string').map(x => x.key).sort() : [];
+  const startKey = typeof params.startKey === 'string' && params.startKey ? params.startKey : days[0];
+  const endKey = typeof params.endKey === 'string' && params.endKey ? params.endKey : days[days.length - 1];
+  return startKey && endKey ? { startKey, endKey } : null;
+}
+
 /**
  * Junta tudo do dia por plataforma. Plano = meta de aposta do dia; rotina
  * de APOSTA vira só selo (betRoutines); rotina de aposta que vale no dia
@@ -364,18 +387,27 @@ export function buildDayPlatforms(d) {
   }
   const out = [...map.values()];
   out.forEach(x => {
-    x.noPlan = !x.plan && x.betRoutines.length > 0 && x.platformId !== '_';
-    const rts = [...x.betRoutines, ...x.routines];
+    // (23f) O plano manda na aposta: dia dentro do período do plano e sem
+    // aposta nele = folga do plano (a rotina de aposta não cobra nada).
+    const range = d.planRanges ? d.planRanges.get(x.platformId) || null : null;
+    const covered = !!range && range.startKey <= d.key && d.key <= range.endKey;
+    x.planRange = range;
+    x.restDay = !x.plan && covered && x.betRoutines.length > 0;
+    if (x.restDay) x.betRoutines = [];
+    x.noPlan = !x.plan && !covered && x.betRoutines.length > 0 && x.platformId !== '_';
+    x.noPlanReason = !x.noPlan ? null : (!range ? 'none' : (d.key > range.endKey ? 'ended' : 'notStarted'));
+    // Com plano no dia, a meta é a do plano (a rotina de aposta só vira selo).
+    const betCounts = x.noPlan;
+    const rts = betCounts ? [...x.betRoutines, ...x.routines] : x.routines;
     if (d.isFuture) {
       x.attention = x.noPlan;
     } else if (d.isToday) {
       x.attention = (!!x.plan && x.plan.status === 'today')
         || rts.some(it => it.status === 'pending' || PROBLEM_RT.has(it.status))
-        || (!!x.forbidden && x.forbidden.broken)
-        || (x.noPlan && x.betRoutines.some(it => it.status !== 'done'));
+        || (!!x.forbidden && x.forbidden.broken);
     } else {
       x.attention = (!!x.plan && (x.plan.status === 'miss' || x.plan.status === 'partial'))
-        || rts.some(it => PROBLEM_RT.has(it.status))
+        || x.routines.some(it => PROBLEM_RT.has(it.status))
         || (!!x.forbidden && x.forbidden.broken);
     }
   });
