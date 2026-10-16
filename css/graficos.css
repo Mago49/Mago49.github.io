@@ -2484,3 +2484,279 @@
   background: #fffbeb;
   border: 1px dashed #fcd34d;
 }
+
+/* ============================================================
+   (Sub-entrega 24) PLANEJADOR — topo fixo, abas, aviso, 🔄 Atualizar
+   ============================================================ */
+.plan-top { grid-column: 1 / -1; padding-bottom: 0.4rem; }
+.plan-top-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.6rem;
+  padding: 0 1.1rem 0.6rem;
+  min-width: 0;
+}
+.plan-top-row .plan-field { flex: 1 1 auto; min-width: 0; padding: 0; }
+.plan-update-btn { flex-shrink: 0; min-height: 42px; white-space: nowrap; }
+.plan-top-info { display: flex; flex-direction: column; gap: 0.2rem; padding: 0 1.1rem 0.6rem; }
+.plan-top-info .plan-hint:empty { display: none; }
+
+.plan-alert {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.5rem;
+  margin: 0 1.1rem 0.6rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 12px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  color: #9a3412;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+.plan-alert.plan-alert-min {
+  display: inline-flex;
+  padding: 0.2rem;
+  margin-right: auto;
+  width: max-content;
+}
+.plan-alert-icon {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 10px;
+  background: #ffedd5;
+  font-size: 1.05rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.plan-alert-text { min-width: 0; overflow-wrap: anywhere; }
+.plan-alert-go {
+  min-height: 36px;
+  padding: 0.3rem 0.8rem;
+  border: 1px solid #ea580c;
+  border-radius: 999px;
+  background: #ea580c;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.plan-tabs {
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.3rem 1.1rem 0.6rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.plan-tabs::-webkit-scrollbar { display: none; }
+.plan-tab {
+  flex: 1 1 0;
+  min-width: max-content;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  min-height: 42px;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 12px;
+  background: #fff;
+  color: #334155;
+  font-weight: 700;
+  font-size: 0.86rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.plan-tab.active { background: #1e3a8a; border-color: #1e3a8a; color: #fff; }
+.plan-tab-count { font-weight: 600; opacity: 0.8; }
+.plan-tab-dot { color: #f59e0b; font-size: 0.8rem; }
+.plan-tab.active .plan-tab-dot { color: #fcd34d; }
+.plan-tab-err { font-size: 0.7rem; }
+.plan-tab-off { display: none !important; }
+.plan-tab-heading { padding: 0 0 0.9rem; }
+
+/* 🔄 Atualizar planos (contêiner) */
+.pu-box { width: min(100%, 560px); }
+.pu-tools { display: flex; flex-direction: column; gap: 0.45rem; }
+.pu-deduct { font-size: 0.86rem; font-weight: 600; color: #334155; }
+.pu-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.pu-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+.pu-row-sig { border-color: #fdba74; background: #fffbf5; }
+.pu-row-on { border-color: #2563eb; box-shadow: 0 0 0 1px #2563eb inset; }
+.pu-row-err { opacity: 0.8; }
+.pu-check {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+  min-height: 32px;
+  cursor: pointer;
+}
+.pu-check input { width: 20px; height: 20px; flex-shrink: 0; }
+.pu-name { font-weight: 800; font-size: 0.92rem; color: #0f172a; min-width: 0; overflow-wrap: anywhere; }
+.pu-tag {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.pu-tag-manual { background: #ede9fe; color: #5b21b6; }
+.pu-nums { display: flex; flex-direction: column; gap: 0.15rem; }
+.pu-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-size: 0.82rem;
+}
+.pu-l { color: #475569; min-width: 0; overflow-wrap: anywhere; }
+.pu-r { font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.pu-up .pu-r { color: #15803d; }
+.pu-down .pu-r { color: #b91c1c; }
+.pu-err { margin: 0; font-size: 0.8rem; color: #b91c1c; font-weight: 600; }
+.pu-choice .plan-chip { font-size: 0.8rem; }
+.pu-members-toggle {
+  align-self: flex-start;
+  min-height: 32px;
+  padding: 0.2rem 0.5rem;
+  border: none;
+  border-radius: 8px;
+  background: #e2e8f0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.pu-members .pu-line { flex-wrap: wrap; }
+.pu-members .pu-l { flex: 0 0 auto; max-width: 100%; }
+.pu-members .pu-r { flex: 1 1 8rem; min-width: 0; overflow-wrap: anywhere; }
+.pu-members { display: flex; flex-direction: column; gap: 0.15rem; padding: 0.3rem 0.4rem; border-radius: 10px; background: #fff; }
+.pu-foot {
+  position: sticky;
+  bottom: -1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0 -1rem -1rem;
+  padding: 0.6rem 1rem 1rem;
+  background: #fff;
+  border-top: 1px solid #e2e8f0;
+}
+.pu-actions { display: flex; flex-direction: row; flex-wrap: nowrap; gap: 0.5rem; padding: 0; }
+.pu-actions > button { flex: 1 1 0; min-width: 0; min-height: 44px; margin: 0; }
+.pu-actions .btn-confirm:disabled { opacity: 0.45; cursor: not-allowed; }
+.pu-sum { font-weight: 700; color: #0f172a; }
+
+@media (max-width: 640px) {
+  .plan-top-row { flex-wrap: wrap; padding-left: 0.6rem; padding-right: 0.6rem; }
+  .plan-top-row .plan-field { flex-basis: 100%; }
+  .plan-update-btn { flex: 1 1 100%; }
+  .plan-top-info, .plan-tabs { padding-left: 0.6rem; padding-right: 0.6rem; }
+  .plan-alert { margin-left: 0.6rem; margin-right: 0.6rem; }
+  /* 360: rótulo em cima, contagem/● embaixo — as 3 abas cabem sem rolar */
+  .plan-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-content: center;
+    gap: 0 0.25rem;
+    padding: 0.35rem 0.3rem;
+    font-size: 0.78rem;
+    line-height: 1.2;
+  }
+  .plan-tab-label { flex-basis: 100%; text-align: center; }
+  .plan-tab-count { font-size: 0.72rem; }
+}
+
+/* ============================================================
+   (Sub-entrega 23) CALENDÁRIO — contêiner do dia por plataforma
+   ============================================================ */
+.cal-box-day { width: min(100%, 480px); }
+.cal-day-sum { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.cal-day-chip {
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: #f1f5f9;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+.cal-day-chip-bad { background: #fee2e2; color: #b91c1c; }
+.cal-group-title { margin-top: 0.3rem; }
+.cal-group-attn { color: #c2410c; }
+.cal-pf {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+.cal-pf-attn { border-color: #fdba74; background: #fffbf5; }
+.cal-pf-noplan { border-style: dashed; }
+.cal-pf-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+.cal-pf-name { font-weight: 800; font-size: 0.9rem; color: #0f172a; min-width: 0; overflow-wrap: anywhere; }
+.cal-pf-value { font-weight: 700; font-size: 0.86rem; text-align: right; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.cal-badges { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.cal-badge {
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 0.74rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.cal-badge-bet { background: #dbeafe; color: #1e3a8a; }
+.cal-badge-bet.cal-badge-done { background: #dcfce7; color: #166534; }
+.cal-badge-bet.cal-badge-missed { background: #fee2e2; color: #b91c1c; }
+.cal-badge-em { background: #f3e8ff; color: #6b21a8; }
+.cal-badge-forb { background: #f1f5f9; color: #475569; }
+.cal-badge-bad { background: #fee2e2; color: #b91c1c; }
+.cal-badge-over { background: #fef3c7; color: #92400e; }
+.cal-pf-tip { margin: 0; font-size: 0.84rem; color: #334155; overflow-wrap: anywhere; }
+.cal-pf-tip-now {
+  padding: 0.35rem 0.55rem;
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-weight: 700;
+}
+.cal-pf-tip-ok { color: #15803d; font-weight: 700; }
+.cal-pf-noplan-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; }
+.cal-pf-warn { flex: 1 1 200px; min-width: 0; font-size: 0.82rem; font-weight: 700; color: #c2410c; }
+.cal-pf-open { min-height: 36px; padding: 0.3rem 0.8rem; font-size: 0.82rem; }
+.cal-pf-line { margin: 0; font-size: 0.82rem; color: #334155; overflow-wrap: anywhere; }
+.cal-pf-rt { display: flex; justify-content: space-between; gap: 0.6rem; }
+
+/* 🔎 De onde vem o planejado (Real × plano) */
+.cal-pvr-detail:empty { display: none; }
+.cal-pvr-detail { padding: 0 1.1rem 0.6rem; }
+.cal-pvr { padding: 0; }
+.cal-pvr summary { font-weight: 700; font-size: 0.88rem; cursor: pointer; min-height: 36px; display: flex; align-items: center; }
+.cal-pvr-body { display: flex; flex-direction: column; gap: 0.5rem; padding-top: 0.4rem; }
+.cal-pvr-day { display: flex; flex-direction: column; gap: 0.15rem; padding: 0.45rem 0.6rem; border-radius: 12px; background: #f8fafc; }
+.cal-pvr-head { display: flex; justify-content: space-between; gap: 0.6rem; font-size: 0.86rem; font-weight: 800; }
+.cal-pvr-row { padding-left: 0.6rem; }
+.cal-pvr-total { display: flex; justify-content: space-between; gap: 0.6rem; font-size: 0.88rem; padding: 0.3rem 0.6rem; }
+
+@media (max-width: 640px) {
+  .cal-pvr-detail { padding-left: 0.6rem; padding-right: 0.6rem; }
+}
