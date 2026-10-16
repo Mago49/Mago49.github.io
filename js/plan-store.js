@@ -53,6 +53,11 @@
 // Calendário. savePlansBatch: vários planos (individuais e de grupos) num
 // ÚNICO lote, mesmo protocolo do saveGroupPlans (tudo ou nada).
 //
+// (Sub-entrega 25) 🙈 Troca de tipo de plano (individual ↔ grupo) e
+// excluir: opção de mandar os dias do plano antigo pro histórico já
+// IGNORADOS (fora das contas) — mesmo protocolo: histórico primeiro; falhou,
+// nada é gravado.
+//
 // LEITURA: loadPlannerData LANÇA em falha (a tela mostra o motivo e
 // "Tentar de novo" e NÃO deixa salvar — nunca grava em cima do que não viu).
 // Documento inválido é ignorado e contado em `invalidPlans`.
@@ -213,7 +218,9 @@ function todayFreezeIds(docs, todayKey) {
   return out;
 }
 
-export async function savePlan(uid, planDoc) {
+// (25) opts.ignorePast: os dias do plano ANTIGO vão pro histórico já 🙈
+// ignorados (troca de tipo de plano — individual ↔ grupo).
+export async function savePlan(uid, planDoc, opts = {}) {
   if (!uid) return { ok: false, error: 'Nenhum usuário logado.' };
   if (!isPlannerLoaded(uid)) return { ok: false, error: 'Os planos ainda não foram carregados — recarregue a tela antes de salvar.' };
   if (!planDoc || !isSafeId(planDoc.platformId)) return { ok: false, error: 'Plano inválido.' };
@@ -224,7 +231,10 @@ export async function savePlan(uid, planDoc) {
   const previous = cache.plans.get(planDoc.platformId);
   if (previous) {
     const today = toLocalDateString(new Date());
-    const logged = await logPlanPastDays(uid, [previous], today, getCalendarSettings().retentionDays, { includeTodayFor: todayFreezeIds([planDoc], today) });
+    const logged = await logPlanPastDays(uid, [previous], today, getCalendarSettings().retentionDays, {
+      includeTodayFor: todayFreezeIds([planDoc], today),
+      ignoreFor: opts.ignorePast ? [planDoc.platformId] : []
+    });
     if (!logged.ok) return { ok: false, error: `${logged.error} O plano não foi substituído.` };
   }
   try {
@@ -240,14 +250,15 @@ export async function savePlan(uid, planDoc) {
   return { ok: true };
 }
 
-export async function deletePlan(uid, platformId) {
+// (25) opts.ignorePast: os dias passados do plano excluído ficam 🙈 ignorados.
+export async function deletePlan(uid, platformId, opts = {}) {
   if (!uid) return { ok: false, error: 'Nenhum usuário logado.' };
   if (!isPlannerLoaded(uid)) return { ok: false, error: 'Os planos ainda não foram carregados — recarregue a tela.' };
   if (!isSafeId(platformId)) return { ok: false, error: 'Plano inválido.' };
   // (8b) Guarda os dias passados antes de excluir.
   const previous = cache.plans.get(platformId);
   if (previous) {
-    const logged = await logPlanPastDays(uid, [previous], toLocalDateString(new Date()), getCalendarSettings().retentionDays);
+    const logged = await logPlanPastDays(uid, [previous], toLocalDateString(new Date()), getCalendarSettings().retentionDays, { ignoreFor: opts.ignorePast ? [platformId] : [] });
     if (!logged.ok) return { ok: false, error: `${logged.error} O plano não foi excluído.` };
   }
   try {
@@ -269,8 +280,9 @@ export async function deletePlan(uid, platformId) {
 // gravado; 3) um writeBatch só com todos os set/delete (máx. 300 < 500 do
 // Firestore). A memória só muda depois do commit.
 
-export async function saveGroupPlans(uid, planDocs) {
-  return saveManyPlans(uid, planDocs, 'grupo');
+// (25) opts.ignoreFor: plataformas cujo plano ANTIGO (de outro tipo) fica 🙈.
+export async function saveGroupPlans(uid, planDocs, opts = {}) {
+  return saveManyPlans(uid, planDocs, 'grupo', opts);
 }
 
 // (24) 🔄 Atualizar planos: individuais + grupos num lote só.
@@ -278,7 +290,7 @@ export async function savePlansBatch(uid, planDocs) {
   return saveManyPlans(uid, planDocs, 'lote');
 }
 
-async function saveManyPlans(uid, planDocs, kind) {
+async function saveManyPlans(uid, planDocs, kind, opts = {}) {
   const what = kind === 'grupo' ? 'o plano do grupo' : 'os planos';
   if (!uid) return { ok: false, error: 'Nenhum usuário logado.' };
   if (!isPlannerLoaded(uid)) return { ok: false, error: 'Os planos ainda não foram carregados — recarregue a tela antes de salvar.' };
@@ -294,7 +306,7 @@ async function saveManyPlans(uid, planDocs, kind) {
   const previous = docs.map(d => cache.plans.get(d.platformId)).filter(Boolean);
   if (previous.length) {
     const today = toLocalDateString(new Date());
-    const logged = await logPlanPastDays(uid, previous, today, getCalendarSettings().retentionDays, { includeTodayFor: todayFreezeIds(docs, today) });
+    const logged = await logPlanPastDays(uid, previous, today, getCalendarSettings().retentionDays, { includeTodayFor: todayFreezeIds(docs, today), ignoreFor: opts.ignoreFor || [] });
     if (!logged.ok) return { ok: false, error: `${logged.error} Nenhum plano foi substituído.` };
   }
   try {
@@ -310,14 +322,15 @@ async function saveManyPlans(uid, planDocs, kind) {
   return { ok: true, saved: docs.length };
 }
 
-export async function deleteGroupPlans(uid, platformIds) {
+// (25) opts.ignorePast: os dias passados dos planos excluídos ficam 🙈 ignorados.
+export async function deleteGroupPlans(uid, platformIds, opts = {}) {
   if (!uid) return { ok: false, error: 'Nenhum usuário logado.' };
   if (!isPlannerLoaded(uid)) return { ok: false, error: 'Os planos ainda não foram carregados — recarregue a tela.' };
   const ids = [...new Set((platformIds || []).filter(isSafeId))].filter(id => cache.plans.has(id));
   if (ids.length === 0) return { ok: true, deleted: 0 };
   if (ids.length > 300) return { ok: false, error: 'Plataformas demais.' };
   const previous = ids.map(id => cache.plans.get(id));
-  const logged = await logPlanPastDays(uid, previous, toLocalDateString(new Date()), getCalendarSettings().retentionDays);
+  const logged = await logPlanPastDays(uid, previous, toLocalDateString(new Date()), getCalendarSettings().retentionDays, { ignoreFor: opts.ignorePast ? ids : [] });
   if (!logged.ok) return { ok: false, error: `${logged.error} Nenhum plano foi excluído.` };
   try {
     const batch = writeBatch(db);

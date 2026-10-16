@@ -42,9 +42,13 @@
 // f) (correção) O PLANO decide os dias de aposta (curva, Intercalar,
 //    escala do grupo); a rotina de aposta só dá o calendário geral. Dia
 //    DENTRO do período do plano salvo e sem aposta nele = 😴 folga do
-//    plano (sem selo da rotina, sem pendência). "⚠️ Sem plano" só quando a
-//    plataforma não tem plano cobrindo o dia (sem plano, terminou ou ainda
-//    não começou).
+//    plano (sem selo da rotina, sem pendência). Dia ANTES do início do plano
+//    = a plataforma só aparece na data dela (a rotina de aposta some; sem
+//    mais nada no dia, a plataforma sai da lista). "⚠️ Sem plano" só quando
+//    a plataforma não tem plano salvo ou o plano já terminou.
+// g) (25) 🙈 Dia IGNORADO no histórico: fora de todas as contas
+//    (plannedFor devolve null — Calendário, Aderência e 🏆 Grupos leem por
+//    ele). Fica em d.ignored só pra camada 📟 Encerrados mostrar.
 // e) computeRealMetrics devolve planRows: os dias × plataformas que formam
 //    o planejado do "Real × plano".
 
@@ -182,7 +186,8 @@ export function planDayFor(dayKey, platformId, world) {
       lines,
       stakesC: stakesC.length ? stakesC : stakesFromLines(lines),
       buy: cleanBuy(log.buy),
-      source: 'log'
+      source: 'log',
+      ignored: log.ignored === true // (25)
     };
   };
   if (dayKey < world.todayKey) {
@@ -193,10 +198,10 @@ export function planDayFor(dayKey, platformId, world) {
   return log ? fromLog() : null;
 }
 
-/** Planejado de (dia, plataforma), em centavos (null = sem plano no dia). */
+/** Planejado de (dia, plataforma), em centavos (null = sem plano no dia ou 🙈 ignorado). */
 export function plannedFor(dayKey, platformId, world) {
   const d = planDayFor(dayKey, platformId, world);
-  return d ? d.plannedC : null;
+  return d && !d.ignored ? d.plannedC : null;
 }
 
 /**
@@ -221,7 +226,8 @@ export function buildCalendarMonth(ym, world) {
       deposits: { semanal: 0, mensal: 0, aposta: 0, alto: 0, none: 0, totalC: 0, rows: [] },
       emissions: [],
       routines: null,
-      forbidden: []
+      forbidden: [],
+      ignored: [] // (25) 🙈 dias ignorados (só pra 📟 Encerrados)
     });
   }
   const ids = new Set(platforms.map(p => p.id));
@@ -236,9 +242,16 @@ export function buildCalendarMonth(ym, world) {
   platforms.forEach(p => {
     // Planejado × real
     days.forEach(d => {
-      const pd = planDayFor(d.key, p.id, world);
-      const plannedC = pd ? pd.plannedC : null;
+      const pd0 = planDayFor(d.key, p.id, world);
       const realC = d.isFuture ? 0 : realWageredC(p, d.key);
+      // (25) 🙈 ignorado: fora das contas; o real do dia vira "fora do plano".
+      if (pd0 && pd0.ignored) {
+        d.ignored.push({ platformId: p.id, name: String(p.name || ''), plannedC: pd0.plannedC, realC });
+        if (realC > 0) d.offPlan.push({ platformId: p.id, name: String(p.name || ''), realC });
+        return;
+      }
+      const pd = pd0;
+      const plannedC = pd ? pd.plannedC : null;
       if (plannedC !== null && plannedC > 0) {
         const status = d.isFuture ? 'future' : (d.isToday && realC < plannedC ? 'today' : dayStatus(plannedC, realC, threshold));
         d.plan.plannedC += plannedC;
@@ -353,7 +366,8 @@ export function planRangeOf(plan) {
  * @returns {Array<{platformId, name, plan, offPlanC, deposits, depositC,
  *   betRoutines, routines, emission, forbidden, noPlan, attention}>}
  */
-export function buildDayPlatforms(d) {
+// opts.showIgnored (25): inclui os dias 🙈 ignorados (camada 📟 ligada).
+export function buildDayPlatforms(d, opts = {}) {
   const map = new Map();
   const get = (pid, name) => {
     const id = pid || '_';
@@ -361,7 +375,7 @@ export function buildDayPlatforms(d) {
       map.set(id, {
         platformId: id, name: id === '_' ? 'Geral' : String(name || ''),
         plan: null, offPlanC: 0, deposits: [], depositC: 0,
-        betRoutines: [], routines: [], emission: false, forbidden: null, noPlan: false, attention: false
+        betRoutines: [], routines: [], emission: false, forbidden: null, noPlan: false, attention: false, ignored: null
       });
     }
     const row = map.get(id);
@@ -370,6 +384,7 @@ export function buildDayPlatforms(d) {
   };
   d.plan.rows.forEach(r => { get(r.platformId, r.name).plan = r; });
   d.offPlan.forEach(r => { get(r.platformId, r.name).offPlanC += r.realC; });
+  if (opts.showIgnored) (d.ignored || []).forEach(r => { get(r.platformId, r.name).ignored = r; });
   d.deposits.rows.forEach(r => { const x = get(r.platformId, r.name); x.deposits.push(r); x.depositC += r.valueC; });
   d.emissions.forEach(e => { get(e.platformId, e.name).emission = true; });
   d.forbidden.forEach(f => { get(f.platformId, f.name).forbidden = { broken: !!f.broken }; });
@@ -392,10 +407,11 @@ export function buildDayPlatforms(d) {
     const range = d.planRanges ? d.planRanges.get(x.platformId) || null : null;
     const covered = !!range && range.startKey <= d.key && d.key <= range.endKey;
     x.planRange = range;
+    const upcoming = !!range && d.key < range.startKey; // plano começa depois
     x.restDay = !x.plan && covered && x.betRoutines.length > 0;
-    if (x.restDay) x.betRoutines = [];
-    x.noPlan = !x.plan && !covered && x.betRoutines.length > 0 && x.platformId !== '_';
-    x.noPlanReason = !x.noPlan ? null : (!range ? 'none' : (d.key > range.endKey ? 'ended' : 'notStarted'));
+    if (x.restDay || (upcoming && !x.plan)) x.betRoutines = [];
+    x.noPlan = !x.plan && !covered && !upcoming && x.betRoutines.length > 0 && x.platformId !== '_';
+    x.noPlanReason = !x.noPlan ? null : (!range ? 'none' : 'ended');
     // Com plano no dia, a meta é a do plano (a rotina de aposta só vira selo).
     const betCounts = x.noPlan;
     const rts = betCounts ? [...x.betRoutines, ...x.routines] : x.routines;
@@ -411,7 +427,10 @@ export function buildDayPlatforms(d) {
         || (!!x.forbidden && x.forbidden.broken);
     }
   });
-  return out.sort((a, b) => {
+  // Sem nada no dia (ex.: só a rotina de aposta de um plano que ainda não começou): fora da lista.
+  const hasSomething = x => !!x.plan || x.offPlanC > 0 || x.deposits.length > 0 || x.betRoutines.length > 0
+    || x.routines.length > 0 || x.emission || !!x.forbidden || x.restDay || !!x.ignored;
+  return out.filter(hasSomething).sort((a, b) => {
     if (a.attention !== b.attention) return a.attention ? -1 : 1;
     if ((a.platformId === '_') !== (b.platformId === '_')) return a.platformId === '_' ? 1 : -1;
     return a.name.localeCompare(b.name, 'pt-BR', { numeric: true });
@@ -506,7 +525,7 @@ export function computeRealMetrics(platforms, fromKey, toKey, opts = {}) {
         m.plannedC += planned;
         m.realOnPlanC += real;
         if (real > planned) m.daysAbove++;
-        m.planRows.push({ key: k, platformId: p.id, name: String(p.name || ''), plannedC: planned, realC: real });
+        m.planRows.push({ key: k, platformId: p.id, name: String(p.name || ''), plannedC: planned, realC: real, fromLog: !!(opts.world.getPlanLog && opts.world.getPlanLog(k, p.id)) });
       }
     }
   });

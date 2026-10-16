@@ -20,6 +20,13 @@
 //
 // SEGURANÇA: nomes só por textContent.
 //
+// === (Sub-entrega 25) 🙈 IGNORAR + 📟 ENCERRADOS ===
+// Dia que já passou (planejado vindo do histórico): "🙈 Ignorar" no cartão
+// da plataforma e no "🔎 De onde vem o planejado". O dia sai de todas as
+// contas (fica guardado — plan-log-store setPlanLogIgnored). Camada
+// 📟 Encerrados (desligada por padrão): mostra os dias ignorados, apagados,
+// com "Voltar a contar".
+//
 // === (Sub-entrega 23) CONTÊINER DO DIA ===
 // Uma lista ÚNICA por plataforma (antes: seções separadas Plano /
 // Depósitos / Emissão / Rotinas / Proibido). Em cada plataforma:
@@ -38,7 +45,7 @@
 // hoje fica de fora até fechar).
 
 import { state } from './state.js';
-import { formatCurrency, showAppAlert } from './utils.js';
+import { formatCurrency, showAppAlert, showAppConfirm } from './utils.js';
 import { toLocalDateString, getWeekStart, getWeekEnd } from './finance-logic.js';
 import {
   buildMonthGrid, buildCalendarMonth, summarizePlanVsReal, computeRealMetrics,
@@ -49,7 +56,8 @@ import {
   loadPlannerData, isPlannerLoaded, getSavedPlans, getCalendarSettings, saveCalendarSettings, getStrategySettings
 } from './plan-store.js';
 import {
-  loadPlanLogs, getPlanLogEntry, logPlanPastDays, purgeOldPlanLogs, retentionCutoff, PLAN_LOG_RETENTION_OPTIONS
+  loadPlanLogs, getPlanLogEntry, logPlanPastDays, purgeOldPlanLogs, retentionCutoff, PLAN_LOG_RETENTION_OPTIONS,
+  setPlanLogIgnored, planLogId
 } from './plan-log-store.js';
 import { loadRoutineData, isRoutinesLoaded, getRoutines, getRoutineLogs, getMarks } from './routine-store.js';
 import { ROUTINE_HISTORY_DAYS } from './routine-logic.js';
@@ -63,7 +71,8 @@ const LAYERS = [
   { id: 'deposits', label: '💰 Depósitos' },
   { id: 'misterioso', label: '🃏 Misterioso' },
   { id: 'routines', label: '✔️ Rotinas' },
-  { id: 'forbidden', label: '🚫 Proibidos' }
+  { id: 'forbidden', label: '🚫 Proibidos' },
+  { id: 'ended', label: '📟 Encerrados' } // (25) desligada por padrão
 ];
 const STATUS_ICON = { done: '✅', partial: '🟡', miss: '❌', today: '⏳', future: '·' };
 const STATUS_LABEL = { done: 'Cumprido', partial: 'Parcial', miss: 'Não cumprido', today: 'Em andamento', future: 'Planejado' };
@@ -85,7 +94,7 @@ let logNote = '';
 const ui = {
   ym: null,
   platformId: '',
-  layers: new Set(LAYERS.map(l => l.id)),
+  layers: new Set(LAYERS.map(l => l.id).filter(id => id !== 'ended')),
   selectedKey: null,
   period: 'month',
   gameBy: 'game',
@@ -365,6 +374,7 @@ function renderGrid(days) {
     if (ui.layers.has('deposits') && d.deposits.totalC > 0) icons.push('💰');
     if (ui.layers.has('misterioso') && d.emissions.length) icons.push('🃏');
     if (ui.layers.has('forbidden') && d.forbidden.length) icons.push(d.forbidden.some(f => f.broken) ? '⚠️' : '🚫');
+    if (ui.layers.has('ended') && d.ignored.length) icons.push('📟');
     if (icons.length) c.appendChild(el('span', 'cal-icons', icons.join('')));
     if (ui.layers.has('routines') && d.routines) {
       const r = d.routines;
@@ -406,8 +416,45 @@ function groupLabels(d) {
   return ['⚠️ Não cumprido', '✓ Cumprido'];
 }
 
+// (25) 🙈 Ignorar / voltar a contar UM dia × plataforma.
+async function toggleIgnored(dayKey, platformId, name, plannedC, realC, ignore) {
+  if (busy) return;
+  const ok = await showAppConfirm(ignore
+    ? `Ignorar o plano de ${name} em ${fmtDay(dayKey)} (${money(realC)} de ${money(plannedC)})? O dia sai do Cumprimento, do Real × plano, da Aderência e do 🏆 Grupos. Fica guardado — dá pra voltar a contar em 📟 Encerrados.`
+    : `Voltar a contar o plano de ${name} em ${fmtDay(dayKey)} (${money(realC)} de ${money(plannedC)})?`);
+  if (!ok || !mounted) return;
+  busy = true;
+  let result;
+  try {
+    result = await setPlanLogIgnored(state.currentUid, [planLogId(dayKey, platformId)], ignore);
+  } finally {
+    busy = false;
+  }
+  if (!result.ok) { await showAppAlert(result.error); return; }
+  if (!mounted) return;
+  const reopen = !!detailClose;
+  renderAll();
+  if (reopen) {
+    const days = computeMonth();
+    if (days.has(dayKey)) openDayDetail(days.get(dayKey));
+  }
+}
+
 // Um cartão por plataforma no contêiner do dia.
 function platformCard(d, x) {
+  // (25) Só o dia 🙈 ignorado (📟 ligada): cartão apagado + "Voltar a contar".
+  if (x.ignored && !x.plan && !x.noPlan && !x.restDay && !x.betRoutines.length && !x.routines.length && !x.deposits.length && !x.emission && !x.forbidden) {
+    const card = el('div', 'cal-pf cal-pf-ignored');
+    const head = el('div', 'cal-pf-head');
+    head.appendChild(el('span', 'cal-pf-name', `📟 ${x.name}`));
+    head.appendChild(el('span', 'cal-pf-value', `${money(x.ignored.realC)} de ${money(x.ignored.plannedC)}`));
+    card.appendChild(head);
+    const row = el('div', 'cal-pf-noplan-row');
+    row.appendChild(el('span', 'cal-badge cal-badge-ignored', '🙈 Ignorado'));
+    row.appendChild(button('Voltar a contar', 'bet-manage-btn cal-pf-open', () => toggleIgnored(d.key, x.platformId, x.name, x.ignored.plannedC, x.ignored.realC, false)));
+    card.appendChild(row);
+    return card;
+  }
   const card = el('div', `cal-pf${x.attention ? ' cal-pf-attn' : ''}${x.noPlan ? ' cal-pf-noplan' : ''}`);
   const head = el('div', 'cal-pf-head');
   const icon = x.plan ? (STATUS_ICON[x.plan.status] || '') : (x.noPlan ? '⚠️' : (x.restDay ? '😴' : '▫️'));
@@ -487,6 +534,19 @@ function platformCard(d, x) {
     });
     card.appendChild(el('p', 'cal-pf-line', `💰 Depositado ${money(x.depositC)} · ${parts.join(' · ')}`));
   }
+
+  // (25) 🙈 dia passado com planejado no histórico / 📟 ignorado neste dia.
+  if (x.plan && !d.isFuture && !d.isToday && x.plan.source === 'log') {
+    const row = el('div', 'cal-pf-actions');
+    row.appendChild(button('🙈 Ignorar', 'cal-pf-ignore', () => toggleIgnored(d.key, x.platformId, x.name, x.plan.plannedC, x.plan.realC, true)));
+    card.appendChild(row);
+  }
+  if (x.ignored) {
+    const row = el('div', 'cal-pf-noplan-row');
+    row.appendChild(el('span', 'cal-badge cal-badge-ignored', `🙈 Plano ignorado: ${money(x.ignored.realC)} de ${money(x.ignored.plannedC)}`));
+    row.appendChild(button('Voltar a contar', 'bet-manage-btn cal-pf-open', () => toggleIgnored(d.key, x.platformId, x.name, x.ignored.plannedC, x.ignored.realC, false)));
+    card.appendChild(row);
+  }
   return card;
 }
 
@@ -524,7 +584,7 @@ function openDayDetail(d) {
   }
   if (sum.childNodes.length) box.appendChild(sum);
 
-  const list = buildDayPlatforms(d);
+  const list = buildDayPlatforms(d, { showIgnored: ui.layers.has('ended') });
   if (!list.length) {
     box.appendChild(el('p', 'cal-text', 'Nada neste dia.'));
   } else {
@@ -694,6 +754,13 @@ function renderPvrDetail(m) {
       const line = el('div', 'cal-line cal-pvr-row');
       line.appendChild(el('span', 'cal-line-l', `${STATUS_ICON[dayStatus(r.plannedC, r.realC, th)] || ''} ${r.name}`));
       line.appendChild(el('span', 'cal-line-r', `${money(r.realC)} de ${money(r.plannedC)}`));
+      // (25) 🙈 tirar este dia das contas
+      if (r.fromLog) {
+        const ig = button('🙈', 'cal-pvr-ignore', () => toggleIgnored(r.key, r.platformId, r.name, r.plannedC, r.realC, true));
+        ig.setAttribute('aria-label', `Ignorar ${r.name} em ${fmtDay(r.key)}`);
+        ig.title = 'Ignorar este dia';
+        line.appendChild(ig);
+      }
       day.appendChild(line);
     });
     body.appendChild(day);

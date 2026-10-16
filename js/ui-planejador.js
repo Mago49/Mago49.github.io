@@ -140,6 +140,11 @@
 // e) "↻ Recalcular a partir de amanhã" desconta o que falta apostar hoje
 //    (o dia de hoje continua com a meta dele) e, com meta digitada,
 //    pergunta se usa o Rollover ou mantém a meta.
+// g) (25) TROCA DE TIPO DE PLANO (individual ↔ grupo / outro grupo) e
+//    EXCLUIR: se o plano antigo tem dias que já passaram, pergunta (dois
+//    botões iguais, "🙈 Ignorar" já selecionado) se esses dias continuam
+//    contando. ✕/Esc cancela tudo. Recalcular/Atualizar não perguntam (é o
+//    mesmo plano seguindo).
 // f) requestPlanejadorFocus(platformId): o Calendário abre a aba já com a
 //    plataforma escolhida ("Abrir no Planejador").
 
@@ -2595,6 +2600,22 @@ async function onSaveGroup(btn) {
     + (failed ? ` ${failed} fica(m) de fora (motivo na lista) e mantêm o que já tinham.` : '');
   const ok = await showAppConfirm(msg);
   if (!ok || !mounted) return;
+  // (25) Plataformas que tinham plano de OUTRO tipo (sozinha / outro grupo).
+  const nowIso0 = new Date().toISOString();
+  const swapped = [];
+  okMembers.forEach(m => {
+    const sp = getSavedPlan(m.platformId);
+    if (!sp || savedGroupKey(sp) === g.routine.id) return;
+    const p = findPlatform(m.platformId);
+    const st = pastDaysOf(sp, p ? planToDoc(p, m.params, m.plan, nowIso0) : null);
+    if (st.count > 0) swapped.push({ platformId: m.platformId, name: m.name, ...st });
+  });
+  let ignoreFor = [];
+  if (swapped.length) {
+    const choice = await askPastDays(swapped, 'swap');
+    if (!choice || !mounted) return;
+    if (choice === 'ignore') ignoreFor = swapped.map(x => x.platformId);
+  }
   busy = true;
   btn.disabled = true;
   try {
@@ -2605,7 +2626,7 @@ async function onSaveGroup(btn) {
       if (!p) { await showAppAlert(`Plataforma ${m.name} não encontrada. Nada foi salvo.`); return; }
       docs.push(planToDoc(p, m.params, m.plan, nowIso));
     }
-    const result = await saveGroupPlans(state.currentUid, docs);
+    const result = await saveGroupPlans(state.currentUid, docs, { ignoreFor });
     if (!result.ok) { await showAppAlert(result.error); return; }
     formSnap = snapForm();
   } finally {
@@ -2626,10 +2647,18 @@ async function onDeleteGroup(btn) {
   if (!g || !ids.length) return;
   const ok = await showAppConfirm(`Excluir o plano do grupo "${g.routine.name}"? ${ids.length} plano(s) deixam de existir (os dias que já passaram ficam no histórico). Plataformas com plano próprio não são tocadas.`);
   if (!ok || !mounted) return;
+  // (25) Os dias passados continuam contando?
+  const past = ids.map(id => ({ platformId: id, name: (findPlatform(id) || {}).name || id, ...pastDaysOf(getSavedPlan(id), null) })).filter(x => x.count > 0);
+  let ignorePast = false;
+  if (past.length) {
+    const choice = await askPastDays(past, 'delete');
+    if (!choice || !mounted) return;
+    ignorePast = choice === 'ignore';
+  }
   busy = true;
   btn.disabled = true;
   try {
-    const result = await deleteGroupPlans(state.currentUid, ids);
+    const result = await deleteGroupPlans(state.currentUid, ids, { ignorePast });
     if (!result.ok) await showAppAlert(result.error);
   } finally {
     busy = false;
@@ -2640,6 +2669,75 @@ async function onDeleteGroup(btn) {
       refreshAlert(); // (24)
     }
   }
+}
+
+// ---------- (25) dias passados do plano antigo: contar ou 🙈 ignorar ----------
+
+function savedGroupKey(sp) {
+  return sp && sp.params && sp.params.group && sp.params.group.routineId ? sp.params.group.routineId : null;
+}
+
+// Dias do plano salvo que já passaram (e hoje, se o novo não tiver hoje).
+function pastDaysOf(saved, newDoc) {
+  const t = todayKey();
+  const p = saved ? findPlatform(saved.platformId) : null;
+  const out = { count: 0, plannedC: 0, realC: 0 };
+  if (!saved || !Array.isArray(saved.days)) return out;
+  const newHasToday = !!(newDoc && Array.isArray(newDoc.days) && newDoc.days.some(x => x && x.key === t));
+  saved.days.forEach(day => {
+    if (!day || !day.key || day.key > t || (day.key === t && newHasToday)) return;
+    out.count++;
+    out.plannedC += Math.round(Number(day.plannedC) || 0);
+    if (p) out.realC += realWageredC(p, day.key);
+  });
+  return out;
+}
+
+// Dois botões IGUAIS (sem ênfase); "🙈 Ignorar" vem selecionado.
+// @returns {Promise<'ignore'|'count'|null>} null = cancelar tudo.
+function askPastDays(items, action) {
+  return new Promise(resolve => {
+    const total = items.reduce((a, x) => ({ count: a.count + x.count, plannedC: a.plannedC + x.plannedC, realC: a.realC + x.realC }), { count: 0, plannedC: 0, realC: 0 });
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const overlay = el('div', 'cal-overlay');
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    const box = el('div', 'cal-box plan-choice-box');
+    overlay.appendChild(box);
+    const head = el('div', 'cal-box-head');
+    head.appendChild(el('h3', 'cal-box-title', 'Dias que já passaram'));
+    const x = el('button', 'cal-box-close', '✕');
+    x.type = 'button';
+    x.setAttribute('aria-label', 'Cancelar');
+    head.appendChild(x);
+    box.appendChild(head);
+    const who = items.length === 1 ? items[0].name : `${items.length} plataformas (${items.map(i => i.name).join(', ')})`;
+    box.appendChild(el('p', 'cal-text', `${action === 'delete' ? 'O plano excluído' : 'O plano antigo'} de ${who} tem ${total.count} dia(s) que já passaram: ${formatCurrency(fromCents(total.realC))} apostado de ${formatCurrency(fromCents(total.plannedC))} planejado. Continuar contando esses dias?`));
+    box.appendChild(el('p', 'plan-hint', 'Ignorar tira esses dias do Cumprimento, do Real × plano, da Aderência e do 🏆 Grupos. Eles ficam guardados e aparecem em 📟 Encerrados, no Calendário.'));
+    const actions = el('div', 'plan-choice-actions');
+    const ign = el('button', 'plan-choice-btn', '🙈 Ignorar esses dias');
+    ign.type = 'button';
+    const cnt = el('button', 'plan-choice-btn', 'Continuar contando');
+    cnt.type = 'button';
+    actions.appendChild(ign);
+    actions.appendChild(cnt);
+    box.appendChild(actions);
+    const done = (v) => {
+      document.removeEventListener('keydown', onKey, true);
+      overlay.remove();
+      document.body.style.overflow = previousOverflow;
+      resolve(v);
+    };
+    function onKey(e) { if (e.key === 'Escape') { e.preventDefault(); done(null); } }
+    ign.addEventListener('click', () => done('ignore'));
+    cnt.addEventListener('click', () => done('count'));
+    x.addEventListener('click', () => done(null));
+    overlay.addEventListener('click', e => { if (e.target === overlay) done(null); });
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(overlay);
+    ign.focus();
+  });
 }
 
 // ---------- ações (gravam no banco) ----------
@@ -2660,13 +2758,24 @@ async function onSavePlan(btn) {
     ? `${platform.name} já tem um plano salvo (${fmtFull(saved.updatedAt)}). Substituir pelo novo? ${summary}. O anterior deixa de existir.${detachText}`
     : `Salvar o plano de ${platform.name}? ${summary}.${detachText}`);
   if (!ok || !mounted) return;
+  // (25) Troca de tipo (grupo → sozinha): os dias passados do plano antigo contam?
+  let ignorePast = false;
+  const newDoc = planToDoc(platform, params, plan, new Date().toISOString());
+  if (saved && savedGroupKey(saved) !== (params.group ? params.group.routineId : null)) {
+    const st = pastDaysOf(saved, newDoc);
+    if (st.count > 0) {
+      const choice = await askPastDays([{ name: platform.name, ...st }], 'swap');
+      if (!choice || !mounted) return;
+      ignorePast = choice === 'ignore';
+    }
+  }
 
   busy = true;
   btn.disabled = true;
   try {
     const target = findPlatform(form.platformId);
     if (!target) { await showAppAlert('Plataforma não encontrada. Nada foi salvo.'); return; }
-    const result = await savePlan(state.currentUid, planToDoc(target, params, plan, new Date().toISOString()));
+    const result = await savePlan(state.currentUid, planToDoc(target, params, plan, new Date().toISOString()), { ignorePast });
     if (!result.ok) { await showAppAlert(result.error); return; }
     if (detach) form.groupRef = null;
     formSnap = snapForm();
@@ -2690,10 +2799,18 @@ async function onDeletePlan(btn) {
   if (!saved) return;
   const ok = await showAppConfirm(`Excluir o plano salvo de ${platform.name}? A prévia continua na tela, mas o plano deixa de existir no banco.`);
   if (!ok || !mounted) return;
+  // (25) Os dias passados continuam contando?
+  const st = pastDaysOf(saved, null);
+  let ignorePast = false;
+  if (st.count > 0) {
+    const choice = await askPastDays([{ name: platform.name, ...st }], 'delete');
+    if (!choice || !mounted) return;
+    ignorePast = choice === 'ignore';
+  }
   busy = true;
   btn.disabled = true;
   try {
-    const result = await deletePlan(state.currentUid, platform.id);
+    const result = await deletePlan(state.currentUid, platform.id, { ignorePast });
     if (!result.ok) await showAppAlert(result.error);
   } finally {
     busy = false;

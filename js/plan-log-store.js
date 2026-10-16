@@ -34,6 +34,15 @@
 // c) logPlanPastDays(..., { includeTodayFor }): congela TAMBÉM o dia de
 //    HOJE das plataformas indicadas — usado quando o plano é refeito a
 //    partir de amanhã (senão a meta de hoje sumiria do Calendário).
+//
+// === (Sub-entrega 25) 🙈 IGNORAR ===
+// O documento continua só-criação, com UMA exceção (regra do Firestore):
+// marcar/desmarcar `ignored` (+ `ignoredAt`). Data, plataforma e planejado
+// nunca mudam; nada é apagado. Dia ignorado sai das contas (Calendário,
+// Aderência, 🏆 Grupos) e só aparece com 📟 Encerrados ligado.
+//   setPlanLogIgnored(uid, ids, true|false)
+//   logPlanPastDays(..., { ignoreFor }) — troca de plano (individual ↔
+//   grupo / excluir): os dias do plano antigo nascem (ou ficam) ignorados.
 
 import { db, collection, doc, getDocs, writeBatch, query, where, orderBy, limit, documentId } from './firebase-init.js';
 import { state } from './state.js';
@@ -148,6 +157,7 @@ export async function logPlanPastDays(uid, plans, todayKey, retentionDays = DEFA
   if (!uid) return { ok: false, error: 'Nenhum usuário logado.' };
   const cutoff = retentionCutoff(todayKey, retentionDays);
   const todayFor = new Set(opts && opts.includeTodayFor ? [...opts.includeTodayFor].map(String) : []);
+  const ignoreFor = new Set(opts && opts.ignoreFor ? [...opts.ignoreFor].map(String) : []); // (25)
   const wanted = [];
   (plans || []).forEach(plan => {
     if (!plan || !Array.isArray(plan.days)) return;
@@ -172,18 +182,33 @@ export async function logPlanPastDays(uid, plans, todayKey, retentionDays = DEFA
 
   const nowIso = new Date().toISOString();
   const toWrite = [];
+  const toIgnore = []; // (25) já existiam: só marca ignored
   const seen = new Set();
   wanted.forEach(({ plan, day }) => {
     const id = planLogId(day.key, plan.platformId);
-    if (existing.has(id) || seen.has(id)) return;
+    if (seen.has(id)) return;
     seen.add(id);
-    toWrite.push({ id, data: buildDoc(plan, day, nowIso) });
+    const ignore = ignoreFor.has(String(plan.platformId));
+    if (existing.has(id)) {
+      if (ignore && existing.get(id).ignored !== true) toIgnore.push(id);
+      return;
+    }
+    const data = buildDoc(plan, day, nowIso);
+    if (ignore) { data.ignored = true; data.ignoredAt = nowIso; }
+    toWrite.push({ id, data });
   });
 
+  // Um lote só quando cabe (tudo ou nada); acima de 400, em partes.
+  const ops = [
+    ...toWrite.map(w => ({ kind: 'set', id: w.id, data: w.data })),
+    ...toIgnore.map(id => ({ kind: 'update', id, data: { ignored: true, ignoredAt: nowIso } }))
+  ];
   try {
-    for (let i = 0; i < toWrite.length; i += BATCH_MAX) {
+    for (let i = 0; i < ops.length; i += BATCH_MAX) {
       const batch = writeBatch(db);
-      toWrite.slice(i, i + BATCH_MAX).forEach(w => batch.set(doc(col(uid), w.id), w.data));
+      ops.slice(i, i + BATCH_MAX).forEach(o => (o.kind === 'set'
+        ? batch.set(doc(col(uid), o.id), o.data)
+        : batch.update(doc(col(uid), o.id), o.data)));
       await batch.commit();
     }
   } catch (err) {
@@ -194,8 +219,36 @@ export async function logPlanPastDays(uid, plans, todayKey, retentionDays = DEFA
   if (cache && cache.uid === uid) {
     existing.forEach((v, k) => cache.byId.set(k, v));
     toWrite.forEach(w => { if (w.data.date >= cache.fromKey && w.data.date <= cache.toKey) cache.byId.set(w.id, w.data); });
+    toIgnore.forEach(id => { const cur = cache.byId.get(id); if (cur) cache.byId.set(id, { ...cur, ignored: true, ignoredAt: nowIso }); });
   }
-  return { ok: true, written: toWrite.length };
+  return { ok: true, written: toWrite.length, ignored: toIgnore.length + toWrite.filter(w => w.data.ignored).length };
+}
+
+/**
+ * (25) 🙈 Ignorar / voltar a contar dias do histórico (documentos que JÁ
+ * existem). Só os campos ignored/ignoredAt mudam (regra do Firestore).
+ * Um lote só (até 400). A memória só muda depois do commit.
+ */
+export async function setPlanLogIgnored(uid, ids, ignored) {
+  if (!uid) return { ok: false, error: 'Nenhum usuário logado.' };
+  const list = [...new Set((Array.isArray(ids) ? ids : []).map(String))].filter(id => /^\d{4}-\d{2}-\d{2}_.+$/.test(id) && !id.includes('/'));
+  if (!list.length) return { ok: false, error: 'Nenhum dia pra alterar.' };
+  if (list.length > BATCH_MAX) return { ok: false, error: 'Dias demais de uma vez.' };
+  if (cache && cache.uid === uid && list.some(id => !cache.byId.has(id))) {
+    return { ok: false, error: 'Esse dia ainda não está no histórico. Recarregue a aba e tente de novo.' };
+  }
+  const nowIso = new Date().toISOString();
+  const data = ignored ? { ignored: true, ignoredAt: nowIso } : { ignored: false, ignoredAt: nowIso };
+  try {
+    const batch = writeBatch(db);
+    list.forEach(id => batch.update(doc(col(uid), id), data));
+    await batch.commit();
+  } catch (err) {
+    console.error('Histórico do planejado: falha ao marcar ignorado:', err);
+    return { ok: false, error: 'Não foi possível salvar no banco. Nada mudou — verifique a internet e tente de novo.' };
+  }
+  if (cache && cache.uid === uid) list.forEach(id => { const cur = cache.byId.get(id); if (cur) cache.byId.set(id, { ...cur, ...data }); });
+  return { ok: true, changed: list.length };
 }
 
 /**
