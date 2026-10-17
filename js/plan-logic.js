@@ -104,6 +104,16 @@
 // c) planUpdateDiff / isSignificantChange: antes (o que o plano salvo
 //    ainda prevê de amanhã em diante) × depois (refeito a partir de amanhã)
 //    — o aviso "⚠️ Rollover mudou" só conta diferença de R$ 1,00 E 3%.
+//
+// === (Sub-entrega 28) TETO PELO CAIXA ===
+// params.cashCap = { startC, inflows: [{ key, valueC }] } (centavos, já ×
+// peso): o total planejado ATÉ cada dia nunca passa de
+//   startC (Rollover de agora − o que falta apostar hoje)
+//   + entradas previstas que já chegaram até aquele dia.
+// O que não cabe num dia fica pros dias seguintes (depois da entrada); o
+// que não cabe em nenhum dia do período vira aviso (cashShortC). Dia sem
+// espaço = R$ 0 (capped). Não é gravado nos parâmetros (sanitizeParams não
+// leva): vale só na hora de montar o plano — o plano salvo guarda os dias.
 
 import { toLocalDateString, getWeekStart } from './finance-logic.js';
 import { getCycleStart } from './cycle-logic.js';
@@ -516,6 +526,11 @@ export function buildPlan(params, todayKey = null) {
     if (alt.blockedWeeks > 0) warnings.push(`${alt.blockedWeeks} semana(s) sem aposta: todos os dias marcados estavam bloqueados (proibido, emissão ou fora do ciclo).`);
   }
 
+  // (28) Teto acumulado pelo caixa (Rollover + entradas até o dia).
+  const cap = cleanCashCap(p.cashCap);
+  const capCum = (key) => (cap ? cap.startC + cap.inflows.filter(x => x.key <= key).reduce((s2, x) => s2 + x.valueC, 0) : Infinity);
+  let cappedDays = 0;
+
   // Fechamento carregado: cada dia cobre o que falta até o acumulado
   // desejado — a sobra de um dia abate o seguinte (nunca se acumula).
   let desiredCum = 0;
@@ -523,10 +538,18 @@ export function buildPlan(params, todayKey = null) {
   const out = days.map((d, i) => {
     desiredCum += dist.amounts[i];
     const tier = tierOf(weights[i], k);
-    const need = Math.max(desiredCum - plannedCum, floorC, 0);
-    const { lines, plannedC } = buildDayLines(need, tier, stakesC, buy);
+    let need = Math.max(desiredCum - plannedCum, floorC, 0);
+    // (28) Não passa do que o caixa já tem até este dia (sobra → adiante).
+    const room = capCum(d.key) - plannedCum;
+    let capped = false;
+    if (need > room) {
+      capped = true;
+      cappedDays++;
+      need = room > 0 ? Math.floor(room / stakesC[0]) * stakesC[0] : 0;
+    }
+    const { lines, plannedC } = buildDayLines(need, tier, stakesC, buy && !capped ? buy : null);
     plannedCum += plannedC;
-    return {
+    const row = {
       key: d.key,
       weekday: d.weekday,
       weight: Math.round(weights[i] * 1000) / 1000,
@@ -535,10 +558,19 @@ export function buildPlan(params, todayKey = null) {
       plannedC,
       lines
     };
+    if (capped) row.capped = true;
+    return row;
   });
+  // (28) Parte da meta que não coube no caixa do período.
+  const cashShortC = cap ? Math.max(0, targetC - plannedCum) : 0;
+  if (cap && plannedCum <= 0) {
+    return { ok: false, error: 'O caixa não tem Rollover livre nem entradas previstas no período — nada a apostar (o que falta hoje já usa o Rollover de agora).' };
+  }
+  if (cappedDays > 0) warnings.push(`${cappedDays} dia(s) limitado(s) pelo caixa (Rollover + entradas previstas até o dia) — o resto foi pros dias seguintes.`);
+  if (cashShortC >= stakesC[0]) warnings.push(`R$ ${(cashShortC / 100).toFixed(2).replace('.', ',')} da meta não cabe no período: as entradas previstas chegam tarde demais. Aumente o período ou diminua a meta.`);
 
   const planned = out.map(d => d.plannedC);
-  const excessC = plannedCum - targetC;
+  const excessC = Math.max(0, plannedCum - targetC); // (28) curto pelo caixa = cashShortC
   if (excessC >= stakesC[0] && floorC > 0) {
     warnings.push('O piso diário forçou alguns dias acima da curva — a sobra final passou de 1 giro.');
   }
@@ -552,8 +584,9 @@ export function buildPlan(params, todayKey = null) {
     totals: {
       targetC,
       plannedC: plannedCum,
+      cashShortC, // (28)
       excessC,
-      activeDays: out.length,
+      activeDays: out.filter(d => d.plannedC > 0).length, // (28) dia limitado a R$ 0 não conta
       maxDayC: Math.max(...planned),
       minDayC: Math.min(...planned),
       buys: out.reduce((s, d) => s + d.lines.filter(l => l.kind === 'buy').length, 0),
@@ -601,6 +634,7 @@ export function buildGroupPlan(base, members, group, todayKey = null) {
       reservedC: Math.max(0, Math.round(Number(m.reservedC) || 0)),
       targetBase: base.targetBase === 'projected' ? 'projected' : 'rollover',
       targetMode: 'auto', // (24) o grupo sempre calcula a meta
+      cashCap: m.cashCap || null, // (28) teto pelo caixa de cada plataforma
       goal: { mode: 'none', value: 0, baseBalance: 0 },
       phase: i,
       phaseCount: n,
@@ -619,6 +653,7 @@ export function buildGroupPlan(base, members, group, todayKey = null) {
     targetC += m.plan.totals.targetC;
     plannedC += m.plan.totals.plannedC;
     m.plan.days.forEach(d => {
+      if (!(d.plannedC > 0)) return; // (28) dia limitado a R$ 0 pelo caixa
       const cur = byDay.get(d.key) || { key: d.key, plannedC: 0, platforms: 0 };
       cur.plannedC += d.plannedC;
       cur.platforms += 1;
@@ -808,6 +843,17 @@ export function sanitizeParams(p) {
     reservedC: Math.max(0, Math.round(Number(p.reservedC) || 0)),
     // (24)
     targetMode: TARGET_MODES.includes(p.targetMode) ? p.targetMode : 'unknown'
+  };
+}
+
+// (28) Teto pelo caixa — tipos garantidos (null = sem teto).
+export function cleanCashCap(c) {
+  if (!c || typeof c !== 'object' || !Number.isFinite(Number(c.startC))) return null;
+  return {
+    startC: Math.round(Number(c.startC)),
+    inflows: (Array.isArray(c.inflows) ? c.inflows : [])
+      .filter(x => x && isValidDayKey(x.key) && Number(x.valueC) > 0)
+      .map(x => ({ key: x.key, valueC: Math.round(Number(x.valueC)) }))
   };
 }
 

@@ -151,6 +151,11 @@
 // i) (27) "👁️ Prévia não salva" quando a prévia difere do salvo e
 //    "📌 Hoje no plano salvo" (valor e apostas de hoje; no grupo, por
 //    plataforma) — o Calendário segue sempre o plano salvo.
+// j) (28) TETO PELO CAIXA: cada plano recebe params.cashCap (Rollover de
+//    agora − o que falta apostar hoje + entradas previstas por dia, × peso)
+//    — nenhum dia aposta dinheiro que ainda não entrou. Prévia de plano
+//    salvo SEM alteração não recebe o teto (mostra o salvo como está).
+//    Gráfico: barra de HOJE (plano salvo) antes dos dias do plano.
 // f) requestPlanejadorFocus(platformId): o Calendário abre a aba já com a
 //    plataforma escolhida ("Abrir no Planejador").
 
@@ -456,7 +461,31 @@ function currentParams() {
     reservedC: form.reservedC,
     // (24)
     targetMode: form.targetMode,
-    targetBase: form.targetBase
+    targetBase: form.targetBase,
+    // (28)
+    cashCap: individualCashCap()
+  };
+}
+
+// (28) Teto pelo caixa da plataforma do formulário.
+function individualCashCap() {
+  const platform = findPlatform(form.platformId);
+  if (!platform || !world || world.rolloverC === null || !form.startKey || !form.endKey) return null;
+  return cashCapFor(platform, world.rolloverC, form.startKey, memberInflows(platform, form.endKey), speedBase()); // sem o depósito só "sugerido"
+}
+
+// (28) { startC, inflows } em centavos × peso. Começa amanhã ou depois:
+// desconta o que ainda falta apostar HOJE do plano salvo — a não ser que o
+// resto de hoje NÃO vá ser apostado (🔄 com "Descontar" desligado / ⏭ Parar
+// hoje): aí ele volta pro caixa dos próximos dias.
+function cashCapFor(platform, rolloverC, startKey, inflows, speed = 1, subtractToday = true) {
+  if (!platform || rolloverC === null || rolloverC === undefined) return null;
+  const t = todayKey();
+  const left = subtractToday && startKey > t ? todayLeftC(getSavedPlan(platform.id), platform, t) : 0;
+  const k = Number(speed) > 0 ? Number(speed) : 1;
+  return {
+    startC: Math.max(0, Math.round((rolloverC - left) * k)),
+    inflows: (inflows || []).filter(x => x && x.valueC > 0).map(x => ({ key: x.key, valueC: Math.round(x.valueC * k) }))
   };
 }
 
@@ -2117,7 +2146,7 @@ function renderPreview() {
   // andamento nem apareceria. Qualquer alteração volta a exigir.
   const savedPlan = getSavedPlan(platform.id);
   const unchangedSaved = !!savedPlan && sameParams(savedPlan.params, params);
-  const plan = buildPlan(params, unchangedSaved ? null : todayKey());
+  const plan = buildPlan(unchangedSaved ? { ...params, cashCap: null } : params, unchangedSaved ? null : todayKey()); // (28)
   lastPlan = plan.ok ? { params, plan } : null;
   renderGoalCard(platform, params);
 
@@ -2133,8 +2162,9 @@ function renderPreview() {
   showError('');
 
   const inflow = computeInflows(platform, plan.days[plan.days.length - 1].key);
+  const leftToday = plan.days.length && plan.days[0].key > todayKey() ? todayLeftC(getSavedPlan(platform.id), platform) : 0; // (28)
   const proj = computePlanProjections(plan.days, {
-    startRolloverC: world ? world.rolloverC : null,
+    startRolloverC: world && world.rolloverC !== null ? Math.max(0, world.rolloverC - leftToday) : null,
     inflows: inflow.items,
     wagerTotalNow: world ? world.wagerTotalNow : null,
     thresholds: world ? world.thresholds : null,
@@ -2150,6 +2180,7 @@ function renderPreview() {
     const t = plan.totals;
     kpis.appendChild(kpi('Planejado', formatCurrency(fromCents(t.plannedC)), `meta ${formatCurrency(fromCents(t.targetC))}`, 'plan-kpi-main'));
     kpis.appendChild(kpi('Sobra', formatCurrency(fromCents(t.excessC)), 'acima da meta'));
+    if (t.cashShortC > 0) kpis.appendChild(kpi('🔒 Fora do caixa', formatCurrency(fromCents(t.cashShortC)), 'da meta não cabe no período', 'cal-kpi-bad')); // (28)
     kpis.appendChild(kpi('Dias de aposta', String(t.activeDays), `${fmtShort(plan.days[0].key)} a ${fmtShort(plan.days[plan.days.length - 1].key)}`));
     kpis.appendChild(kpi('Maior / menor dia', `${formatCurrency(fromCents(t.maxDayC))}`, `menor ${formatCurrency(fromCents(t.minDayC))}`));
     kpis.appendChild(kpi('Giros', String(t.spins), t.buys ? `+ ${t.buys} compra(s) de bônus` : ''));
@@ -2195,7 +2226,7 @@ function renderPreview() {
       if (vipByDay.has(d.key)) head.appendChild(el('span', 'plan-tier plan-tier-vip', `V${vipByDay.get(d.key)}`));
       head.appendChild(el('span', 'plan-day-amount', formatCurrency(fromCents(d.plannedC))));
       row.appendChild(head);
-      row.appendChild(el('div', 'plan-day-lines', describeLines(d.lines)));
+      row.appendChild(el('div', 'plan-day-lines', d.capped ? `${d.plannedC > 0 ? `${describeLines(d.lines)} · ` : ''}🔒 limitado pelo caixa${d.plannedC > 0 ? '' : ' — aguardando a próxima entrada'}` : describeLines(d.lines)));
       daysBox.appendChild(row);
     });
     if (plan.days.length > DAYS_COLLAPSED) {
@@ -2209,17 +2240,25 @@ function renderPreview() {
   renderActions(plan);
 }
 
+// (28) Barra de HOJE (plano salvo) quando o plano começa depois de hoje.
+let chartOffset = 0;
+const TODAY_BAR_COLOR = '#cbd5e1';
+
 function renderChart(plan, proj) {
   const canvas = $('planChart');
   if (!canvas || !window.Chart) return;
-  const labels = plan.days.map(d => fmtShort(d.key));
-  const bars = plan.days.map(d => fromCents(d.plannedC));
-  const colors = plan.days.map(d => TIER_COLOR[d.tier]);
+  const t = todayKey();
+  const sv = form.platformId ? savedTodayDay(form.platformId, t) : null;
+  const pre = sv && Number(sv.plannedC) > 0 && plan.days.length && plan.days[0].key > t ? 1 : 0;
+  chartOffset = pre;
+  const labels = [...(pre ? ['Hoje'] : []), ...plan.days.map(d => fmtShort(d.key))];
+  const bars = [...(pre ? [fromCents(Math.round(Number(sv.plannedC)))] : []), ...plan.days.map(d => fromCents(d.plannedC))];
+  const colors = [...(pre ? [TODAY_BAR_COLOR] : []), ...plan.days.map(d => TIER_COLOR[d.tier])];
   const vipKeys = new Set(proj.vipReach.map(r => r.key));
-  const borders = plan.days.map(d => (vipKeys.has(d.key) ? '#f59e0b' : 'rgba(0,0,0,0)'));
-  const borderWidths = plan.days.map(d => (vipKeys.has(d.key) ? 3 : 0));
+  const borders = [...(pre ? ['rgba(0,0,0,0)'] : []), ...plan.days.map(d => (vipKeys.has(d.key) ? '#f59e0b' : 'rgba(0,0,0,0)'))];
+  const borderWidths = [...(pre ? [0] : []), ...plan.days.map(d => (vipKeys.has(d.key) ? 3 : 0))];
   const hasRollover = proj.rollover.length === plan.days.length;
-  const line = hasRollover ? proj.rollover.map(fromCents) : [];
+  const line = hasRollover ? [...(pre && world && world.rolloverC !== null ? [fromCents(world.rolloverC)] : (pre ? [null] : [])), ...proj.rollover.map(fromCents)] : [];
 
   const datasets = [{
     type: 'bar',
@@ -2269,8 +2308,10 @@ function renderChart(plan, proj) {
           callbacks: {
             label: (c) => `${c.dataset.label}: ${formatCurrency(c.parsed.y)}`,
             afterBody: (items) => {
-              const d = lastPlan && lastPlan.plan.days[items[0].dataIndex];
-              return d ? [TIER_LABEL[d.tier], describeLines(d.lines)] : [];
+              const idx = items[0].dataIndex - chartOffset;
+              if (idx < 0) return ['Hoje — plano salvo (o Calendário segue este)'];
+              const d = lastPlan && lastPlan.plan.days[idx];
+              return d ? [TIER_LABEL[d.tier], d.capped ? `${describeLines(d.lines) || 'R$ 0'} · 🔒 limitado pelo caixa` : describeLines(d.lines)] : [];
             }
           }
         }
@@ -2342,7 +2383,8 @@ function formGroupCfg() {
     groupReserve: form.groupReserve,
     followGroup: form.followGroup,
     deductToday: form.groupDeductToday,
-    onlyIds: null
+    onlyIds: null,
+    noCap: false
   };
 }
 
@@ -2381,6 +2423,7 @@ function groupMembers(g, cfg = formGroupCfg()) {
       inflows,
       inflowC,
       todayLeftC: leftC,
+      cashCap: cfg.noCap || !valid ? null : cashCapFor(p, rolloverC, cfg.startKey, inflows, base, cfg.keepToday !== true), // (28)
       excludeKeys: valid ? forbiddenBetDays(routines, p, cfg.startKey, cfg.endKey) : [],
       skipEmissions: cfg.skipEmissions.slice(),
       skipKeys: valid ? emissionKeysInRange(p, cfg.startKey, cfg.endKey, cfg.skipEmissions) : [],
@@ -2413,8 +2456,8 @@ function renderGroupPreview() {
   lastPlan = null;
   if (daysBox) daysBox.replaceChildren();
   if (!g) { lastGroup = null; renderGroupActions(); return; }
-  const members = groupMembers(g);
   const unchanged = formSnap !== null && snapForm() === formSnap && savedGroupIds(g).length > 0;
+  const members = groupMembers(g, { ...formGroupCfg(), noCap: unchanged }); // (28) salvo sem alteração: sem teto
   const res = buildGroupPlan(groupBaseParams(), members, { routineId: g.routine.id, name: g.routine.name }, unchanged ? null : todayKey());
   // Motivo amigável pra quem ficou sem meta.
   res.members.forEach((m, i) => {
@@ -2499,7 +2542,7 @@ function renderGroupPreview() {
           dh.appendChild(el('span', `plan-tier plan-tier-${d.tier}`, TIER_LABEL[d.tier]));
           dh.appendChild(el('span', 'plan-day-amount', formatCurrency(fromCents(d.plannedC))));
           dr.appendChild(dh);
-          dr.appendChild(el('div', 'plan-day-lines', describeLines(d.lines)));
+          dr.appendChild(el('div', 'plan-day-lines', d.capped ? `${d.plannedC > 0 ? `${describeLines(d.lines)} · ` : ''}🔒 limitado pelo caixa${d.plannedC > 0 ? '' : ' — aguardando a próxima entrada'}` : describeLines(d.lines)));
           box.appendChild(dr);
         });
         row.appendChild(box);
@@ -2544,6 +2587,8 @@ function renderMemberReserve(pid, member) {
   return box;
 }
 
+let groupChartOffset = 0; // (28)
+
 function renderGroupChart(res) {
   const canvas = $('planChart');
   if (!canvas || !window.Chart) return;
@@ -2571,20 +2616,38 @@ function renderGroupChart(res) {
   });
   // Linha: Rollover previsto do grupo (soma: Rollover de hoje + entradas
   // até o dia − apostado planejado até o dia, de cada plataforma).
+  // (28) Plano começa depois de hoje: desconta o que falta apostar hoje.
+  const t = todayKey();
+  const startsLater = keys.length && keys[0] > t;
   let hasLine = false;
   const line = keys.map(() => 0);
+  let rollNow = 0;
   okMembers.forEach(m => {
     const src = srcById.get(m.platformId);
     if (!src || src.rolloverC === null) return;
     hasLine = true;
-    const proj = computePlanProjections(m.plan.days, { startRolloverC: src.rolloverC, inflows: src.inflows || [] });
+    rollNow += src.rolloverC;
+    const left = startsLater ? todayLeftC(getSavedPlan(m.platformId), findPlatform(m.platformId), t) : 0;
+    const start = Math.max(0, src.rolloverC - left);
+    const proj = computePlanProjections(m.plan.days, { startRolloverC: start, inflows: src.inflows || [] });
     const byKey = new Map(m.plan.days.map((d, idx) => [d.key, proj.rollover[idx]]));
-    let last = src.rolloverC + (src.inflows || []).filter(x => keys.length && x.key < keys[0]).reduce((s2, x) => s2 + x.valueC, 0);
+    let last = start + (src.inflows || []).filter(x => keys.length && x.key < keys[0]).reduce((s2, x) => s2 + x.valueC, 0);
     keys.forEach((k, idx) => {
       if (byKey.has(k)) last = byKey.get(k);
       line[idx] += Math.max(0, last);
     });
   });
+  // (28) Barra de HOJE (plano salvo do grupo) antes do 1º dia.
+  const g0 = currentGroup();
+  const todaySavedC = startsLater && g0 ? savedGroupIds(g0).reduce((s2, id) => { const d = savedTodayDay(id, t); return s2 + (d ? Math.round(Number(d.plannedC) || 0) : 0); }, 0) : 0;
+  const pre = todaySavedC > 0 ? 1 : 0;
+  groupChartOffset = pre;
+  if (pre) {
+    labels.unshift('Hoje');
+    datasets.forEach(ds => { ds.data.unshift(0); ds.borderColor.unshift('rgba(0,0,0,0)'); ds.borderWidth.unshift(0); });
+    datasets.unshift({ type: 'bar', label: 'Hoje (plano salvo)', data: [fromCents(todaySavedC), ...keys.map(() => 0)], backgroundColor: TODAY_BAR_COLOR, stack: 'grupo', yAxisID: 'y', order: 2 });
+    line.unshift(rollNow);
+  }
   if (hasLine) {
     datasets.push({
       type: 'line',
@@ -2602,9 +2665,11 @@ function renderGroupChart(res) {
     callbacks: {
       label: (c) => `${c.dataset.label}: ${formatCurrency(c.parsed.y)}`,
       afterBody: (items) => {
-        const d = lastGroup && lastGroup.res.days[items[0].dataIndex];
+        const idx = items[0].dataIndex - groupChartOffset;
+        if (idx < 0) return ['Hoje — plano salvo (o Calendário segue este)'];
+        const d = lastGroup && lastGroup.res.days[idx];
         if (!d) return [];
-        return [`Total do dia: ${formatCurrency(fromCents(d.plannedC))} · ${d.platforms} plataforma(s)${items[0].dataIndex === maxIdx ? ' · 🔝 dia mais alto' : ''}`];
+        return [`Total do dia: ${formatCurrency(fromCents(d.plannedC))} · ${d.platforms} plataforma(s)${idx === maxIdx ? ' · 🔝 dia mais alto' : ''}`];
       }
     }
   };
@@ -3087,7 +3152,8 @@ function buildPlanRow(saved, opts, t, tomorrow) {
     target: fromCents(targetC),
     reservedC: row.reservedAfterC,
     targetMode: keep ? 'manual' : 'auto',
-    ...platformDayKeys(p, sp, tomorrow, sp.endKey)
+    ...platformDayKeys(p, sp, tomorrow, sp.endKey),
+    cashCap: cashCapFor(p, row.rolloverC, tomorrow, memberInflows(p, sp.endKey), row.speed, opts.deductToday) // (28)
   };
   const plan = buildPlan(params, t);
   if (!plan.ok) return { ...row, significant: false, error: plan.error };
@@ -3125,7 +3191,9 @@ function buildGroupRow(g, opts, t, tomorrow) {
     groupReserve,
     followGroup: g.routine.action === 'bet' ? sp.followRoutineId === g.routine.id : true,
     deductToday: opts.deductToday,
-    onlyIds: new Set(ids)
+    onlyIds: new Set(ids),
+    noCap: false,
+    keepToday: !opts.deductToday // (28) resto de hoje não vai ser apostado
   };
   const members = groupMembers(g, cfg);
   const base = {
