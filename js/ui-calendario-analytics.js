@@ -20,6 +20,14 @@
 //
 // SEGURANÇA: nomes só por textContent.
 //
+// === (Sub-entrega 29) 🏁 ENCERRAR O DIA + RESULTADO DO DIA ===
+// Cartão da plataforma: 📈 R.B. do dia junto do apostado; hoje, com o lucro
+// ≥ meta do dia e ainda faltando apostar, 💡 sugere encerrar. "🏁 Encerrar
+// o dia" (substitui o ⏭ Parar hoje): mostra apostado / meta / R.B. /
+// multiplicador, pede o motivo e abre o 🔄 do Planejador já preenchido —
+// o resto vai pros próximos dias e o dia de hoje fica 🏁 no histórico
+// (conta como cumprido). Resultado real: card 🏁 Paradas.
+//
 // === (Sub-entrega 25) 🙈 IGNORAR + 📟 ENCERRADOS ===
 // Dia que já passou (planejado vindo do histórico): "🙈 Ignorar" no cartão
 // da plataforma e no "🔎 De onde vem o planejado". O dia sai de todas as
@@ -52,6 +60,8 @@ import {
   monthTitle, shiftMonth, monthRange, addDaysKey, buildDayPlatforms, suggestForRow, dayStatus
 } from './calendar-logic.js';
 import { requestPlanejadorFocus, requestStopToday } from './ui-planejador.js';
+
+const STOP_REASON_LABEL = { premio: '💰 Prêmio alto', meta: '🎯 Meta de ganho batida', outro: '✋ Outro motivo' };
 import {
   loadPlannerData, isPlannerLoaded, getSavedPlans, getCalendarSettings, saveCalendarSettings, getStrategySettings
 } from './plan-store.js';
@@ -376,6 +386,7 @@ function renderGrid(days) {
     if (ui.layers.has('misterioso') && d.emissions.length) icons.push('🃏');
     if (ui.layers.has('forbidden') && d.forbidden.length) icons.push(d.forbidden.some(f => f.broken) ? '⚠️' : '🚫');
     if (ui.layers.has('ended') && d.ignored.length) icons.push('📟');
+    if (ui.layers.has('plan') && d.plan.rows.some(r => r.stopped)) icons.push('🏁'); // (29)
     if (icons.length) c.appendChild(el('span', 'cal-icons', icons.join('')));
     if (ui.layers.has('routines') && d.routines) {
       const r = d.routines;
@@ -461,6 +472,64 @@ async function chooseDeposit(dayKey, routineId, platformId, choice, reopenKey = 
   }
 }
 
+// (29) 🏁 Encerrar o dia: resumo + motivo → 🔄 do Planejador preenchido.
+function openStopDay(d, x) {
+  if (detailClose) detailClose(); // o Esc/toque fora fica só com este contêiner
+  const row = x.plan;
+  const leftC = Math.max(0, row.plannedC - row.realC);
+  const rb = row.rbC || 0;
+  const overlay = el('div', 'cal-overlay cal-stop-overlay');
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  const box = el('div', 'cal-box plan-choice-box');
+  overlay.appendChild(box);
+  const head = el('div', 'cal-box-head');
+  head.appendChild(el('h3', 'cal-box-title', `🏁 Encerrar o dia · ${x.name}`));
+  const close = button('✕', 'cal-box-close', () => done());
+  close.setAttribute('aria-label', 'Cancelar');
+  head.appendChild(close);
+  box.appendChild(head);
+  const nums = el('div', 'pu-nums');
+  const line = (l, r) => { const dd = el('div', 'pu-line'); dd.appendChild(el('span', 'pu-l', l)); dd.appendChild(el('span', 'pu-r', r)); nums.appendChild(dd); };
+  line('Apostado hoje', `${money(row.realC)} de ${money(row.plannedC)}`);
+  line('Falta (vai pros próximos dias)', money(leftC));
+  line('📈 R.B. do dia', `${rb > 0 ? '+' : (rb < 0 ? '−' : '')}${money(Math.abs(rb))}`);
+  if (row.realC > 0 && rb > 0) line('Multiplicador', `${(rb / row.realC).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}× o apostado`);
+  box.appendChild(nums);
+  box.appendChild(el('span', 'plan-label', 'Motivo'));
+  let reason = rb > 0 && rb >= row.plannedC ? 'premio' : 'outro';
+  const chips = el('div', 'plan-chips');
+  const drawChips = () => {
+    chips.replaceChildren();
+    Object.entries(STOP_REASON_LABEL).forEach(([id, label]) => {
+      const b = button(label, `plan-chip${reason === id ? ' active' : ''}`, () => { reason = id; drawChips(); });
+      b.setAttribute('aria-pressed', reason === id ? 'true' : 'false');
+      chips.appendChild(b);
+    });
+  };
+  drawChips();
+  box.appendChild(chips);
+  box.appendChild(el('p', 'plan-hint', 'O dia conta como cumprido (🏁). O que faltava vai pros próximos dias do plano, pelo Rollover — você confere o antes × depois no 🔄 Atualizar planos antes de confirmar. Se a plataforma estiver num grupo, o grupo é refeito a partir de amanhã.'));
+  const actions = el('div', 'plan-choice-actions');
+  const go = button('Continuar', 'plan-choice-btn', () => {
+    const stop = { at: new Date().toISOString(), reason, rbC: rb, wageredC: row.realC, plannedC: row.plannedC };
+    done();
+    if (detailClose) detailClose();
+    requestStopToday(x.platformId, stop);
+    const btn = document.querySelector('.graficos-tab-btn[data-tab="planejador"]');
+    if (btn) btn.click();
+  });
+  actions.appendChild(go);
+  actions.appendChild(button('Cancelar', 'plan-choice-btn', () => done()));
+  box.appendChild(actions);
+  function onKey(e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(); } }
+  function done() { document.removeEventListener('keydown', onKey, true); overlay.remove(); }
+  overlay.addEventListener('click', e => { if (e.target === overlay) done(); });
+  document.addEventListener('keydown', onKey, true);
+  document.body.appendChild(overlay);
+  go.focus();
+}
+
 // Um cartão por plataforma no contêiner do dia.
 function platformCard(d, x) {
   // (25) Só o dia 🙈 ignorado (📟 ligada): cartão apagado + "Voltar a contar".
@@ -501,8 +570,20 @@ function platformCard(d, x) {
   if (x.plan && x.plan.tier && !d.isToday && d.isFuture) badges.appendChild(el('span', 'cal-badge', `dia ${TIER_LABEL[x.plan.tier] || x.plan.tier}`));
   if (badges.childNodes.length) card.appendChild(badges);
 
+  // (29) 📈 resultado já obtido no dia
+  if (x.plan && !d.isFuture && (x.plan.realC > 0 || x.plan.rbC)) {
+    const rb = x.plan.rbC || 0;
+    const mult = x.plan.realC > 0 && rb > 0 ? ` · ${(rb / x.plan.realC).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}× o apostado` : '';
+    card.appendChild(el('p', `cal-pf-line cal-pf-rb${rb < 0 ? ' cal-line-bad' : (rb > 0 ? ' cal-pf-rb-up' : '')}`, `📈 R.B. do dia: ${rb > 0 ? '+' : (rb < 0 ? '−' : '')}${money(Math.abs(rb))}${mult}`));
+  }
+  // (29) 🏁 dia encerrado
+  if (x.plan && x.plan.stopped) {
+    const st = x.plan.stop || {};
+    const h = st.at ? new Date(st.at) : null;
+    card.appendChild(el('p', 'cal-pf-tip cal-pf-tip-stop', `🏁 Encerrado${h && !isNaN(h.getTime()) ? ` às ${String(h.getHours()).padStart(2, '0')}:${String(h.getMinutes()).padStart(2, '0')}` : ''} · ${STOP_REASON_LABEL[st.reason] || STOP_REASON_LABEL.outro} · R.B. ${st.rbC >= 0 ? '+' : '−'}${money(Math.abs(st.rbC || 0))} · meta original ${money(x.plan.originalC || 0)} (o resto foi pros próximos dias)`));
+  }
   // 👉 o que apostar.
-  if (x.plan) {
+  if (x.plan && !x.plan.stopped) {
     if (d.isFuture) {
       if (x.plan.lines && x.plan.lines.length) card.appendChild(el('p', 'cal-pf-tip', `🎯 ${describeLines(x.plan.lines)}`));
     } else if (d.isToday) {
@@ -511,15 +592,14 @@ function platformCard(d, x) {
         const txt = sug.lines.length
           ? `👉 Falta ${money(sug.leftC)}: ${describeLines(sug.lines)}`
           : `👉 Falta ${money(sug.leftC)}`;
+        // (29) 💡 lucro do dia ≥ meta do dia → vale encerrar
+        const rb = x.plan.rbC || 0;
+        if (rb > 0 && rb >= x.plan.plannedC) {
+          card.appendChild(el('p', 'cal-pf-tip cal-pf-tip-stop', `💡 Lucro de ${money(rb)} hoje — maior que a meta do dia (${money(x.plan.plannedC)}). Vale encerrar o dia?`));
+        }
         card.appendChild(el('p', 'cal-pf-tip cal-pf-tip-now', txt));
-        // (26) ⏭ Parar hoje: o resto vai pros próximos dias (🔄 Atualizar planos)
         const act = el('div', 'cal-pf-actions');
-        act.appendChild(button('⏭ Parar hoje', 'cal-pf-ignore', () => {
-          if (detailClose) detailClose();
-          requestStopToday(x.platformId);
-          const btn = document.querySelector('.graficos-tab-btn[data-tab="planejador"]');
-          if (btn) btn.click();
-        }));
+        act.appendChild(button('🏁 Encerrar o dia', `cal-pf-ignore${rb > 0 && rb >= x.plan.plannedC ? ' cal-pf-stop-hot' : ''}`, () => openStopDay(d, x)));
         card.appendChild(act);
       } else {
         card.appendChild(el('p', 'cal-pf-tip cal-pf-tip-ok', '✅ Meta de aposta do dia cumprida.'));
@@ -620,6 +700,11 @@ function openDayDetail(d) {
     sum.appendChild(el('span', `cal-day-chip cal-st-${st}`, d.isFuture
       ? `🎯 ${money(d.plan.plannedC)} planejado`
       : `🎯 ${money(d.plan.realC)} de ${money(d.plan.plannedC)} · ${STATUS_ICON[st] || ''} ${STATUS_LABEL[st] || ''}`));
+  }
+  // (29) 📈 R.B. do dia (plataformas com plano)
+  if (!d.isFuture && d.plan.rows.length) {
+    const rbAll = d.plan.rows.reduce((s2, r) => s2 + (r.rbC || 0), 0);
+    if (rbAll || d.plan.realC) sum.appendChild(el('span', `cal-day-chip${rbAll < 0 ? ' cal-day-chip-bad' : ''}`, `📈 R.B. ${rbAll > 0 ? '+' : (rbAll < 0 ? '−' : '')}${money(Math.abs(rbAll))}`));
   }
   if (d.deposits.totalC > 0) sum.appendChild(el('span', 'cal-day-chip', `💰 ${money(d.deposits.totalC)} depositado`));
   if (d.routines) {
@@ -760,6 +845,18 @@ function renderMetrics() {
   box.appendChild(kpi('Real × plano', m.overPlanPct === null ? '—' : `${m.overPlanPct >= 0 ? '+' : ''}${pct(m.overPlanPct, 1)}`, m.plannedC ? `${m.daysAbove} dia(s) acima · real ${money(m.realOnPlanC)} de ${money(m.plannedC)}` : 'sem dia com plano fechado', m.overPlanPct !== null && m.overPlanPct > 0 ? 'plan-kpi-vip' : ''));
   renderGameStats(range);
   renderPvrDetail(m);
+  // (29) 🏁 Paradas no período (dias encerrados com o histórico)
+  {
+    let n = 0; let rbStop = 0; let wStop = 0;
+    const hi = range.toKey > todayKey() ? todayKey() : range.toKey;
+    for (let k = range.fromKey; k <= hi; k = addDaysKey(k, 1)) {
+      filteredPlatforms().forEach(p => {
+        const lg = getPlanLogEntry(k, p.id);
+        if (lg && lg.stop && lg.ignored !== true) { n++; rbStop += Math.round(Number(lg.stop.rbC) || 0); wStop += Math.round(Number(lg.stop.wageredC) || 0); }
+      });
+    }
+    if (n) box.appendChild(kpi('🏁 Paradas', `${n} · ${rbStop >= 0 ? '+' : '−'}${money(Math.abs(rbStop))}`, wStop > 0 ? `R.B. ÷ apostado: ${(rbStop / wStop).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}×` : 'encerradas com lucro', 'plan-kpi-bonus'));
+  }
   if (m.limitC > 0) {
     box.appendChild(kpi('Acima do limite 🎲', m.overLimitPct > 0 ? `+${pct(m.overLimitPct, 1)}` : 'Dentro', `${money(m.betDepositC)} de ${money(m.limitC)} no mês`, m.overLimitPct > 0 ? 'cal-kpi-bad' : ''));
   } else {

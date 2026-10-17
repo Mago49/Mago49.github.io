@@ -313,6 +313,15 @@ function sumTodayWagered(platform, today) {
   }, 0);
 }
 
+// (29) Soma de um campo das apostas de hoje (ex.: resultBetting).
+function sumTodayField(platform, today, field) {
+  return Math.round((platform.betEntries || []).reduce((s, e) => {
+    if (!e || !e.date) return s;
+    const d = new Date(e.date);
+    return !isNaN(d.getTime()) && toLocalDateString(d) === today ? s + (Number(e[field]) || 0) : s;
+  }, 0) * 100) / 100;
+}
+
 function agendaItem(list, icon, text, detail, cls = '') {
   const li = el('li', `rt-agenda-item${cls ? ` ${cls}` : ''}`);
   li.appendChild(el('span', 'rt-agenda-icon', icon));
@@ -363,8 +372,10 @@ function renderAgenda(body, today, active) {
       const wagered = sumTodayWagered(platform, today);
       const planned = (Number(day.plannedC) || 0) / 100;
       const done = wagered >= planned - 0.004;
+      const rb = sumTodayField(platform, today, 'resultBetting'); // (29) resultado já obtido
+      const rbText = wagered > 0 || rb ? ` · R.B. ${rb > 0 ? '+' : (rb < 0 ? '−' : '')}${formatCurrency(Math.abs(rb))}` : '';
       agendaItem(list, done ? '✅' : '🎯', `${platform.name}: apostar ${formatCurrency(planned)}`,
-        `apostado hoje ${formatCurrency(wagered)}${done ? ' · feito' : ` · falta ${formatCurrency(Math.max(0, planned - wagered))}`}`, done ? 'rt-agenda-done' : '');
+        `apostado hoje ${formatCurrency(wagered)} de ${formatCurrency(planned)}${rbText}${done ? ' · feito' : ` · falta ${formatCurrency(Math.max(0, planned - wagered))}`}`, done ? 'rt-agenda-done' : '');
     });
   }
 

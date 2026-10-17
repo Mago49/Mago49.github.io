@@ -286,8 +286,9 @@ export async function saveGroupPlans(uid, planDocs, opts = {}) {
 }
 
 // (24) 🔄 Atualizar planos: individuais + grupos num lote só.
-export async function savePlansBatch(uid, planDocs) {
-  return saveManyPlans(uid, planDocs, 'lote');
+// (29) opts.stopFor: { [platformId]: stop } — 🏁 o dia de hoje encerrado.
+export async function savePlansBatch(uid, planDocs, opts = {}) {
+  return saveManyPlans(uid, planDocs, 'lote', opts);
 }
 
 async function saveManyPlans(uid, planDocs, kind, opts = {}) {
@@ -306,7 +307,7 @@ async function saveManyPlans(uid, planDocs, kind, opts = {}) {
   const previous = docs.map(d => cache.plans.get(d.platformId)).filter(Boolean);
   if (previous.length) {
     const today = toLocalDateString(new Date());
-    const logged = await logPlanPastDays(uid, previous, today, getCalendarSettings().retentionDays, { includeTodayFor: todayFreezeIds(docs, today), ignoreFor: opts.ignoreFor || [] });
+    const logged = await logPlanPastDays(uid, previous, today, getCalendarSettings().retentionDays, { includeTodayFor: todayFreezeIds(docs, today), ignoreFor: opts.ignoreFor || [], stopFor: opts.stopFor || null });
     if (!logged.ok) return { ok: false, error: `${logged.error} Nenhum plano foi substituído.` };
   }
   try {

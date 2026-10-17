@@ -10,14 +10,21 @@
 // pelo savePlatform de sempre (cycleHistory). Excluir um registro passa
 // allowShrink: ['cycleHistory'] (única forma de diminuir a lista).
 // Segurança: textContent.
+//
+// === (Sub-entrega 29) 📥 COLAR TABELA DE CICLOS ===
+// openCycleTableImport() — Planejador → "🚫 Não depositar agora": cola as
+// datas de ciclos anteriores (várias plataformas de uma vez), revisa
+// (nova / já existe / futura, como o tipo foi lido, plataforma não achada
+// = escolher na lista) e grava SÓ o cycleHistory pelo savePlatform de
+// sempre. O estado atual (encerrado/ativo, Reinício atual) não muda.
 
 import { state } from './state.js';
-import { showAppConfirm } from './utils.js';
+import { showAppConfirm, showAppAlert } from './utils.js';
 import { savePlatform } from './platforms-store.js';
 import { loadDailySnapshotsRange, DAILY_SNAPSHOT_READ_MAX } from './daily-snapshot-store.js';
 import {
   sortedHistory, cleanHistoryEntry, predictCycle, describePrediction, rebuildFromSnapshots,
-  addDaysKey, dayKeyOf, cycleState, CYCLE_STATES
+  addDaysKey, dayKeyOf, cycleState, CYCLE_STATES, parseCycleTable, refreshCycleRowStatus
 } from './cycle-history-logic.js';
 
 let activeClose = null;
@@ -319,6 +326,171 @@ export function openCycleRebuildAll() {
       ui.busy = false;
       found = {};
       msg = `${changedCount} plataforma(s) gravada(s).${failed.length ? ` Bloqueadas: ${failed.join(', ')} — recarregue e tente de novo.` : ''}`;
+      render();
+    }
+
+    render();
+  });
+}
+
+
+// ---------- (29) 📥 Colar tabela de ciclos ----------
+
+const HOW_LABEL = { coluna: 'pela coluna', palavra: 'pela palavra', ordem: 'pela ordem (Reinício → Fim)' };
+const STATUS_LABEL = { nova: 'nova', existe: 'já existe', futura: 'data futura' };
+
+/** @returns {Promise<{changed:number}>} */
+export function openCycleTableImport() {
+  return new Promise(resolve => {
+    const ui = shell('Tabela de ciclos');
+    let changedCount = 0;
+    ui.onClose = () => resolve({ changed: changedCount });
+    let text = '';
+    let parsed = null; // { rows }
+    let msg = '';
+    const today = dayKeyOf(new Date());
+    const sorted = [...state.platforms].sort((a, b) => String(a.name).localeCompare(String(b.name), 'pt-BR', { numeric: true }));
+
+    function newCount() {
+      return parsed ? parsed.rows.reduce((n, r) => n + (r.platformId ? r.entries.filter(e => e.status === 'nova' && e.checked).length : 0), 0) : 0;
+    }
+
+    function render() {
+      const b = ui.box;
+      b.replaceChildren();
+      b.appendChild(el('h3', 'cy-title', '📥 Colar tabela de ciclos'));
+      if (!parsed) {
+        b.appendChild(el('p', 'cy-note', 'Cole as datas dos ciclos anteriores (uma plataforma por linha). Exemplos que funcionam:'));
+        b.appendChild(el('pre', 'cy-example', 'Plataforma;Reinício;Fim\n1UUU;01/10;12/10\nNNZZ Fim 14/10 Reinício 17/10\n77BET 01/09 20/09 02/10 15/10   (pela ordem: Reinício, Fim, Reinício, Fim)'));
+        // (29b) grade por mês, copiada direto da planilha
+        b.appendChild(el('p', 'cy-note', 'Ou a grade por mês copiada da planilha (selecione do título "Platform" até a última célula e cole). Cada célula: dia ("18"), dia/mês ("06/08") ou "x" quando não teve:'));
+        b.appendChild(el('pre', 'cy-example', 'Platform  Restart(April)  Restart(May)  Restart(June)\nDDUU      x               12/05         13/06\nFXX       13/04           16/05         18'));
+        const ta = el('textarea', 'plan-input cy-textarea');
+        ta.rows = 8;
+        ta.value = text;
+        ta.setAttribute('aria-label', 'Tabela de ciclos');
+        ta.addEventListener('input', () => { text = ta.value; });
+        b.appendChild(ta);
+        if (msg) b.appendChild(el('p', 'cy-note', `✅ ${msg}`));
+        const foot = el('div', 'cy-footer');
+        foot.appendChild(btn('Cancelar', 'cy-cancel', () => ui.close()));
+        foot.appendChild(btn('Ler tabela', 'btn-confirm', () => {
+          if (!text.trim()) return;
+          parsed = parseCycleTable(text, state.platforms, today);
+          // (29b) data com aviso (fora do mês da coluna / coluna sem título) começa desmarcada
+          parsed.rows.forEach(r => r.entries.forEach(e => { e.checked = e.status === 'nova' && !e.warn; }));
+          msg = '';
+          render();
+        }));
+        b.appendChild(foot);
+        setTimeout(() => ta.focus(), 0);
+        return;
+      }
+      b.appendChild(el('p', 'cy-note', `Confira antes de gravar. Só as datas marcadas entram no histórico de ciclos; o estado atual de cada plataforma (encerrado/ativo) não muda.${parsed.header && !parsed.grid ? ' Cabeçalho reconhecido.' : ''}`));
+      if (parsed.grid) {
+        const g = parsed.grid;
+        const nNew = parsed.rows.reduce((n, r) => n + r.entries.filter(e => e.status === 'nova').length, 0);
+        const nWarn = parsed.rows.reduce((n, r) => n + r.entries.filter(e => e.status === 'nova' && e.warn).length, 0);
+        b.appendChild(el('p', 'cy-note', `📅 Grade por mês: ${g.months.join(', ')}. ${parsed.rows.length} linha(s) com dados · ${nNew} data(s) nova(s)${g.skippedEmpty ? ` · ${g.skippedEmpty} linha(s) sem nenhuma data pulada(s)` : ''}.${nWarn ? ` ⚠️ ${nWarn} data(s) com aviso começam DESMARCADAS — confira e marque se estiverem certas.` : ''}`));
+      }
+      parsed.rows.forEach(r => {
+        const box = el('div', `cy-import-row${r.platformId ? '' : ' cy-import-bad'}`);
+        const top = el('div', 'cy-import-top');
+        const sel = el('select', 'plan-input cy-import-select');
+        sel.setAttribute('aria-label', `Plataforma da linha ${r.lineNo}`);
+        const o0 = el('option', '', r.platformId ? '' : `— escolha (“${r.name || 'sem nome'}”) —`);
+        o0.value = '';
+        sel.appendChild(o0);
+        sorted.forEach(p => { const o = el('option', '', p.name); o.value = p.id; sel.appendChild(o); });
+        sel.value = r.platformId || '';
+        sel.addEventListener('change', () => {
+          r.platformId = sel.value || null;
+          refreshCycleRowStatus(r, state.platforms, today);
+          r.entries.forEach(e => { e.checked = e.status === 'nova' && !e.warn; });
+          render();
+        });
+        top.appendChild(el('span', 'cy-import-line', `Linha ${r.lineNo}`));
+        top.appendChild(sel);
+        box.appendChild(top);
+        r.entries.forEach(e => {
+          const lab = el('label', `cy-cand${e.status !== 'nova' ? ' cy-cand-off' : ''}${e.warn ? ' cy-cand-warn' : ''}`);
+          const cb = el('input');
+          cb.type = 'checkbox';
+          cb.checked = !!e.checked && e.status === 'nova' && !!r.platformId;
+          cb.disabled = e.status !== 'nova' || !r.platformId;
+          cb.addEventListener('change', () => { e.checked = cb.checked; renderFoot(); });
+          lab.appendChild(cb);
+          // trocar o tipo (Reinício ↔ Fim) quando a leitura errou
+          const sw = btn(TYPE_LABEL[e.type], 'cy-type-btn', () => {
+            e.type = e.type === 'reset' ? 'end' : 'reset';
+            e.how = 'manual';
+            refreshCycleRowStatus(r, state.platforms, today);
+            e.checked = e.status === 'nova';
+            render();
+          });
+          sw.title = 'Toque pra trocar Reinício ↔ Fim';
+          lab.appendChild(sw);
+          lab.appendChild(el('span', '', ` ${fmt(e.date)} · ${STATUS_LABEL[e.status]}${e.how && e.how !== 'manual' ? ` · ${HOW_LABEL[e.how]}` : ''}${e.warn ? ` · ⚠️ ${e.warn}` : ''}`));
+          box.appendChild(lab);
+        });
+        r.problems.filter(pr => !(r.platformId && /não encontrada|Sem nome/.test(pr))).forEach(pr => box.appendChild(el('p', 'cy-note cy-warn', pr)));
+        b.appendChild(box);
+      });
+      if (msg) b.appendChild(el('p', 'cy-note', msg));
+      const foot = el('div', 'cy-footer');
+      foot.id = 'cyImportFoot';
+      b.appendChild(foot);
+      renderFoot();
+    }
+
+    function renderFoot() {
+      const foot = ui.box.querySelector('#cyImportFoot');
+      if (!foot) return;
+      foot.replaceChildren();
+      foot.appendChild(btn('Voltar ao texto', 'cy-cancel', () => { if (!ui.busy) { parsed = null; render(); } }));
+      const n = newCount();
+      const save = btn(n ? `Gravar ${n} data(s)` : 'Nada marcado', 'btn-confirm', onSave);
+      save.disabled = ui.busy || !n;
+      foot.appendChild(save);
+    }
+
+    async function onSave() {
+      if (ui.busy) return;
+      const byPid = new Map();
+      parsed.rows.forEach(r => {
+        if (!r.platformId) return;
+        r.entries.filter(e => e.checked && e.status === 'nova').forEach(e => {
+          if (!byPid.has(r.platformId)) byPid.set(r.platformId, []);
+          byPid.get(r.platformId).push(e);
+        });
+      });
+      if (!byPid.size) return;
+      const total = [...byPid.values()].reduce((n, l) => n + l.length, 0);
+      const ok = await showAppConfirm(`Gravar ${total} data(s) no histórico de ciclos de ${byPid.size} plataforma(s)? A previsão de volta e os dias pausados do Planejador passam a usar esse histórico.`);
+      if (!ok || ui.closed) return;
+      ui.busy = true;
+      const failed = [];
+      let saved = 0;
+      byPid.forEach((list, pid) => {
+        const p = state.platforms.find(x => x.id === pid);
+        if (!p) { failed.push(pid); return; }
+        const prev = Array.isArray(p.cycleHistory) ? p.cycleHistory : [];
+        const have = new Set(prev.map(e => `${e && e.type}|${e && e.date}`));
+        const nowIso = new Date().toISOString();
+        const add = list.map(e => cleanHistoryEntry({ type: e.type, date: e.date, at: nowIso, source: 'manual' }))
+          .filter(e => e && !have.has(`${e.type}|${e.date}`));
+        if (!add.length) return;
+        p.cycleHistory = [...prev, ...add];
+        if (savePlatform(state.currentUid, p)) { changedCount++; saved += add.length; }
+        else { p.cycleHistory = prev; failed.push(p.name); }
+      });
+      ui.busy = false;
+      if (failed.length) {
+        await showAppAlert(`${saved} data(s) gravada(s). Bloqueadas: ${failed.join(', ')} — recarregue a página e tente de novo (nada foi gravado nessas).`);
+      }
+      parsed = null;
+      text = '';
+      msg = `${saved} data(s) gravada(s) em ${changedCount} plataforma(s).`;
       render();
     }
 

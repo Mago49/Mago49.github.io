@@ -156,6 +156,13 @@
 //    — nenhum dia aposta dinheiro que ainda não entrou. Prévia de plano
 //    salvo SEM alteração não recebe o teto (mostra o salvo como está).
 //    Gráfico: barra de HOJE (plano salvo) antes dos dias do plano.
+// k) (29) AVISO "Rollover mudou": compara o PLANEJADO salvo (amanhã em
+//    diante) com o PLANEJADO refeito agora (os dois com o teto pelo caixa)
+//    — antes comparava com a META, que com o teto nunca bate e deixava o
+//    aviso preso. FOTO do plano (doc.snap: Rollover, entradas previstas,
+//    falta hoje, peso, quando) gravada ao salvar; o 🔄 mostra "🔎 Por que
+//    mudou" separando apostado desde então, depósitos/bônus/ajustes,
+//    entradas previstas e falta hoje.
 // f) requestPlanejadorFocus(platformId): o Calendário abre a aba já com a
 //    plataforma escolhida ("Abrir no Planejador").
 
@@ -178,7 +185,7 @@ import { openSpeedEditor } from './ui-speed.js';
 import { computeCash, CASH_PERIODS, weeklyRoutinePlatformIds } from './newplatform-logic.js';
 import { openNewPlatformEditor } from './ui-new-platform.js';
 import { predictCycle, describePrediction, offCycleKeys, cycleState, nearMonthTurn } from './cycle-history-logic.js';
-import { openCycleRebuildAll } from './ui-cycle-history.js';
+import { openCycleRebuildAll, openCycleTableImport } from './ui-cycle-history.js';
 import {
   loadPlannerData, isPlannerLoaded, getSavedPlan, getSavedPlanIds, getPalette,
   getInvalidPlanCount, savePlan, deletePlan, savePalette,
@@ -1631,6 +1638,19 @@ function renderCycles() {
     }
   });
   actions.appendChild(rb);
+  // (29) 📥 Colar tabela de ciclos (datas de ciclos anteriores)
+  const tb = el('button', 'bet-manage-btn', '📥 Colar tabela de ciclos');
+  tb.type = 'button';
+  tb.addEventListener('click', async () => {
+    tb.disabled = true;
+    try {
+      const r = await openCycleTableImport();
+      if (r.changed && mounted) { renderCycles(); syncInputs(); renderPlatformInfo(); schedulePreview(0); refreshAlert(); }
+    } finally {
+      tb.disabled = false;
+    }
+  });
+  actions.appendChild(tb);
   box.appendChild(actions);
 }
 
@@ -2762,7 +2782,7 @@ async function onSaveGroup(btn) {
     for (const m of okMembers) {
       const p = findPlatform(m.platformId);
       if (!p) { await showAppAlert(`Plataforma ${m.name} não encontrada. Nada foi salvo.`); return; }
-      docs.push(planToDoc(p, m.params, m.plan, nowIso));
+      docs.push(withSnap(planToDoc(p, m.params, m.plan, nowIso), p)); // (29) foto
     }
     const result = await saveGroupPlans(state.currentUid, docs, { ignoreFor });
     if (!result.ok) { await showAppAlert(result.error); return; }
@@ -2913,7 +2933,7 @@ async function onSavePlan(btn) {
   try {
     const target = findPlatform(form.platformId);
     if (!target) { await showAppAlert('Plataforma não encontrada. Nada foi salvo.'); return; }
-    const result = await savePlan(state.currentUid, planToDoc(target, params, plan, new Date().toISOString()), { ignorePast });
+    const result = await savePlan(state.currentUid, withSnap(planToDoc(target, params, plan, new Date().toISOString()), target), { ignorePast }); // (29) foto
     if (!result.ok) { await showAppAlert(result.error); return; }
     if (detach) form.groupRef = null;
     formSnap = snapForm();
@@ -3005,7 +3025,7 @@ async function onRecalc() {
 function todayLeftC(saved, platform, t = todayKey()) {
   if (!platform) return 0;
   const day = planDayOf(saved, t) || (isPlanLogLoaded(state.currentUid) ? getPlanLogEntry(t, platform.id) : null);
-  if (!day) return 0;
+  if (!day || day.stop) return 0; // (29) 🏁 dia encerrado: nada mais a apostar hoje
   return Math.max(0, Math.round(Number(day.plannedC) || 0) - realWageredC(platform, t));
 }
 
@@ -3111,6 +3131,119 @@ function platformDayKeys(platform, sp, startKey, endKey) {
   return out;
 }
 
+// ---------- (29) foto do plano + 🔎 Por que mudou ----------
+
+function sumSince(list, field, atIso) {
+  const at = new Date(atIso).getTime();
+  if (!Number.isFinite(at)) return 0;
+  return (Array.isArray(list) ? list : []).reduce((sum, e) => {
+    const t2 = new Date(e && e.date).getTime();
+    return Number.isFinite(t2) && t2 > at ? sum + toCents(Number(e[field]) || 0) : sum;
+  }, 0);
+}
+
+// Foto do momento em que o plano é salvo (fica no documento, fora dos
+// parâmetros — não entra no "alterado").
+function buildSnap(platform, endKey) {
+  if (!platform) return null;
+  const t = todayKey();
+  const roll = platformRolloverC(platform);
+  return {
+    at: new Date().toISOString(),
+    day: t,
+    rolloverC: roll,
+    inflowC: endKey ? memberInflows(platform, endKey).reduce((s2, x) => s2 + x.valueC, 0) : 0,
+    todayLeftC: todayLeftC(getSavedPlan(platform.id), platform, t),
+    speed: getPlatformSpeed(getSpeedConfig(), platform.id).base
+  };
+}
+
+function withSnap(doc, platform) {
+  const snap = buildSnap(platform, doc && doc.params ? doc.params.endKey : null);
+  return snap ? { ...doc, snap } : doc;
+}
+
+/**
+ * O que mudou desde que o plano foi salvo (centavos). null = plano sem foto.
+ * { rollBefore, rollNow, wageredSince, depositSince, otherC, inflowBefore,
+ *   inflowNow, leftBefore, leftNow, speedBefore, speedNow, sameDay, at }
+ */
+function explainChange(saved, platform, opts = {}) {
+  const snap = saved && saved.snap;
+  if (!snap || !platform || typeof snap.at !== 'string') return null;
+  const t = todayKey();
+  const rollNow = platformRolloverC(platform);
+  const endKey = saved.params && saved.params.endKey;
+  const wageredSince = sumSince(platform.betEntries, 'wagered', snap.at);
+  const depositSince = sumSince(platform.depositLog, 'value', snap.at);
+  const rollBefore = Number.isFinite(snap.rolloverC) ? snap.rolloverC : null;
+  return {
+    at: snap.at,
+    sameDay: snap.day === t,
+    rollBefore,
+    rollNow,
+    wageredSince,
+    depositSince,
+    // Rollover que mudou por outra coisa que não as apostas (depósitos,
+    // bônus, abatimentos/ajustes).
+    otherC: rollBefore !== null && rollNow !== null ? (rollNow - rollBefore) + wageredSince : null,
+    inflowBefore: Math.round(Number(snap.inflowC) || 0),
+    inflowNow: endKey ? memberInflows(platform, endKey).reduce((s2, x) => s2 + x.valueC, 0) : 0,
+    leftBefore: snap.day === t ? Math.round(Number(snap.todayLeftC) || 0) : null,
+    leftNow: todayLeftC(saved, platform, t),
+    deducting: opts.deductToday !== false,
+    speedBefore: Number(snap.speed) || 1,
+    speedNow: getPlatformSpeed(getSpeedConfig(), platform.id).base
+  };
+}
+
+// Soma as explicações das plataformas de um grupo.
+function sumWhy(list) {
+  if (!list.length) return null;
+  const add = (k) => list.reduce((s2, w) => s2 + (Number(w[k]) || 0), 0);
+  const allRoll = list.every(w => w.rollBefore !== null && w.rollNow !== null);
+  return {
+    group: true,
+    count: list.length,
+    at: list.map(w => w.at).sort()[0],
+    sameDay: list.every(w => w.sameDay),
+    rollBefore: allRoll ? add('rollBefore') : null,
+    rollNow: allRoll ? add('rollNow') : null,
+    wageredSince: add('wageredSince'),
+    depositSince: add('depositSince'),
+    otherC: allRoll ? add('otherC') : null,
+    inflowBefore: add('inflowBefore'),
+    inflowNow: add('inflowNow'),
+    leftBefore: list.every(w => w.leftBefore !== null) ? add('leftBefore') : null,
+    leftNow: add('leftNow'),
+    deducting: list[0].deducting,
+    speedBefore: 1,
+    speedNow: 1
+  };
+}
+
+// Linhas legíveis do 🔎 (só o que mudou).
+function describeWhy(w) {
+  if (!w) return ['Sem a foto de quando foi salvo (plano anterior à Sub 29) — a partir do próximo salvamento aparece aqui o que mudou.'];
+  const m = (c) => moneyC(c);
+  const out = [];
+  const when = new Date(w.at);
+  out.push(`Salvo em ${isNaN(when.getTime()) ? '—' : `${String(when.getDate()).padStart(2, '0')}/${String(when.getMonth() + 1).padStart(2, '0')} ${String(when.getHours()).padStart(2, '0')}:${String(when.getMinutes()).padStart(2, '0')}`}${w.group ? ` · ${w.count} plataforma(s)` : ''}.`);
+  if (w.rollBefore !== null && w.rollNow !== null && w.rollNow !== w.rollBefore) {
+    const parts = [];
+    if (w.wageredSince) parts.push(`−${m(w.wageredSince)} apostados desde então`);
+    if (w.otherC) parts.push(`${w.otherC > 0 ? '+' : '−'}${m(Math.abs(w.otherC))} de depósitos/bônus/ajustes${w.depositSince ? ` (depósitos: ${m(w.depositSince)})` : ''}`);
+    out.push(`Rollover ${m(w.rollBefore)} → ${m(w.rollNow)}${parts.length ? ` (${parts.join('; ')})` : ''}.`);
+  }
+  if (w.inflowNow !== w.inflowBefore) out.push(`Entradas previstas ${m(w.inflowBefore)} → ${m(w.inflowNow)} (depósitos de rotina / bônus do Misterioso até o fim do plano).`);
+  if (w.leftBefore !== null && w.leftNow !== w.leftBefore) out.push(`Falta apostar hoje ${m(w.leftBefore)} → ${m(w.leftNow)}${w.deducting ? '' : ' (não descontado)'}.`);
+  else if (w.leftBefore === null && w.leftNow > 0) out.push(`Falta apostar hoje ${m(w.leftNow)}${w.deducting ? ' (descontado)' : ' (não descontado)'}.`);
+  if (!w.group && w.speedNow !== w.speedBefore) out.push(`Peso ⚡ ${formatMult(w.speedBefore)} → ${formatMult(w.speedNow)}.`);
+  if (!w.sameDay) out.push('O plano foi salvo em outro dia: os dias que já passaram saem da conta e a curva recomeça amanhã.');
+  if (out.length === 1) out.push('Nada mudou no caixa — a diferença vem só do arredondamento dos giros.');
+  return out;
+}
+
 // Linha de UM plano individual: antes × depois, guardado, falta hoje.
 function buildPlanRow(saved, opts, t, tomorrow) {
   const p = findPlatform(saved.platformId);
@@ -3132,7 +3265,6 @@ function buildPlanRow(saved, opts, t, tomorrow) {
   const res = applyReserve(baseC, sp.reserve, activationC(p, sp.endKey), row.projected);
   row.autoTargetC = Math.max(0, res.targetC - (opts.deductToday ? row.todayLeftC : 0));
   row.autoReservedC = res.reservedC;
-  row.significant = isSignificantChange(row.beforeC, row.autoTargetC);
   row.choice = row.mode === 'auto' ? 'rollover' : (opts.choices.get(row.key) || (row.mode === 'manual' ? 'keep' : 'rollover'));
   const keep = row.choice === 'keep';
   const targetC = keep ? row.beforeC : row.autoTargetC;
@@ -3156,9 +3288,10 @@ function buildPlanRow(saved, opts, t, tomorrow) {
     cashCap: cashCapFor(p, row.rolloverC, tomorrow, memberInflows(p, sp.endKey), row.speed, opts.deductToday) // (28)
   };
   const plan = buildPlan(params, t);
-  if (!plan.ok) return { ...row, significant: false, error: plan.error };
+  if (!plan.ok) return { ...row, significant: false, error: plan.error, why: explainChange(saved, p, opts) };
   const diff = planUpdateDiff(saved, plan, t);
-  return { ...row, params, plan, afterC: diff.afterC, deltaC: diff.deltaC, days: plan.totals.activeDays, firstKey: plan.days[0].key, lastKey: plan.days[plan.days.length - 1].key };
+  // (29) planejado × planejado (os dois com o teto pelo caixa)
+  return { ...row, params, plan, afterC: diff.afterC, deltaC: diff.deltaC, significant: diff.significant, why: explainChange(saved, p, opts), days: plan.totals.activeDays, firstKey: plan.days[0].key, lastKey: plan.days[plan.days.length - 1].key };
 }
 
 // Linha de UM grupo: soma dos membros (só os que estão com o plano deste
@@ -3216,7 +3349,7 @@ function buildGroupRow(g, opts, t, tomorrow) {
   row.todayLeftC = members.reduce((s2, m) => s2 + (m.todayLeftC || 0), 0);
   row.autoTargetC = members.reduce((s2, m) => s2 + toCents(m.target), 0);
   row.reservedAfterC = members.reduce((s2, m) => s2 + (m.reservedC || 0), 0);
-  row.significant = isSignificantChange(row.beforeC, row.autoTargetC);
+  row.why = sumWhy(saved.map(x => explainChange(x, findPlatform(x.platformId), opts)).filter(Boolean)); // (29)
   row.members = res.members.map((m, i) => {
     const sv = getSavedPlan(m.platformId);
     let err = m.plan ? null : (m.error || 'Sem plano');
@@ -3225,12 +3358,13 @@ function buildGroupRow(g, opts, t, tomorrow) {
         : (members[i].reservedC > 0 ? '🔒 Todo o Rollover ficou guardado — nada a apostar.'
           : (members[i].todayLeftC > 0 ? 'Sem Rollover depois de descontar o que falta hoje — nada a apostar.' : 'Sem Rollover — nada a apostar.'));
     }
-    return { platformId: m.platformId, name: m.name, beforeC: plannedAfterC(sv, t), afterC: m.plan ? m.plan.totals.plannedC : 0, error: err };
+    return { platformId: m.platformId, name: m.name, beforeC: plannedAfterC(sv, t), afterC: m.plan ? m.plan.totals.plannedC : 0, error: err, why: explainChange(sv, findPlatform(m.platformId), opts) };
   });
   if (!res.ok) return { ...row, significant: false, error: `${res.error || 'Nenhuma plataforma do grupo conseguiu montar o plano.'} Toque em "plataformas" pra ver o motivo.` };
   row.res = res;
   row.afterC = res.totals.plannedC;
   row.deltaC = row.afterC - row.beforeC;
+  row.significant = isSignificantChange(row.beforeC, row.afterC); // (29) planejado × planejado
   row.days = res.days.length;
   row.firstKey = res.days.length ? res.days[0].key : tomorrow;
   row.lastKey = res.days.length ? res.days[res.days.length - 1].key : sp.endKey;
@@ -3312,6 +3446,7 @@ function openUpdatePlans(opts = {}) {
   if (busy || loadStatus !== 'ok') return;
   if (updateClose) updateClose();
   const only = opts.onlyPlatformId || null;
+  const stopInfo = opts.stopInfo && opts.stopInfo.platformId === only ? opts.stopInfo : null; // (29) 🏁
   const st = { deductToday: !only, choices: new Map(), checked: new Set(), openGroups: new Set(), rows: [], saving: false };
   const recompute = (first = false) => {
     st.rows = buildUpdateRows({ deductToday: st.deductToday, choices: st.choices });
@@ -3344,6 +3479,10 @@ function openUpdatePlans(opts = {}) {
     x.addEventListener('click', () => requestClose());
     head.appendChild(x);
     box.appendChild(head);
+    if (stopInfo) {
+      const pn = findPlatform(stopInfo.platformId);
+      box.appendChild(el('p', 'plan-unsaved', `🏁 Encerrando o dia de ${pn ? pn.name : ''}: o que faltava apostar hoje vai pros próximos dias e hoje conta como cumprido. Confirme abaixo.`));
+    }
     box.appendChild(el('p', 'plan-hint', `Refaz os planos a partir de amanhã (${fmtDay(tomorrow)}) com o Rollover de agora. Curva, dias, limites e valores de cada plano não mudam. Hoje continua com a meta de hoje — ela fica guardada no histórico, junto com os dias que já passaram.`));
 
     const tools = el('div', 'pu-tools');
@@ -3435,6 +3574,13 @@ function openUpdatePlans(opts = {}) {
     if (r.todayLeftC > 0) line('⏳ Falta apostar hoje', `${moneyC(r.todayLeftC)} · ${st.deductToday ? 'descontado' : 'não descontado'}`);
     line('📅 Período', `${fmtShort(r.firstKey)} a ${fmtShort(r.lastKey)} · ${r.days} dia(s)`);
     card.appendChild(nums);
+    // (29) 🔎 Por que mudou
+    if (r.deltaC !== 0 || r.significant) {
+      const det = el('details', 'pu-why');
+      det.appendChild(el('summary', '', '🔎 Por que mudou'));
+      describeWhy(r.why).forEach(tx => det.appendChild(el('p', 'pu-why-line', tx)));
+      card.appendChild(det);
+    }
 
     // Meta digitada / desconhecida: manter ou usar o Rollover.
     if (r.kind === 'plan' && r.mode !== 'auto') {
@@ -3489,12 +3635,12 @@ function openUpdatePlans(opts = {}) {
       if (r.kind === 'plan') {
         const p = findPlatform(r.id);
         if (!p) { await showAppAlert(`Plataforma ${r.name} não encontrada. Nada foi salvo.`); return; }
-        docs.push(planToDoc(p, r.params, r.plan, nowIso));
+        docs.push(withSnap(planToDoc(p, r.params, r.plan, nowIso), p)); // (29) foto
       } else {
         for (const m of r.res.members.filter(x => x.plan)) {
           const p = findPlatform(m.platformId);
           if (!p) { await showAppAlert(`Plataforma ${m.name} não encontrada. Nada foi salvo.`); return; }
-          docs.push(planToDoc(p, m.params, m.plan, nowIso));
+          docs.push(withSnap(planToDoc(p, m.params, m.plan, nowIso), p)); // (29) foto
         }
       }
     }
@@ -3506,7 +3652,9 @@ function openUpdatePlans(opts = {}) {
     btn.disabled = true;
     let result;
     try {
-      result = await savePlansBatch(state.currentUid, docs);
+      // (29) 🏁 só se a linha da plataforma encerrada foi confirmada
+      const stopFor = stopInfo && docs.some(dd => dd.platformId === stopInfo.platformId) ? { [stopInfo.platformId]: stopInfo.stop } : null;
+      result = await savePlansBatch(state.currentUid, docs, stopFor ? { stopFor } : {});
     } finally {
       busy = false;
       st.saving = false;
@@ -3569,10 +3717,13 @@ function afterPlansChanged(updatedIds, updatedGroups) {
 
 // ---------- (24) "Abrir no Planejador" (Calendário) ----------
 
-// (26) ⏭ Parar hoje: abre o 🔄 já preenchido pra plataforma.
+// (26) ⏭ Parar hoje → (29) 🏁 Encerrar o dia: abre o 🔄 já preenchido pra
+// plataforma; ao confirmar, o dia de hoje dela fica 🏁 no histórico.
 let pendingStopToday = null;
-export function requestStopToday(platformId) {
+let pendingStopInfo = null;
+export function requestStopToday(platformId, stop = null) {
   pendingStopToday = platformId ? String(platformId) : null;
+  pendingStopInfo = stop && pendingStopToday ? { platformId: pendingStopToday, stop } : null;
   requestPlanejadorFocus(platformId);
 }
 
@@ -3587,7 +3738,7 @@ async function consumeFocus() {
   if (!id || !findPlatform(id)) return;
   if (form.platformId === id && !form.groupId) {
     activeTab = 'caixa'; applyTab();
-    if (pendingStopToday === id) { pendingStopToday = null; openUpdatePlans({ onlyPlatformId: id }); }
+    if (pendingStopToday === id) { pendingStopToday = null; openUpdatePlans({ onlyPlatformId: id, stopInfo: pendingStopInfo }); pendingStopInfo = null; }
     return;
   }
   if ((form.platformId || form.groupId) && formSnap !== null && snapForm() !== formSnap) {
@@ -3600,7 +3751,7 @@ async function consumeFocus() {
   selectPlatform(id);
   applyTab();
   if (rootEl && typeof rootEl.scrollIntoView === 'function') rootEl.scrollIntoView({ block: 'start' });
-  if (pendingStopToday === id) { pendingStopToday = null; openUpdatePlans({ onlyPlatformId: id }); }
+  if (pendingStopToday === id) { pendingStopToday = null; openUpdatePlans({ onlyPlatformId: id, stopInfo: pendingStopInfo }); pendingStopInfo = null; }
 }
 
 // ---------- API pública (view-graficos.js) ----------

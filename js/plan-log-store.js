@@ -43,6 +43,12 @@
 //   setPlanLogIgnored(uid, ids, true|false)
 //   logPlanPastDays(..., { ignoreFor }) — troca de plano (individual ↔
 //   grupo / excluir): os dias do plano antigo nascem (ou ficam) ignorados.
+//
+// === (Sub-entrega 29) 🏁 ENCERRAR O DIA ===
+// logPlanPastDays(..., { stopFor: { [platformId]: stop } }): o dia de HOJE
+// congelado leva `stop` = { at, reason, rbC, wageredC, plannedC } (quando
+// já existia, só o campo stop é gravado — regra do Firestore). O
+// Calendário conta o dia como cumprido (meta = o apostado até parar).
 
 import { db, collection, doc, getDocs, writeBatch, query, where, orderBy, limit, documentId } from './firebase-init.js';
 import { state } from './state.js';
@@ -158,6 +164,7 @@ export async function logPlanPastDays(uid, plans, todayKey, retentionDays = DEFA
   const cutoff = retentionCutoff(todayKey, retentionDays);
   const todayFor = new Set(opts && opts.includeTodayFor ? [...opts.includeTodayFor].map(String) : []);
   const ignoreFor = new Set(opts && opts.ignoreFor ? [...opts.ignoreFor].map(String) : []); // (25)
+  const stopFor = cleanStopMap(opts && opts.stopFor, todayKey); // (29)
   const wanted = [];
   (plans || []).forEach(plan => {
     if (!plan || !Array.isArray(plan.days)) return;
@@ -183,25 +190,30 @@ export async function logPlanPastDays(uid, plans, todayKey, retentionDays = DEFA
   const nowIso = new Date().toISOString();
   const toWrite = [];
   const toIgnore = []; // (25) já existiam: só marca ignored
+  const toStop = [];   // (29) já existiam: só grava stop
   const seen = new Set();
   wanted.forEach(({ plan, day }) => {
     const id = planLogId(day.key, plan.platformId);
     if (seen.has(id)) return;
     seen.add(id);
     const ignore = ignoreFor.has(String(plan.platformId));
+    const stop = day.key === todayKey ? stopFor.get(String(plan.platformId)) || null : null; // (29)
     if (existing.has(id)) {
       if (ignore && existing.get(id).ignored !== true) toIgnore.push(id);
+      if (stop) toStop.push({ id, stop });
       return;
     }
     const data = buildDoc(plan, day, nowIso);
     if (ignore) { data.ignored = true; data.ignoredAt = nowIso; }
+    if (stop) data.stop = stop;
     toWrite.push({ id, data });
   });
 
   // Um lote só quando cabe (tudo ou nada); acima de 400, em partes.
   const ops = [
     ...toWrite.map(w => ({ kind: 'set', id: w.id, data: w.data })),
-    ...toIgnore.map(id => ({ kind: 'update', id, data: { ignored: true, ignoredAt: nowIso } }))
+    ...toIgnore.map(id => ({ kind: 'update', id, data: { ignored: true, ignoredAt: nowIso } })),
+    ...toStop.map(x => ({ kind: 'update', id: x.id, data: { stop: x.stop } }))
   ];
   try {
     for (let i = 0; i < ops.length; i += BATCH_MAX) {
@@ -220,8 +232,28 @@ export async function logPlanPastDays(uid, plans, todayKey, retentionDays = DEFA
     existing.forEach((v, k) => cache.byId.set(k, v));
     toWrite.forEach(w => { if (w.data.date >= cache.fromKey && w.data.date <= cache.toKey) cache.byId.set(w.id, w.data); });
     toIgnore.forEach(id => { const cur = cache.byId.get(id); if (cur) cache.byId.set(id, { ...cur, ignored: true, ignoredAt: nowIso }); });
+    toStop.forEach(x => { const cur = cache.byId.get(x.id); if (cur) cache.byId.set(x.id, { ...cur, stop: x.stop }); });
   }
   return { ok: true, written: toWrite.length, ignored: toIgnore.length + toWrite.filter(w => w.data.ignored).length };
+}
+
+// (29) { [platformId]: stop } → Map com o stop limpo (tipos garantidos).
+export const STOP_REASONS = Object.freeze(['premio', 'meta', 'outro']);
+function cleanStopMap(src, todayKey) {
+  const out = new Map();
+  if (!src || typeof src !== 'object') return out;
+  Object.entries(src).forEach(([pid, st]) => {
+    if (!st || typeof st !== 'object') return;
+    out.set(String(pid), {
+      at: typeof st.at === 'string' ? st.at : new Date().toISOString(),
+      day: todayKey,
+      reason: STOP_REASONS.includes(st.reason) ? st.reason : 'outro',
+      rbC: Math.round(Number(st.rbC) || 0),
+      wageredC: Math.max(0, Math.round(Number(st.wageredC) || 0)),
+      plannedC: Math.max(0, Math.round(Number(st.plannedC) || 0))
+    });
+  });
+  return out;
 }
 
 /**

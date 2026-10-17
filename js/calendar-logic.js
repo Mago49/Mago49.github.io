@@ -51,6 +51,10 @@
 //    ele). Fica em d.ignored só pra camada 📟 Encerrados mostrar.
 // h) (27) Depósito ⏸ pausado / ⏭ adiado (ciclo encerrado): neutros —
 //    não deixam a plataforma em "Pendentes" (routine-logic.js).
+// i) (29) 🏁 Dia ENCERRADO (log.stop): a meta do dia vira o que foi
+//    apostado até parar — o dia conta como cumprido em tudo (Calendário,
+//    Aderência, 🏆 Grupos); a meta original fica em originalC. Linhas do
+//    plano levam rbC (R.B. do dia) pro "resultado já obtido".
 // e) computeRealMetrics devolve planRows: os dias × plataformas que formam
 //    o planejado do "Real × plano".
 
@@ -189,7 +193,8 @@ export function planDayFor(dayKey, platformId, world) {
       stakesC: stakesC.length ? stakesC : stakesFromLines(lines),
       buy: cleanBuy(log.buy),
       source: 'log',
-      ignored: log.ignored === true // (25)
+      ignored: log.ignored === true, // (25)
+      ...stopInfo(log) // (29)
     };
   };
   if (dayKey < world.todayKey) {
@@ -198,6 +203,25 @@ export function planDayFor(dayKey, platformId, world) {
   }
   if (pday) return fromPlan();
   return log ? fromLog() : null;
+}
+
+// (29) 🏁 Dia encerrado: meta efetiva = o apostado até parar.
+function stopInfo(log) {
+  const st = log && log.stop && typeof log.stop === 'object' ? log.stop : null;
+  if (!st) return {};
+  const original = Math.round(Number(log.plannedC) || 0);
+  const upto = Math.max(0, Math.round(Number(st.wageredC) || 0));
+  return {
+    stopped: true,
+    stop: { at: String(st.at || ''), reason: String(st.reason || 'outro'), rbC: Math.round(Number(st.rbC) || 0), wageredC: upto },
+    originalC: original,
+    plannedC: Math.min(original, upto)
+  };
+}
+
+/** R.B. (resultado) lançado no dia, em centavos. */
+export function realRBC(platform, dayKey) {
+  return (platform.betEntries || []).reduce((s2, e) => (entryKey(e) === dayKey ? s2 + toC(e.resultBetting) : s2), 0);
 }
 
 /** Planejado de (dia, plataforma), em centavos (null = sem plano no dia ou 🙈 ignorado). */
@@ -261,7 +285,9 @@ export function buildCalendarMonth(ym, world) {
         // (23) faixa, linhas e valores permitidos — o contêiner do dia sugere a aposta.
         d.plan.rows.push({
           platformId: p.id, name: String(p.name || ''), plannedC, realC, status, overC: Math.max(0, realC - plannedC),
-          tier: pd.tier, lines: pd.lines, stakesC: pd.stakesC, buy: pd.buy, source: pd.source
+          tier: pd.tier, lines: pd.lines, stakesC: pd.stakesC, buy: pd.buy, source: pd.source,
+          rbC: d.isFuture ? 0 : realRBC(p, d.key), // (29) resultado já obtido
+          ...(pd.stopped ? { stopped: true, stop: pd.stop, originalC: pd.originalC } : {})
         });
       } else if (realC > 0) {
         d.offPlan.push({ platformId: p.id, name: String(p.name || ''), realC });
