@@ -2797,3 +2797,43 @@
   cursor: pointer;
 }
 .plan-choice-btn:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+
+/* (Sub-entrega 27) Prévia não salva · Hoje no plano salvo · depósito pausado */
+.plan-unsaved {
+  margin: 0 0 0.5rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 10px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  color: #9a3412;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.plan-saved-today {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin: 0 0 0.6rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 10px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+.plan-saved-today-head { margin: 0; font-size: 0.84rem; font-weight: 800; color: #1e3a8a; }
+.plan-saved-today-row { display: flex; justify-content: space-between; gap: 0.6rem; font-size: 0.8rem; color: #334155; }
+.plan-saved-today-name { font-weight: 700; flex-shrink: 0; }
+.plan-saved-today-val { text-align: right; min-width: 0; overflow-wrap: anywhere; }
+.cal-pf-actions { flex-wrap: wrap; gap: 0.4rem; }
+.rt-item-acts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0.35rem; justify-content: flex-end; }
+.rt-mini-btn {
+  min-height: 32px;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #fff;
+  color: #334155;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.rt-item-paused, .rt-item-deferred { opacity: 0.85; }
