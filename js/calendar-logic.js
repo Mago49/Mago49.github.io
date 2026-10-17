@@ -49,6 +49,8 @@
 // g) (25) 🙈 Dia IGNORADO no histórico: fora de todas as contas
 //    (plannedFor devolve null — Calendário, Aderência e 🏆 Grupos leem por
 //    ele). Fica em d.ignored só pra camada 📟 Encerrados mostrar.
+// h) (27) Depósito ⏸ pausado / ⏭ adiado (ciclo encerrado): neutros —
+//    não deixam a plataforma em "Pendentes" (routine-logic.js).
 // e) computeRealMetrics devolve planRows: os dias × plataformas que formam
 //    o planejado do "Real × plano".
 
@@ -315,12 +317,14 @@ export function buildCalendarMonth(ym, world) {
         if (items.length) d.routines = { source: 'log', items, ...summarizeItems(items) };
       } else {
         world.routines.forEach(r => {
-          evaluateRoutineDay(r, platforms, d.key, d.isToday ? world.todayKey : null, d.isToday ? (world.marksToday || {}) : {})
+          evaluateRoutineDay(r, platforms, d.key, d.isToday ? world.todayKey : null, d.isToday ? (world.marksToday || {}) : {}, d.isToday && world.marksFor ? { marksFor: world.marksFor } : {})
             .forEach(it => items.push({
               routineId: r.id, name: r.name, emoji: r.emoji, action: r.action || null,
               platformId: it.platformId, platformName: it.platformName,
               status: d.isToday ? it.status : 'due',
-              amount: d.isToday ? it.amount : null, minimum: it.minimum
+              amount: d.isToday ? it.amount : null, minimum: it.minimum,
+              choice: d.isToday ? (it.choice || null) : null, // (27) depósito pausado: escolha do dia
+              deferredFrom: it.deferredFrom || null
             }));
         });
         if (items.length) {

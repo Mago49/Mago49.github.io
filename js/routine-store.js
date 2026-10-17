@@ -302,8 +302,25 @@ export async function writeDayLogs(uid, dayDocs) {
   return { ok: true, written: todo.length };
 }
 
+// Grava o mapa de marcas do dia (documento inteiro: date + marks). A
+// memória só muda depois do commit.
+async function writeMarks(uid, dayKey, marks, what) {
+  try {
+    const batch = writeBatch(db);
+    batch.set(doc(col(uid, 'routineMarks'), dayKey), { date: dayKey, marks, updatedAt: new Date().toISOString() });
+    await batch.commit();
+  } catch (err) {
+    console.error(`Erro ao salvar ${what}:`, err);
+    return { ok: false, error: 'Não foi possível salvar a marcação. Verifique a internet e tente de novo.' };
+  }
+  if (!cache || cache.uid !== uid) return { ok: false, error: 'A sessão mudou durante a gravação.' };
+  cache.marks.set(dayKey, marks);
+  return { ok: true };
+}
+
 /**
- * Marca/desmarca um lembrete no dia. Grava o documento do dia inteiro.
+ * Marca/desmarca um lembrete no dia. Grava o documento do dia inteiro
+ * (o mapa lido da memória — as escolhas de depósito do dia vão junto).
  */
 export async function setReminderMark(uid, dayKey, routineId, platformKey, checked) {
   if (!uid) return { ok: false, error: 'Nenhum usuário logado.' };
@@ -315,16 +332,24 @@ export async function setReminderMark(uid, dayKey, routineId, platformKey, check
   if (checked) marks[routineId][platformKey] = true;
   else delete marks[routineId][platformKey];
   if (Object.keys(marks[routineId]).length === 0) delete marks[routineId];
+  return writeMarks(uid, dayKey, marks, 'lembrete');
+}
 
-  try {
-    const batch = writeBatch(db);
-    batch.set(doc(col(uid, 'routineMarks'), dayKey), { date: dayKey, marks, updatedAt: new Date().toISOString() });
-    await batch.commit();
-  } catch (err) {
-    console.error('Erro ao salvar lembrete:', err);
-    return { ok: false, error: 'Não foi possível salvar a marcação. Verifique a internet e tente de novo.' };
-  }
-  if (!cache || cache.uid !== uid) return { ok: false, error: 'A sessão mudou durante a gravação.' };
-  cache.marks.set(dayKey, marks);
-  return { ok: true };
+/**
+ * (Sub-entrega 27) Depósito pausado (ciclo do Misterioso encerrado):
+ * choice 'force' (depositar mesmo assim) | 'defer' (⏭ adiar) | null
+ * (desfazer). Mesmo documento/mapa dos lembretes (regra do Firestore
+ * inalterada: marks é um mapa).
+ */
+export async function setDepositChoice(uid, dayKey, routineId, platformId, choice) {
+  if (!uid) return { ok: false, error: 'Nenhum usuário logado.' };
+  if (!isRoutinesLoaded(uid)) return { ok: false, error: 'Rotinas não carregadas.' };
+  if (!DAY_RE.test(dayKey) || !isSafeId(routineId) || !isSafeId(platformId) || platformId === '_') return { ok: false, error: 'Escolha inválida.' };
+  if (choice !== null && choice !== 'force' && choice !== 'defer') return { ok: false, error: 'Escolha inválida.' };
+  const marks = getMarks(dayKey);
+  if (!marks[routineId]) marks[routineId] = {};
+  if (choice) marks[routineId][platformId] = choice;
+  else delete marks[routineId][platformId];
+  if (Object.keys(marks[routineId]).length === 0) delete marks[routineId];
+  return writeMarks(uid, dayKey, marks, 'escolha do depósito');
 }

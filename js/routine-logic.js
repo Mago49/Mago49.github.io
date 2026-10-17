@@ -32,6 +32,24 @@
 //   ok       proibição respeitada até agora, hoje (🟢)
 //   Sucesso = done | ok. Falha = missed | broken. pending = em aberto.
 //
+// === (Sub-entrega 27) CICLO DO MISTERIOSO ENCERRADO ===
+// Rotina de DEPÓSITO em plataforma com o ciclo encerrado (🏁 Fim, até a
+// volta prevista; passado: o último Fim sem Reinício depois) fica
+//   paused   ⏸ pausado — NEUTRO (fora do total, não é pendente nem falha)
+// a não ser que o usuário escolha no dia (routineMarks, mesmo mapa dos
+// lembretes, valor texto):
+//   'force'  "Depositar mesmo assim" → volta a contar normal;
+//   'defer'  "⏭ Adiar" → deferred — NEUTRO no dia; o depósito ACOMPANHA
+//            os dias seguintes ("⏭ adiado de DD/MM") até um depósito
+//            daquele tipo quitar (só rotinas de datas fixas — "desde o
+//            último" já se carrega sozinha). Enquanto o ciclo estiver
+//            encerrado o adiado fica ⏸; voltou, fica ⏳ pendente.
+//            Um depósito depois do adiamento quita o adiado E a ocorrência
+//            normal seguinte (nada conta duas vezes).
+// Depósito feito no dia = done sempre. Plataforma "🚫 Sem ciclo" nunca
+// pausa. Rotinas de aposta não mudam (o plano continua apostando).
+// Adiados em aberto: listOpenDeferrals (Caixa do Planejador).
+//
 // === (Sub-entrega 7b) TIPO DO DEPÓSITO ===
 // Campo opcional `depositKind` ('semanal' | 'mensal' | 'aposta' | null) nas
 // rotinas "Depositar" e "Não depositar": "contar só o tipo X". Com ele, a
@@ -61,6 +79,7 @@
 import { toLocalDateString, roundMoney } from './finance-logic.js';
 import { getLevelAt, BET_MINIMUM_BY_LEVEL } from './cycle-logic.js';
 import { isDepositKind, getDepositKindId } from './deposit-kinds.js';
+import { predictCycle, sortedHistory, knownResets, cycleState } from './cycle-history-logic.js';
 
 const r2 = roundMoney;
 const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -98,8 +117,37 @@ export const STATUS_INFO = Object.freeze({
   ok: { icon: '🟢', label: 'Respeitado até agora', success: true },
   pending: { icon: '⏳', label: 'Pendente', success: null },
   missed: { icon: '❌', label: 'Não feito', success: false },
-  broken: { icon: '⚠️', label: 'Quebrou', success: false }
+  broken: { icon: '⚠️', label: 'Quebrou', success: false },
+  // (27) neutros — fora do total
+  paused: { icon: '⏸', label: 'Pausado — ciclo encerrado', success: null, neutral: true },
+  deferred: { icon: '⏭', label: 'Adiado', success: null, neutral: true }
 });
+
+// (27) Escolhas do usuário pra depósito pausado (valor no mapa de marcas).
+export const DEPOSIT_CHOICES = Object.freeze(['force', 'defer']);
+export const DEFER_LOOKBACK_DAYS = 30;
+
+/**
+ * (27) O depósito fica pausado neste dia? (ciclo do Misterioso encerrado)
+ *   hoje/futuro: plataforma encerrada agora, até a volta prevista (sem
+ *                previsão ou atrasada = até voltar);
+ *   passado:     o último Fim até o dia não tem Reinício depois.
+ */
+export function depositPausedOn(platform, dayKey, todayKey = null) {
+  if (!platform || cycleState(platform) === 'no' || !DATE_KEY_RE.test(String(dayKey))) return false;
+  const ref = todayKey || toLocalDateString(new Date());
+  if (dayKey >= ref) {
+    if (!platform.cycleEnded) return false;
+    const p = predictCycle(platform, ref);
+    return !p.expectedReturnKey || !!p.overdue || dayKey < p.expectedReturnKey;
+  }
+  const ends = sortedHistory(platform).filter(e => e.type === 'end' && e.date <= dayKey).map(e => e.date);
+  if (!ends.length) return false;
+  const lastEnd = ends[ends.length - 1];
+  const resets = knownResets(platform).filter(k => k <= dayKey);
+  const lastReset = resets.length ? resets[resets.length - 1] : null;
+  return !lastReset || lastEnd > lastReset;
+}
 
 // ---------- datas ----------
 
@@ -316,6 +364,14 @@ export function evaluateItem(routine, platform, dayKey, todayKey, marks = {}) {
       : sumOnDay(platform.betEntries, dayKey, 'wagered');
     const minimum = getRoutineMinimum(routine, platform, dayKey);
     const ok = minimum > 0 ? amount >= minimum - 0.004 : amount > 0;
+    // (27) Depósito com o ciclo encerrado: pausado / pulado / forçado.
+    if (routine.action === 'deposit' && platform && !ok) {
+      const choice = marks[routine.id] ? marks[routine.id][pid] : null;
+      const paused = depositPausedOn(platform, dayKey, todayKey);
+      if (choice === 'defer') return { status: 'deferred', amount: r2(amount), minimum: r2(minimum), paused, choice };
+      if (paused && choice !== 'force') return { status: 'paused', amount: r2(amount), minimum: r2(minimum), paused };
+      if (paused) return { status: isToday ? 'pending' : 'missed', amount: r2(amount), minimum: r2(minimum), paused, choice };
+    }
     return { status: ok ? 'done' : (isToday ? 'pending' : 'missed'), amount: r2(amount), minimum: r2(minimum) };
   }
 
@@ -328,7 +384,42 @@ export function evaluateItem(routine, platform, dayKey, todayKey, marks = {}) {
 }
 
 // Todos os itens de uma rotina num dia (só onde ela vale).
-export function evaluateRoutineDay(routine, platforms, dayKey, todayKey, marks = {}) {
+// (27) Depósito cumpriu o mínimo em algum dia de (afterKey, uptoKey]?
+function depositedBetween(routine, platform, afterKey, uptoKey) {
+  let k = addDaysKey(afterKey, 1);
+  let guard = 0;
+  while (k <= uptoKey && guard < 400) {
+    const amount = sumOnDay(depositsFor(routine, platform), k, 'value');
+    const min = getRoutineMinimum(routine, platform, k);
+    if (min > 0 ? amount >= min - 0.004 : amount > 0) return true;
+    k = addDaysKey(k, 1);
+    guard++;
+  }
+  return false;
+}
+
+/**
+ * (27) Adiamento em aberto que chega a dayKey: o "⏭ Adiar" mais recente
+ * antes do dia (até 30 dias) ainda sem depósito que o quite antes do dia.
+ * marksFor(dayKey) → marcas do dia. Só depósito de DATAS FIXAS.
+ * @returns {string|null} dia do adiamento
+ */
+export function findDeferral(routine, platform, dayKey, marksFor) {
+  if (!routine || routine.action !== 'deposit' || !platform || typeof marksFor !== 'function') return null;
+  if (routine.schedule && routine.schedule.type === 'since-last') return null;
+  for (let i = 1; i <= DEFER_LOOKBACK_DAYS; i++) {
+    const k = addDaysKey(dayKey, -i);
+    const m = marksFor(k) || {};
+    if (m[routine.id] && m[routine.id][platform.id] === 'defer') {
+      return depositedBetween(routine, platform, k, addDaysKey(dayKey, -1)) ? null : k;
+    }
+  }
+  return null;
+}
+
+// opts.marksFor (27): marcas de outros dias — liga o "⏭ adiado de" (hoje
+// e passado; o futuro não recebe, pra não repetir em todos os dias).
+export function evaluateRoutineDay(routine, platforms, dayKey, todayKey, marks = {}, opts = {}) {
   const created = createdDayKey(routine);
   if (created && dayKey < created) return [];
   if (routine.action === 'reminder' && (!routine.platformIds || routine.platformIds.length === 0)) {
@@ -340,8 +431,17 @@ export function evaluateRoutineDay(routine, platforms, dayKey, todayKey, marks =
   (routine.platformIds || []).forEach(pid => {
     const p = byId.get(pid);
     if (!p) return; // plataforma excluída
-    if (!isRoutineDue(routine, p, dayKey)) return;
-    items.push({ platformId: p.id, platformName: p.name, ...evaluateItem(routine, p, dayKey, todayKey, marks) });
+    // (27) adiado de outro dia que ainda não foi quitado
+    const deferredFrom = opts.marksFor ? findDeferral(routine, p, dayKey, opts.marksFor) : null;
+    const due = isRoutineDue(routine, p, dayKey);
+    if (!due && !deferredFrom) return;
+    const it = { platformId: p.id, platformName: p.name, ...evaluateItem(routine, p, dayKey, todayKey, marks) };
+    if (deferredFrom) {
+      it.deferredFrom = deferredFrom;
+      // Dia que não é da rotina: o adiado não vira ❌ no passado (continua devido).
+      if (!due && it.status === 'missed') it.status = 'deferred';
+    }
+    items.push(it);
   });
   return items.sort((a, b) => String(a.platformName).localeCompare(String(b.platformName), 'pt-BR', { numeric: true }));
 }
@@ -351,6 +451,7 @@ export function summarizeItems(items) {
   items.forEach(i => {
     const info = STATUS_INFO[i.status];
     if (!info) return;
+    if (info.neutral) { s.total--; s.neutral = (s.neutral || 0) + 1; return; } // (27) fora do total
     if (info.success === true) s.success++;
     else if (info.success === false) s.fail++;
     else s.pending++;
@@ -361,10 +462,10 @@ export function summarizeItems(items) {
 // Documento do histórico de UM dia (gravado uma vez, nunca reescrito).
 // Guarda cópia de nome/emoji/cor — o histórico continua legível depois de
 // editar ou excluir a rotina.
-export function buildDayLog(routines, platforms, dayKey, marks = {}) {
+export function buildDayLog(routines, platforms, dayKey, marks = {}, opts = {}) {
   const out = {};
   (routines || []).forEach(r => {
-    const items = evaluateRoutineDay(r, platforms, dayKey, null, marks);
+    const items = evaluateRoutineDay(r, platforms, dayKey, null, marks, opts);
     if (items.length === 0) return;
     const itemMap = {};
     items.forEach(i => { itemMap[i.platformId] = { name: String(i.platformName || ''), status: i.status }; });
@@ -628,4 +729,23 @@ export function applyMemberChanges(periods, joins, leaves, todayKey) {
 /** Fecha todos os períodos abertos em todayKey (rotina virando grupo encerrado). */
 export function closeAllPeriods(periods, todayKey) {
   return cleanMemberPeriods(periods).map(x => (x.to === null ? { ...x, to: x.from > todayKey ? x.from : todayKey } : x));
+}
+
+/**
+ * (27) Depósitos ⏭ adiados em aberto (de hoje em diante), pro Caixa.
+ * @returns {Array<{routineId, name, platformId, platformName, fromKey, valueC, paused}>}
+ */
+export function listOpenDeferrals(routines, platforms, todayKey, marksFor) {
+  const out = [];
+  if (typeof marksFor !== 'function') return out;
+  const tomorrow = addDaysKey(todayKey, 1);
+  (routines || []).filter(r => r && r.action === 'deposit').forEach(r => {
+    (platforms || []).filter(p => (r.platformIds || []).includes(p.id)).forEach(p => {
+      const from = findDeferral(r, p, tomorrow, marksFor);
+      if (!from) return;
+      const min = getRoutineMinimum(r, p, todayKey);
+      out.push({ routineId: r.id, name: String(r.name || ''), platformId: p.id, platformName: String(p.name || ''), fromKey: from, valueC: Math.round(min * 100), paused: depositPausedOn(p, todayKey, todayKey) });
+    });
+  });
+  return out;
 }

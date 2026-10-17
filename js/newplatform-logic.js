@@ -304,6 +304,24 @@ export function computeCash(o) {
   weeklyRows.sort((a, b) => (a.next || '').localeCompare(b.next || '') || b.valueC - a.valueC);
   const missing = platforms.filter(p => !withRoutine.has(p.id) && !p.cycleEnded).map(p => String(p.name || ''));
 
+  // ⏭ (Sub-entrega 27) Depósitos ADIADOS em aberto (o.deferred —
+  // routine-logic listOpenDeferrals). Entra só se a rotina não tiver outra
+  // ocorrência prevista no período (o mesmo depósito quita as duas — nada
+  // conta duas vezes). Plataforma com o ciclo encerrado: só a lista
+  // (aguarda a volta), fora do total.
+  const deferredRows = [];
+  const deferredWaiting = [];
+  let deferredC = 0;
+  (o.deferred || []).forEach(df => {
+    const r = (o.routines || []).find(x => x && x.id === df.routineId);
+    const p = platforms.find(x => x.id === df.platformId);
+    if (!r || !p) return;
+    if (df.paused) { deferredWaiting.push(df); return; }
+    if (depositRoutineInflows([r], p, fromKey, toKey).items.length) return;
+    deferredRows.push(df);
+    deferredC += Math.max(0, Math.round(Number(df.valueC) || 0));
+  });
+
   // ⬆️ A mais (orçamento do Misterioso).
   const st = o.strategy || null;
   let extraC = 0;
@@ -355,6 +373,7 @@ export function computeCash(o) {
     extra: { totalC: extraC, note: extraNote },
     bet: { totalC: betC, limitC, usedC: betUsedC },
     newPlatforms: { totalC: newC, events, enabled: !!(o.newConfig && o.newConfig.enabled) },
-    totalC: weeklyC + extraC + betC + newC
+    deferred: { totalC: deferredC, rows: deferredRows, waiting: deferredWaiting }, // (27)
+    totalC: weeklyC + extraC + betC + newC + deferredC
   };
 }

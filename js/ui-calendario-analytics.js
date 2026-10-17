@@ -59,7 +59,7 @@ import {
   loadPlanLogs, getPlanLogEntry, logPlanPastDays, purgeOldPlanLogs, retentionCutoff, PLAN_LOG_RETENTION_OPTIONS,
   setPlanLogIgnored, planLogId
 } from './plan-log-store.js';
-import { loadRoutineData, isRoutinesLoaded, getRoutines, getRoutineLogs, getMarks } from './routine-store.js';
+import { loadRoutineData, isRoutinesLoaded, getRoutines, getRoutineLogs, getMarks, setDepositChoice } from './routine-store.js';
 import { ROUTINE_HISTORY_DAYS } from './routine-logic.js';
 import { DEPOSIT_KINDS } from './deposit-kinds.js';
 import { computeGameStats } from './game-catalog-logic.js';
@@ -76,7 +76,7 @@ const LAYERS = [
 ];
 const STATUS_ICON = { done: '✅', partial: '🟡', miss: '❌', today: '⏳', future: '·' };
 const STATUS_LABEL = { done: 'Cumprido', partial: 'Parcial', miss: 'Não cumprido', today: 'Em andamento', future: 'Planejado' };
-const RT_ICON = { done: '✅', ok: '🟢', pending: '⏳', missed: '❌', broken: '⚠️', due: '·' };
+const RT_ICON = { done: '✅', ok: '🟢', pending: '⏳', missed: '❌', broken: '⚠️', due: '·', paused: '⏸', deferred: '⏭' };
 const RT_ACTION_ICON = { deposit: '💰', reminder: '🔔', 'no-deposit': '🚫💰', bet: '🎲' };
 const TIER_LABEL = { baixo: 'baixo', medio: 'médio', alto: 'alto' };
 
@@ -306,6 +306,7 @@ function computeMonth() {
     routines: routinesOk ? getRoutines() : null,
     routineLogs: routinesOk ? getRoutineLogs() : new Map(),
     marksToday: routinesOk ? getMarks(w.todayKey) : {},
+    marksFor: routinesOk ? getMarks : null, // (27) ⏭ adiados
     hasMisterioso: contextConfirmed ? (p => { try { return !!(resolveCtx(p) || {}).misteriosoTemplate; } catch (e) { return false; } }) : null
   });
 }
@@ -440,6 +441,26 @@ async function toggleIgnored(dayKey, platformId, name, plannedC, realC, ignore) 
   }
 }
 
+// (27) Depositar mesmo assim / pular hoje / desfazer.
+async function chooseDeposit(dayKey, routineId, platformId, choice, reopenKey = dayKey) {
+  if (busy) return;
+  busy = true;
+  let result;
+  try {
+    result = await setDepositChoice(state.currentUid, dayKey, routineId, platformId, choice);
+  } finally {
+    busy = false;
+  }
+  if (!result.ok) { await showAppAlert(result.error); return; }
+  if (!mounted) return;
+  const reopen = !!detailClose;
+  renderAll();
+  if (reopen) {
+    const days = computeMonth();
+    if (days.has(reopenKey)) openDayDetail(days.get(reopenKey));
+  }
+}
+
 // Um cartão por plataforma no contêiner do dia.
 function platformCard(d, x) {
   // (25) Só o dia 🙈 ignorado (📟 ligada): cartão apagado + "Voltar a contar".
@@ -525,14 +546,28 @@ function platformCard(d, x) {
   x.routines.forEach(it => {
     const r = el('div', `cal-pf-line cal-pf-rt${PROBLEM.has(it.status) ? ' cal-line-bad' : ''}`);
     const ic = RT_ACTION_ICON[it.action] || '✔️';
-    r.appendChild(el('span', 'cal-line-l', `${RT_ICON[it.status] || '·'} ${ic} ${it.emoji ? `${it.emoji} ` : ''}${it.name}`));
+    r.appendChild(el('span', 'cal-line-l', `${RT_ICON[it.status] || '·'} ${ic} ${it.emoji ? `${it.emoji} ` : ''}${it.name}${it.deferredFrom ? ` · ⏭ adiado de ${it.deferredFrom.slice(8, 10)}/${it.deferredFrom.slice(5, 7)}` : ''}`));
     let info = '';
-    if (it.action === 'deposit') {
+    if (it.status === 'paused') info = 'ciclo encerrado';
+    else if (it.status === 'deferred') info = it.deferredFrom ? 'continua devido' : 'adiado';
+    else if (it.action === 'deposit') {
       if (d.isToday && it.amount !== null && it.amount !== undefined) info = `${formatCurrency(it.amount)}${it.minimum > 0 ? ` de ${formatCurrency(it.minimum)}` : ''}`;
       else if (it.minimum > 0) info = `mín. ${formatCurrency(it.minimum)}`;
     }
     r.appendChild(el('span', 'cal-line-r', info));
     card.appendChild(r);
+    // (27) Depósito pausado (ciclo encerrado) — escolha do dia (só hoje).
+    if (d.isToday && it.action === 'deposit' && it.routineId && it.status !== 'done') {
+      const acts = el('div', 'cal-pf-actions');
+      if (it.status === 'paused') {
+        acts.appendChild(button('Depositar mesmo assim', 'cal-pf-ignore', () => chooseDeposit(d.key, it.routineId, x.platformId, 'force')));
+        if (!it.deferredFrom) acts.appendChild(button('⏭ Adiar', 'cal-pf-ignore', () => chooseDeposit(d.key, it.routineId, x.platformId, 'defer')));
+      } else if (it.choice === 'force' || it.choice === 'defer') {
+        acts.appendChild(button('Desfazer', 'cal-pf-ignore', () => chooseDeposit(d.key, it.routineId, x.platformId, null)));
+      }
+      if (it.deferredFrom && !it.choice) acts.appendChild(button('Desfazer adiamento', 'cal-pf-ignore', () => chooseDeposit(it.deferredFrom, it.routineId, x.platformId, null, d.key)));
+      if (acts.childNodes.length) card.appendChild(acts);
+    }
   });
 
   // Depósitos feitos.

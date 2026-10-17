@@ -55,7 +55,7 @@ import {
 } from './routine-logic.js';
 import {
   loadRoutineData, isRoutinesLoaded, getRoutines, getRoutineLogs, getMarks, getInvalidRoutineCount,
-  saveRoutine, deleteRoutine, writeDayLogs, setReminderMark
+  saveRoutine, deleteRoutine, writeDayLogs, setReminderMark, setDepositChoice
 } from './routine-store.js';
 import { DEPOSIT_KINDS, getDepositKindInfo } from './deposit-kinds.js';
 import { MISTERIOSO_DEPOSIT_THRESHOLDS } from './misterioso-logic.js';
@@ -244,7 +244,7 @@ async function closeMissingDays() {
   const routines = getRoutines();
   const missing = listMissingLogDays(routines, today, [...getRoutineLogs().keys()]);
   if (missing.length === 0) return;
-  const docs = missing.map(k => buildDayLog(routines, state.platforms, k, getMarks(k)));
+  const docs = missing.map(k => buildDayLog(routines, state.platforms, k, getMarks(k), { marksFor: getMarks })); // (27) adiados
   const result = await writeDayLogs(state.currentUid, docs);
   if (!result.ok) historyNote = result.error;
 }
@@ -285,6 +285,13 @@ function renderAll() {
 // ---------- HOJE ----------
 
 function itemDetail(routine, item) {
+  // (27) ciclo do Misterioso encerrado
+  if (item.status === 'paused') return `${item.deferredFrom ? `⏭ adiado de ${fmtShortKey(item.deferredFrom)} · ` : ''}ciclo encerrado — depósito pausado`;
+  if (item.status === 'deferred') return item.deferredFrom ? `⏭ adiado de ${fmtShortKey(item.deferredFrom)} — continua devido` : '⏭ adiado — vai acompanhar os próximos dias';
+  if (item.deferredFrom) {
+    const minText = item.minimum > 0 ? ` de ${formatCurrency(item.minimum)}` : '';
+    return `⏭ adiado de ${fmtShortKey(item.deferredFrom)} · ${formatCurrency(item.amount)} depositado${minText}`;
+  }
   if (routine.action === 'deposit' || routine.action === 'bet') {
     const verb = routine.action === 'deposit' ? 'depositado' : 'apostado';
     const minText = item.minimum > 0 ? ` de ${formatCurrency(item.minimum)}` : '';
@@ -412,7 +419,7 @@ function renderToday(body) {
   const active = [];
   const notToday = [];
   routines.forEach(r => {
-    const items = evaluateRoutineDay(r, state.platforms, today, today, marks);
+    const items = evaluateRoutineDay(r, state.platforms, today, today, marks, { marksFor: getMarks }); // (27)
     if (items.length) active.push({ r, items, sum: summarizeItems(items) });
     else notToday.push(r);
   });
@@ -463,6 +470,21 @@ function renderToday(body) {
         li.addEventListener('click', toggle);
         li.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
       }
+      // (27) Depósito pausado (ciclo encerrado): depositar mesmo assim / pular hoje.
+      if (r.action === 'deposit' && item.status !== 'done') {
+        const acts = el('span', 'rt-item-acts');
+        const t = todayKey();
+        if (item.status === 'paused') {
+          acts.appendChild(button('Depositar mesmo assim', 'rt-mini-btn', () => onDepositChoice(t, r.id, item.platformId, 'force')));
+          if (!item.deferredFrom) acts.appendChild(button('⏭ Adiar', 'rt-mini-btn', () => onDepositChoice(t, r.id, item.platformId, 'defer')));
+        } else if (item.choice === 'force' || item.choice === 'defer') {
+          acts.appendChild(button('Desfazer', 'rt-mini-btn', () => onDepositChoice(t, r.id, item.platformId, null)));
+        }
+        if (item.deferredFrom && !item.choice) {
+          acts.appendChild(button('Desfazer adiamento', 'rt-mini-btn', () => onDepositChoice(item.deferredFrom, r.id, item.platformId, null)));
+        }
+        if (acts.childNodes.length) li.appendChild(acts);
+      }
       list.appendChild(li);
     });
     box.appendChild(list);
@@ -482,6 +504,24 @@ async function onToggleReminder(routineId, platformKey, checked) {
   busy = true;
   try {
     const result = await setReminderMark(state.currentUid, todayKey(), routineId, platformKey, checked);
+    if (!result.ok) await showAppAlert(result.error);
+  } finally {
+    busy = false;
+    if (mounted) renderAll();
+  }
+}
+
+// (27) DD/MM de uma data AAAA-MM-DD.
+function fmtShortKey(k) {
+  return `${k.slice(8, 10)}/${k.slice(5, 7)}`;
+}
+
+// (27) Escolha do depósito pausado (ciclo encerrado) / adiado.
+async function onDepositChoice(dayKey, routineId, platformId, choice) {
+  if (busy) return;
+  busy = true;
+  try {
+    const result = await setDepositChoice(state.currentUid, dayKey, routineId, platformId, choice);
     if (!result.ok) await showAppAlert(result.error);
   } finally {
     busy = false;
@@ -1133,7 +1173,7 @@ function renderHistory(body) {
       if (k === today) {
         const r = routines.find(x => x.id === row.id);
         if (r) {
-          const items = evaluateRoutineDay(r, state.platforms, k, today, todayMarks);
+          const items = evaluateRoutineDay(r, state.platforms, k, today, todayMarks, { marksFor: getMarks }); // (27)
           if (items.length) sum = summarizeItems(items);
         }
       } else if (logs.has(k) && logs.get(k).routines && logs.get(k).routines[row.id]) {

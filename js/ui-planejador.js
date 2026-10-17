@@ -145,6 +145,12 @@
 //    botões iguais, "🙈 Ignorar" já selecionado) se esses dias continuam
 //    contando. ✕/Esc cancela tudo. Recalcular/Atualizar não perguntam (é o
 //    mesmo plano seguindo).
+// h) (27) CICLO DO MISTERIOSO ENCERRADO: o plano CONTINUA apostando (só
+//    a instável pausa a aposta perto da virada do mês — betPauseKeys); as
+//    rotinas de depósito ficam ⏸ pausadas (routine-logic.js).
+// i) (27) "👁️ Prévia não salva" quando a prévia difere do salvo e
+//    "📌 Hoje no plano salvo" (valor e apostas de hoje; no grupo, por
+//    plataforma) — o Calendário segue sempre o plano salvo.
 // f) requestPlanejadorFocus(platformId): o Calendário abre a aba já com a
 //    plataforma escolhida ("Abrir no Planejador").
 
@@ -175,8 +181,8 @@ import {
   getStrategyPriority, getSpeedConfig, getNewPlatformsConfig, saveStrategySettings,
   saveGroupPlans, deleteGroupPlans, savePlansBatch
 } from './plan-store.js';
-import { loadRoutineData, isRoutinesLoaded, getRoutines } from './routine-store.js';
-import { forbiddenBetDays, routineBetDays, betRoutinesFor, ROUTINE_HISTORY_DAYS, depositRoutineInflows, isPlanGroup } from './routine-logic.js';
+import { loadRoutineData, isRoutinesLoaded, getRoutines, getMarks } from './routine-store.js';
+import { forbiddenBetDays, routineBetDays, betRoutinesFor, ROUTINE_HISTORY_DAYS, depositRoutineInflows, isPlanGroup, listOpenDeferrals } from './routine-logic.js';
 import { buildMisteriosoStrategy, projectMisteriosoInflows } from './strategy-logic.js';
 import { computeAdherence, realWageredC } from './calendar-logic.js';
 import { loadPlanLogs, isPlanLogLoaded, getPlanLogEntry } from './plan-log-store.js';
@@ -499,10 +505,18 @@ function speedAndEmissionKeys(startKey, endKey) {
   const platform = findPlatform(form.platformId);
   const out = { skipEmissions: form.skipEmissions.slice(), skipKeys: [], dayBoost: {}, pauseKeys: [] };
   if (!platform || !startKey || !endKey || startKey > endKey) return out;
-  out.pauseKeys = offCycleKeys(platform, startKey, endKey, todayKey()); // (11c)
+  out.pauseKeys = betPauseKeys(platform, startKey, endKey, todayKey()); // (11c → 27)
   out.skipKeys = emissionKeysInRange(platform, startKey, endKey, form.skipEmissions);
   out.dayBoost = dayBoostsFor(getSpeedConfig(), platform.id, startKey, endKey);
   return out;
+}
+
+// (27) Dias em que o plano NÃO aposta por causa do ciclo: só a instável
+// perto da virada do mês. Ciclo encerrado continua apostando (o depósito
+// é que fica pausado nas rotinas).
+function betPauseKeys(platform, startKey, endKey, today) {
+  if (!platform || cycleState(platform) !== 'unstable') return [];
+  return offCycleKeys(platform, startKey, endKey, today).filter(k => nearMonthTurn(k));
 }
 
 // (11a) Peso normal da plataforma (×1 sem configuração).
@@ -751,6 +765,8 @@ function renderSkeleton() {
             <p id="planStatusLine" class="plan-hint"></p>
           </div>
         </div>
+        <p id="planUnsaved" class="plan-unsaved app-hidden">👁️ Prévia não salva — o Calendário segue o plano salvo até você salvar.</p>
+        <div id="planSavedToday" class="plan-saved-today app-hidden"></div>
         <div class="plan-radar" id="planRadar">
           <div id="planCaution"></div>
           <div id="planAdherence"></div>
@@ -1425,7 +1441,8 @@ function renderCash() {
     }
   }
   const betLimit = getStrategySettings().betDepositMonthlyLimit;
-  const c = computeCash({ platforms: state.platforms, routines, strategy, betLimitReais: betLimit, newConfig: getNewPlatformsConfig(), period: cashPeriod, now });
+  const deferred = isRoutinesLoaded(state.currentUid) ? listOpenDeferrals(routines, state.platforms, todayKey(), getMarks) : []; // (27)
+  const c = computeCash({ platforms: state.platforms, routines, strategy, betLimitReais: betLimit, newConfig: getNewPlatformsConfig(), period: cashPeriod, now, deferred });
   const money = (cents) => formatCurrency(fromCents(cents));
 
   const head = el('div', 'section-heading');
@@ -1494,6 +1511,14 @@ function renderCash() {
     c.bet.limitC > 0 ? `Limite ${money(c.bet.limitC)}/mês · já usado ${money(c.bet.usedC)} este mês` : 'Sem limite definido — informe o valor mensal.',
     betEdit);
 
+  // (27) ⏭ depósitos adiados
+  if (c.deferred && (c.deferred.rows.length || c.deferred.waiting.length)) {
+    const dx = el('div', 'cash-np');
+    c.deferred.rows.forEach(df => dx.appendChild(el('span', 'cash-sub', `${df.platformName} · ${df.name} · adiado de ${fmtShort(df.fromKey)} · ${money(df.valueC)}`)));
+    if (c.deferred.waiting.length) dx.appendChild(el('span', 'cash-sub', `⏸ Aguardando o ciclo voltar (fora do total): ${c.deferred.waiting.map(df => `${df.platformName} ${money(df.valueC)}`).join(', ')}`));
+    row('⏭', 'Depósitos adiados', c.deferred.totalC, 'Adiados que ainda não foram depositados (quitados com o próximo depósito do tipo).', dx);
+  }
+
   // 🆕 novas plataformas
   const npBox = el('div', 'cash-np');
   if (c.newPlatforms.enabled) {
@@ -1545,7 +1570,7 @@ function renderCycles() {
   head.style.padding = '0 0 0.6rem';
   const ht = el('div');
   ht.appendChild(el('h2', '', '🚫 Não depositar agora'));
-  ht.appendChild(el('p', '', 'Fora do ciclo do Misterioso o Planejador não planeja aposta nem depósito.'));
+  ht.appendChild(el('p', '', 'Ciclo encerrado: o plano continua apostando; as rotinas de depósito ficam ⏸ pausadas até a volta (dá pra depositar mesmo assim na aba Rotinas ou no Calendário).'));
   head.appendChild(ht);
   box.appendChild(head);
   const list = el('div', 'cash-list');
@@ -1983,9 +2008,56 @@ function syncTabState() {
   renderTabs();
 }
 
+// (27) 👁️ Prévia não salva + 📌 Hoje no plano salvo.
+function savedTodayDay(pid, t) {
+  const sp = getSavedPlan(pid);
+  const d = planDayOf(sp, t);
+  if (d) return d;
+  const log = isPlanLogLoaded(state.currentUid) ? getPlanLogEntry(t, pid) : null;
+  return log && log.ignored !== true ? log : null;
+}
+
+function renderSavedToday(dirty) {
+  const ban = $('planUnsaved');
+  const box = $('planSavedToday');
+  if (!ban || !box) return;
+  const t = todayKey();
+  box.replaceChildren();
+  let ids = [];
+  if (isGroupMode()) ids = savedGroupIds(currentGroup());
+  else if (form.platformId && getSavedPlan(form.platformId)) ids = [form.platformId];
+  ban.classList.toggle('app-hidden', !(dirty && ids.length));
+  if (!ids.length) { box.classList.add('app-hidden'); return; }
+  const rows = ids.map(id => {
+    const p = findPlatform(id);
+    const d = savedTodayDay(id, t);
+    return { id, name: p ? p.name : id, day: d, real: p ? realWageredC(p, t) : 0 };
+  });
+  const withBet = rows.filter(r => r.day && Number(r.day.plannedC) > 0);
+  const totalC = withBet.reduce((s2, r) => s2 + Math.round(Number(r.day.plannedC) || 0), 0);
+  const realC = withBet.reduce((s2, r) => s2 + r.real, 0);
+  box.classList.remove('app-hidden');
+  if (!withBet.length) {
+    box.appendChild(el('p', 'plan-saved-today-head', `📌 Hoje (${fmtShort(t)}) no plano salvo: sem aposta.`));
+    return;
+  }
+  box.appendChild(el('p', 'plan-saved-today-head', `📌 Hoje (${fmtShort(t)}) no plano salvo: ${formatCurrency(fromCents(totalC))} · apostado ${formatCurrency(fromCents(realC))}`));
+  withBet.forEach(r => {
+    const line = el('div', 'plan-saved-today-row');
+    line.appendChild(el('span', 'plan-saved-today-name', isGroupMode() ? r.name : 'Apostas'));
+    const lines = Array.isArray(r.day.lines) && r.day.lines.length ? describeLines(r.day.lines) : '';
+    line.appendChild(el('span', 'plan-saved-today-val', `${formatCurrency(fromCents(r.real))} de ${formatCurrency(fromCents(Math.round(Number(r.day.plannedC) || 0)))}${lines ? ` · ${lines}` : ''}`));
+    box.appendChild(line);
+  });
+}
+
 function renderActions(plan) {
   if (isGroupMode()) { renderGroupActions(); return; }
   syncTabState();
+  {
+    const sp0 = form.platformId ? getSavedPlan(form.platformId) : null;
+    renderSavedToday(!!sp0 && !sameParams(sp0.params, currentParams()));
+  }
   const platform = findPlatform(form.platformId);
   const saved = platform ? getSavedPlan(platform.id) : null;
   const saveBtn = $('planSave');
@@ -2312,7 +2384,7 @@ function groupMembers(g, cfg = formGroupCfg()) {
       excludeKeys: valid ? forbiddenBetDays(routines, p, cfg.startKey, cfg.endKey) : [],
       skipEmissions: cfg.skipEmissions.slice(),
       skipKeys: valid ? emissionKeysInRange(p, cfg.startKey, cfg.endKey, cfg.skipEmissions) : [],
-      pauseKeys: valid ? offCycleKeys(p, cfg.startKey, cfg.endKey, t) : [],
+      pauseKeys: valid ? betPauseKeys(p, cfg.startKey, cfg.endKey, t) : [],
       dayBoost: valid ? dayBoostsFor(speedCfg, p.id, cfg.startKey, cfg.endKey) : {}
     };
     if (g.routine.action === 'bet' && cfg.followGroup && valid) {
@@ -2558,6 +2630,7 @@ function renderGroupChart(res) {
 
 function renderGroupActions() {
   syncTabState();
+  renderSavedToday(formSnap !== null && snapForm() !== formSnap); // (27)
   const saveBtn = $('planSave');
   const delBtn = $('planDelete');
   const recalcBtn = $('planRecalc');
@@ -2960,7 +3033,7 @@ function platformDayKeys(platform, sp, startKey, endKey) {
     onlyKeys: [],
     followRoutineId: null,
     skipKeys: emissionKeysInRange(platform, startKey, endKey, sp.skipEmissions),
-    pauseKeys: offCycleKeys(platform, startKey, endKey, todayKey()),
+    pauseKeys: betPauseKeys(platform, startKey, endKey, todayKey()),
     dayBoost: dayBoostsFor(getSpeedConfig(), platform.id, startKey, endKey)
   };
   if (sp.followRoutineId) {
