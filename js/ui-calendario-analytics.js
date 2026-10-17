@@ -51,7 +51,7 @@ import {
   buildMonthGrid, buildCalendarMonth, summarizePlanVsReal, computeRealMetrics,
   monthTitle, shiftMonth, monthRange, addDaysKey, buildDayPlatforms, suggestForRow, dayStatus
 } from './calendar-logic.js';
-import { requestPlanejadorFocus } from './ui-planejador.js';
+import { requestPlanejadorFocus, requestStopToday } from './ui-planejador.js';
 import {
   loadPlannerData, isPlannerLoaded, getSavedPlans, getCalendarSettings, saveCalendarSettings, getStrategySettings
 } from './plan-store.js';
@@ -491,6 +491,15 @@ function platformCard(d, x) {
           ? `👉 Falta ${money(sug.leftC)}: ${describeLines(sug.lines)}`
           : `👉 Falta ${money(sug.leftC)}`;
         card.appendChild(el('p', 'cal-pf-tip cal-pf-tip-now', txt));
+        // (26) ⏭ Parar hoje: o resto vai pros próximos dias (🔄 Atualizar planos)
+        const act = el('div', 'cal-pf-actions');
+        act.appendChild(button('⏭ Parar hoje', 'cal-pf-ignore', () => {
+          if (detailClose) detailClose();
+          requestStopToday(x.platformId);
+          const btn = document.querySelector('.graficos-tab-btn[data-tab="planejador"]');
+          if (btn) btn.click();
+        }));
+        card.appendChild(act);
       } else {
         card.appendChild(el('p', 'cal-pf-tip cal-pf-tip-ok', '✅ Meta de aposta do dia cumprida.'));
       }

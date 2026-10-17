@@ -3165,13 +3165,20 @@ function refreshAlert() {
   renderAlert();
 }
 
-function openUpdatePlans() {
+// (26) opts.onlyPlatformId: "⏭ Parar hoje" do Calendário — sem desconto de
+// hoje e só a linha dessa plataforma (ou do grupo dela) marcada.
+function openUpdatePlans(opts = {}) {
   if (busy || loadStatus !== 'ok') return;
   if (updateClose) updateClose();
-  const st = { deductToday: true, choices: new Map(), checked: new Set(), openGroups: new Set(), rows: [], saving: false };
+  const only = opts.onlyPlatformId || null;
+  const st = { deductToday: !only, choices: new Map(), checked: new Set(), openGroups: new Set(), rows: [], saving: false };
   const recompute = (first = false) => {
     st.rows = buildUpdateRows({ deductToday: st.deductToday, choices: st.choices });
-    if (first) st.rows.forEach(r => { if (!r.error && r.significant && r.mode === 'auto') st.checked.add(r.key); });
+    if (first && only) {
+      const gref = (getSavedPlan(only) || {}).params && getSavedPlan(only).params.group;
+      const key = gref ? `g:${gref.routineId}` : `p:${only}`;
+      st.rows.forEach(r => { if (!r.error && (r.key === key || (r.kind === 'plan' && r.id === only))) st.checked.add(r.key); });
+    } else if (first) st.rows.forEach(r => { if (!r.error && r.significant && r.mode === 'auto') st.checked.add(r.key); });
     st.rows.forEach(r => { if (r.error) st.checked.delete(r.key); });
   };
   recompute(true);
@@ -3421,6 +3428,13 @@ function afterPlansChanged(updatedIds, updatedGroups) {
 
 // ---------- (24) "Abrir no Planejador" (Calendário) ----------
 
+// (26) ⏭ Parar hoje: abre o 🔄 já preenchido pra plataforma.
+let pendingStopToday = null;
+export function requestStopToday(platformId) {
+  pendingStopToday = platformId ? String(platformId) : null;
+  requestPlanejadorFocus(platformId);
+}
+
 export function requestPlanejadorFocus(platformId) {
   pendingFocus = platformId ? String(platformId) : null;
   if (mounted && loadStatus === 'ok') consumeFocus();
@@ -3430,7 +3444,11 @@ async function consumeFocus() {
   const id = pendingFocus;
   pendingFocus = null;
   if (!id || !findPlatform(id)) return;
-  if (form.platformId === id && !form.groupId) { activeTab = 'caixa'; applyTab(); return; }
+  if (form.platformId === id && !form.groupId) {
+    activeTab = 'caixa'; applyTab();
+    if (pendingStopToday === id) { pendingStopToday = null; openUpdatePlans({ onlyPlatformId: id }); }
+    return;
+  }
   if ((form.platformId || form.groupId) && formSnap !== null && snapForm() !== formSnap) {
     const ok = await showAppConfirm('Abrir outra plataforma sem salvar? As alterações feitas no plano aberto serão descartadas.');
     if (!ok || !mounted) return;
@@ -3441,6 +3459,7 @@ async function consumeFocus() {
   selectPlatform(id);
   applyTab();
   if (rootEl && typeof rootEl.scrollIntoView === 'function') rootEl.scrollIntoView({ block: 'start' });
+  if (pendingStopToday === id) { pendingStopToday = null; openUpdatePlans({ onlyPlatformId: id }); }
 }
 
 // ---------- API pública (view-graficos.js) ----------
