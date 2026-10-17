@@ -2837,3 +2837,57 @@
   cursor: pointer;
 }
 .rt-item-paused, .rt-item-deferred { opacity: 0.85; }
+
+/* (Sub-entrega 29) 🔎 Por que mudou · 🏁 Encerrar o dia · 📥 tabela de ciclos */
+.pu-why { font-size: 0.8rem; }
+.pu-why summary { cursor: pointer; font-weight: 700; color: #1e3a8a; min-height: 32px; display: flex; align-items: center; }
+.pu-why-line { margin: 0.15rem 0 0; color: #334155; overflow-wrap: anywhere; }
+.cal-pf-rb { font-weight: 700; }
+.cal-pf-rb-up { color: #15803d; }
+.cal-pf-tip-stop {
+  padding: 0.35rem 0.55rem;
+  border-radius: 10px;
+  background: #fef3c7;
+  color: #92400e;
+  font-weight: 700;
+}
+.cal-pf-stop-hot { border-color: #f59e0b; background: #fffbeb; color: #92400e; }
+.cy-example {
+  margin: 0;
+  padding: 0.5rem 0.6rem;
+  border-radius: 10px;
+  background: #f1f5f9;
+  font-size: 0.74rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.cy-textarea { min-height: 150px; resize: vertical; font-family: inherit; }
+.cy-import-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+.cy-import-bad { border-color: #fca5a5; background: #fef2f2; }
+.cy-import-top { display: flex; align-items: center; gap: 0.5rem; }
+.cy-import-line { flex-shrink: 0; font-size: 0.74rem; color: #64748b; font-weight: 700; }
+.cy-import-select { min-height: 38px; padding: 0.3rem 0.5rem; }
+.cy-cand-off { opacity: 0.6; }
+.cy-type-btn {
+  min-height: 30px;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #fff;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.cy-warn { color: #b91c1c; }
+
+/* (Sub-entrega 29b) data com aviso na tabela de ciclos */
+.cy-cand-warn span { color: #f0b429; }
+.cy-type-btn { white-space: nowrap; flex-shrink: 0; }
