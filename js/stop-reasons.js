@@ -186,3 +186,12 @@ export function suggestStopReason(rbC, plannedC) {
   if (rb < 0) return 'perda';
   return 'outro';
 }
+
+/**
+ * (Sub-entrega 32) 🏁 vale? O stop desfeito (↩️ Desfazer) continua gravado
+ * no histórico com undone:true — só deixa de valer.
+ */
+export function activeStop(entry) {
+  const st = entry && entry.stop && typeof entry.stop === 'object' ? entry.stop : null;
+  return st && st.undone !== true ? st : null;
+}

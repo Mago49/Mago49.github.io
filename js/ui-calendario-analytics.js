@@ -59,17 +59,20 @@ import {
   buildMonthGrid, buildCalendarMonth, summarizePlanVsReal, computeRealMetrics,
   monthTitle, shiftMonth, monthRange, addDaysKey, buildDayPlatforms, suggestForRow, dayStatus
 } from './calendar-logic.js';
-import { requestPlanejadorFocus, requestStopToday } from './ui-planejador.js';
+import { requestPlanejadorFocus } from './ui-planejador.js';
 
 import {
   loadPlannerData, isPlannerLoaded, getSavedPlans, getCalendarSettings, saveCalendarSettings, getStrategySettings,
-  getCustomStopReasons, getCustomStopKinds, saveCustomStopReasons
+  getCustomStopReasons, getCustomStopKinds, saveCustomStopReasons,
+  getSavedPlan, stopTodayInPlace, undoStopTodayInPlace // (32) 🏁 no próprio lugar
 } from './plan-store.js';
+import { spreadLeftoverOnPlan, unspreadLeftoverOnPlan } from './plan-logic.js';
 // (31) Motivos do 🏁: fixos + criados pelo usuário (botão +).
 import {
   BUILTIN_STOP_REASONS, BUILTIN_STOP_KINDS, STOP_LABEL_MAX, STOP_EMOJI_MAX, CUSTOM_STOP_REASON_MAX, CUSTOM_STOP_KIND_MAX,
   STOP_EMOJI_SUGGESTIONS, DEFAULT_CUSTOM_EMOJI, DEFAULT_KIND_EMOJI, newCustomStopReasonId, newCustomStopKindId,
-  isDuplicateStopLabel, isDuplicateKindLabel, stopReasonText, stopKindText, stopReasonSnapshot, suggestStopReason
+  isDuplicateStopLabel, isDuplicateKindLabel, stopReasonText, stopKindText, stopReasonSnapshot, suggestStopReason,
+  activeStop
 } from './stop-reasons.js';
 import {
   loadPlanLogs, getPlanLogEntry, logPlanPastDays, purgeOldPlanLogs, retentionCutoff, PLAN_LOG_RETENTION_OPTIONS,
@@ -478,7 +481,97 @@ async function chooseDeposit(dayKey, routineId, platformId, choice, reopenKey = 
   }
 }
 
-// (29) 🏁 Encerrar o dia: resumo + motivo → 🔄 do Planejador preenchido.
+// ---------- (Sub-entrega 32) 🏁 no próprio lugar ----------
+// Encerrar = grava o 🏁 de hoje E soma o que faltava nos próximos dias
+// DAQUELA plataforma (proporcional ao que cada dia já tem) — num lote só.
+// Não passa pelo Planejador, não recalcula pelo Rollover e não mexe nas
+// outras plataformas (nem do grupo). ↩️ Desfazer no mesmo dia.
+
+const SPREAD_NOTE = {
+  'no-future': 'O plano não tem dia de aposta depois de hoje — o resto fica no Rollover (entra quando você refizer o plano no 🔄).',
+  'too-small': 'O resto é menor que 1 giro — os próximos dias não mudam.',
+  'no-plan': 'Sem plano salvo — o resto fica no Rollover.',
+  'no-stakes': 'Sem valores de aposta no plano — o resto fica no Rollover.',
+  nothing: 'Nada faltando hoje — só registra o 🏁.'
+};
+
+// Monta (sem gravar) o 🏁 + o plano com o resto somado.
+function buildStopItem(x, reason) {
+  const t = todayKey();
+  const row = x.plan;
+  const leftC = Math.max(0, row.plannedC - row.realC);
+  const saved = getSavedPlan(x.platformId);
+  const sp = saved ? spreadLeftoverOnPlan(saved, t, leftC) : { ok: false, error: 'no-plan' };
+  const nowIso = new Date().toISOString();
+  const newDoc = sp.ok ? { ...saved, days: sp.days, totals: sp.totals, updatedAt: nowIso } : null;
+  const stop = {
+    at: nowIso, reason, ...stopReasonSnapshot(reason, getCustomStopReasons(), getCustomStopKinds()),
+    rbC: row.rbC || 0, wageredC: row.realC, plannedC: row.plannedC,
+    ...(sp.ok ? { spread: sp.spread, planAt: nowIso, movedC: sp.movedC } : {})
+  };
+  return { platformId: x.platformId, name: x.name, leftC, sp, stop, newDoc };
+}
+
+function spreadText(item) {
+  if (!item.sp.ok) return SPREAD_NOTE[item.sp.error] || SPREAD_NOTE['no-plan'];
+  const keys = Object.keys(item.sp.spread).sort();
+  const parts = keys.slice(0, 5).map(k => `${k.slice(8, 10)}/${k.slice(5, 7)} +${money(item.sp.spread[k].a - item.sp.spread[k].b)}`);
+  return `+${money(item.sp.movedC)} em ${keys.length} dia(s): ${parts.join(' · ')}${keys.length > 5 ? ' …' : ''}${item.sp.movedC !== item.leftC ? ' (arredondado pelos valores de aposta)' : ''}`;
+}
+
+async function commitStops(d, items) {
+  if (busy) return false;
+  busy = true;
+  let res;
+  try {
+    res = await stopTodayInPlace(state.currentUid, items.map(i => ({ platformId: i.platformId, stop: i.stop, newDoc: i.newDoc })));
+  } finally {
+    busy = false;
+  }
+  if (!res.ok) {
+    const names = (ids) => ids.map(id => (items.find(i => i.platformId === id) || {}).name || id).join(', ');
+    if (res.error === 'already') await showAppAlert(`Já encerrado hoje: ${names(res.already)}. Nada foi gravado — recarregue a tela.`);
+    else if (res.error === 'missing') await showAppAlert(`Sem meta de hoje no plano: ${names(res.missing)}. Nada foi gravado.`);
+    else await showAppAlert(res.error);
+    return false;
+  }
+  if (!mounted) return true;
+  renderAll();
+  const days = computeMonth();
+  if (days.has(d.key)) openDayDetail(days.get(d.key));
+  return true;
+}
+
+// ↩️ Desfazer o 🏁 de hoje (o resto volta pra hoje; os dias somados voltam).
+async function undoStop(d, x) {
+  if (busy) return;
+  const raw = activeStop(getPlanLogEntry(d.key, x.platformId));
+  if (!raw) { await showAppAlert('O 🏁 de hoje não foi encontrado — recarregue a tela.'); return; }
+  const saved = getSavedPlan(x.platformId);
+  let restoredDoc = null;
+  let info = { restored: 0, skipped: 0 };
+  if (raw.spread && saved) {
+    info = unspreadLeftoverOnPlan(saved, raw.spread);
+    if (info.restored) restoredDoc = { ...saved, days: info.days, totals: info.totals, updatedAt: new Date().toISOString() };
+  }
+  const backC = Math.max(0, (x.plan.originalC || 0) - x.plan.realC);
+  const ok = await showAppConfirm(`Desfazer o 🏁 de ${x.name}? Hoje volta a cobrar ${money(backC)}${restoredDoc ? ` e os próximos dias perdem o que tinha sido somado (${info.restored} dia(s))` : ''}.${info.skipped ? ` ${info.skipped} dia(s) mudaram depois (plano refeito) e ficam como estão — confira no 🔄 Atualizar.` : ''}`);
+  if (!ok || !mounted) return;
+  busy = true;
+  let res;
+  try {
+    res = await undoStopTodayInPlace(state.currentUid, x.platformId, restoredDoc);
+  } finally {
+    busy = false;
+  }
+  if (!res.ok) { await showAppAlert(res.error); return; }
+  if (!mounted) return;
+  renderAll();
+  const days = computeMonth();
+  if (days.has(d.key)) openDayDetail(days.get(d.key));
+}
+
+// (29) 🏁 Encerrar o dia: resumo + motivo. (32) grava ali mesmo.
 function openStopDay(d, x) {
   if (detailClose) detailClose(); // o Esc/toque fora fica só com este contêiner
   const row = x.plan;
@@ -499,9 +592,11 @@ function openStopDay(d, x) {
   const line = (l, r) => { const dd = el('div', 'pu-line'); dd.appendChild(el('span', 'pu-l', l)); dd.appendChild(el('span', 'pu-r', r)); nums.appendChild(dd); };
   line('Apostado hoje', `${money(row.realC)} de ${money(row.plannedC)}`);
   line('Falta (vai pros próximos dias)', money(leftC));
+  const preview = buildStopItem(x, 'outro'); // (32) só pra mostrar a distribuição
   line('📈 R.B. do dia', `${rb > 0 ? '+' : (rb < 0 ? '−' : '')}${money(Math.abs(rb))}`);
   if (row.realC > 0 && rb > 0) line('Multiplicador', `${(rb / row.realC).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}× o apostado`);
   box.appendChild(nums);
+  box.appendChild(el('p', `cal-stop-spread${preview.sp.ok ? '' : ' cal-line-muted'}`, `📅 ${spreadText(preview)}`)); // (32)
   box.appendChild(el('span', 'plan-label', 'Motivo'));
   // (31) sugestão pelo resultado (prêmio / perda / perda excessiva)
   let reason = suggestStopReason(rb, row.plannedC);
@@ -718,16 +813,16 @@ function openStopDay(d, x) {
   };
   drawChips();
   box.appendChild(chips);
-  box.appendChild(el('p', 'plan-hint', 'O dia conta como cumprido (🏁). O que faltava vai pros próximos dias do plano, pelo Rollover — você confere o antes × depois no 🔄 Atualizar planos antes de confirmar. Se a plataforma estiver num grupo, o grupo é refeito a partir de amanhã.'));
+  box.appendChild(el('p', 'plan-hint', 'O dia conta como cumprido (🏁). O que faltava vai pros próximos dias SÓ desta plataforma — o Rollover, o plano das outras (mesmo do grupo) e a meta de hoje das outras não mudam. Dá pra ↩️ desfazer hoje.'));
   const actions = el('div', 'plan-choice-actions');
-  const go = button('Continuar', 'plan-choice-btn', () => {
-    // (31) id do motivo + cópia do nome/tipo (apagar o motivo depois não muda o dia)
-    const stop = { at: new Date().toISOString(), reason, ...stopReasonSnapshot(reason, getCustomStopReasons(), getCustomStopKinds()), rbC: rb, wageredC: row.realC, plannedC: row.plannedC };
-    done();
-    if (detailClose) detailClose();
-    requestStopToday(x.platformId, stop);
-    const btn = document.querySelector('.graficos-tab-btn[data-tab="planejador"]');
-    if (btn) btn.click();
+  const go = button('🏁 Encerrar', 'plan-choice-btn', async () => {
+    if (busy || saving) return;
+    // (31) id do motivo + cópia do nome/tipo; (32) + o que foi somado em cada dia
+    const item = buildStopItem(x, reason);
+    go.disabled = true;
+    const ok = await commitStops(d, [item]);
+    if (ok) done();
+    else go.disabled = false;
   });
   actions.appendChild(go);
   actions.appendChild(button('Cancelar', 'plan-choice-btn', () => done()));
@@ -746,6 +841,82 @@ function openStopDay(d, x) {
 }
 
 // Um cartão por plataforma no contêiner do dia.
+// (32) 🏁 Encerrar várias: lista DESMARCADA, um motivo pra todas, a
+// confirmação diz quais. Cada uma soma o próprio resto nos próprios dias.
+function openStopMany(d, open) {
+  if (detailClose) detailClose();
+  const items = open.map(x => ({ x, preview: buildStopItem(x, 'outro') }));
+  const picked = new Set();
+  let reason = 'outro';
+  const overlay = el('div', 'cal-overlay cal-stop-overlay');
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  const box = el('div', 'cal-box plan-choice-box');
+  overlay.appendChild(box);
+  const draw = () => {
+    box.replaceChildren();
+    const head = el('div', 'cal-box-head');
+    head.appendChild(el('h3', 'cal-box-title', '🏁 Encerrar várias'));
+    const cl = button('✕', 'cal-box-close', () => done());
+    cl.setAttribute('aria-label', 'Cancelar');
+    head.appendChild(cl);
+    box.appendChild(head);
+    box.appendChild(el('p', 'plan-hint', 'Marque só as plataformas em que você parou por hoje. Nada vem marcado. O resto de cada uma vai pros próximos dias dela.'));
+    const listEl = el('div', 'cal-stop-many');
+    items.forEach(it => {
+      const lab = el('label', `cal-stop-many-row${picked.has(it.x.platformId) ? ' cal-stop-many-on' : ''}`);
+      const cb = el('input');
+      cb.type = 'checkbox';
+      cb.checked = picked.has(it.x.platformId);
+      cb.setAttribute('aria-label', `Encerrar ${it.x.name}`);
+      cb.addEventListener('change', () => { if (cb.checked) picked.add(it.x.platformId); else picked.delete(it.x.platformId); draw(); });
+      lab.appendChild(cb);
+      const txt = el('div', 'cal-stop-many-txt');
+      txt.appendChild(el('span', 'cal-stop-many-name', `${it.x.name} · falta ${money(it.preview.leftC)}`));
+      txt.appendChild(el('span', 'cal-stop-many-note', spreadText(it.preview)));
+      lab.appendChild(txt);
+      listEl.appendChild(lab);
+    });
+    box.appendChild(listEl);
+    box.appendChild(el('span', 'plan-label', 'Motivo (vale pra todas as marcadas)'));
+    const chips = el('div', 'plan-chips cal-stop-reasons');
+    [...BUILTIN_STOP_REASONS.filter(r => !r.hidden), ...getCustomStopReasons()].forEach(r => {
+      const b = button(`${r.emoji} ${r.label}`, `plan-chip${reason === r.id ? ' active' : ''}`, () => { reason = r.id; draw(); });
+      b.setAttribute('aria-pressed', reason === r.id ? 'true' : 'false');
+      chips.appendChild(b);
+    });
+    box.appendChild(chips);
+    const chosen = items.filter(it => picked.has(it.x.platformId));
+    const leftSum = chosen.reduce((s2, it) => s2 + it.preview.leftC, 0);
+    box.appendChild(el('p', 'plan-hint cal-stop-many-sum', chosen.length ? `${chosen.length} marcada(s) · ${money(leftSum)} que faltava hoje vai pros próximos dias delas.` : 'Nenhuma marcada.'));
+    const acts = el('div', 'plan-choice-actions');
+    const go = button(chosen.length ? `🏁 Encerrar (${chosen.length})` : '🏁 Encerrar', 'plan-choice-btn', async () => {
+      if (busy || !chosen.length) return;
+      const ok = await showAppConfirm(`Encerrar hoje em ${chosen.length} plataforma(s): ${chosen.map(it => it.x.name).join(', ')}? Motivo: ${stopReasonText(reason, getCustomStopReasons())}. O que faltava de cada uma vai pros próximos dias dela.`);
+      if (!ok) return;
+      go.disabled = true;
+      const done2 = await commitStops(d, chosen.map(it => buildStopItem(it.x, reason)));
+      if (done2) done();
+      else go.disabled = false;
+    });
+    go.disabled = !chosen.length;
+    acts.appendChild(go);
+    acts.appendChild(button('Cancelar', 'plan-choice-btn', () => done()));
+    box.appendChild(acts);
+  };
+  function onKey(e) {
+    if (e.key !== 'Escape') return;
+    const modal = document.getElementById('appModal');
+    if (modal && modal.style.display === 'flex') return;
+    e.preventDefault(); e.stopPropagation(); done();
+  }
+  function done() { document.removeEventListener('keydown', onKey, true); overlay.remove(); }
+  overlay.addEventListener('click', e => { if (e.target === overlay) done(); });
+  document.addEventListener('keydown', onKey, true);
+  draw();
+  document.body.appendChild(overlay);
+}
+
 function platformCard(d, x) {
   // (25) Só o dia 🙈 ignorado (📟 ligada): cartão apagado + "Voltar a contar".
   if (x.ignored && !x.plan && !x.noPlan && !x.restDay && !x.betRoutines.length && !x.routines.length && !x.deposits.length && !x.emission && !x.forbidden) {
@@ -796,6 +967,11 @@ function platformCard(d, x) {
     const st = x.plan.stop || {};
     const h = st.at ? new Date(st.at) : null;
     card.appendChild(el('p', 'cal-pf-tip cal-pf-tip-stop', `🏁 Encerrado${h && !isNaN(h.getTime()) ? ` às ${String(h.getHours()).padStart(2, '0')}:${String(h.getMinutes()).padStart(2, '0')}` : ''} · ${stopReasonText(st.reason, getCustomStopReasons(), st)} · R.B. ${st.rbC >= 0 ? '+' : '−'}${money(Math.abs(st.rbC || 0))} · meta original ${money(x.plan.originalC || 0)} (o resto foi pros próximos dias)`));
+    if (d.isToday) { // (32) ↩️ só no mesmo dia
+      const act = el('div', 'cal-pf-actions');
+      act.appendChild(button('↩️ Desfazer 🏁', 'cal-pf-ignore', () => undoStop(d, x)));
+      card.appendChild(act);
+    }
   }
   // 👉 o que apostar.
   if (x.plan && !x.plan.stopped) {
@@ -929,6 +1105,15 @@ function openDayDetail(d) {
   if (sum.childNodes.length) box.appendChild(sum);
 
   const list = buildDayPlatforms(d, { showIgnored: ui.layers.has('ended') });
+  // (32) 🏁 Encerrar várias (hoje, 2+ com resto) — abre tudo DESMARCADO.
+  if (d.isToday) {
+    const open = list.filter(p => p.plan && !p.plan.stopped && p.plan.plannedC > p.plan.realC);
+    if (open.length >= 2) {
+      const bar = el('div', 'cal-pf-actions cal-stop-many-bar');
+      bar.appendChild(button(`🏁 Encerrar várias (${open.length} com resto hoje)`, 'cal-pf-ignore', () => openStopMany(d, open)));
+      box.appendChild(bar);
+    }
+  }
   if (!list.length) {
     box.appendChild(el('p', 'cal-text', 'Nada neste dia.'));
   } else {
@@ -1067,7 +1252,8 @@ function renderMetrics() {
     for (let k = range.fromKey; k <= hi; k = addDaysKey(k, 1)) {
       filteredPlatforms().forEach(p => {
         const lg = getPlanLogEntry(k, p.id);
-        if (lg && lg.stop && lg.ignored !== true) { n++; rbStop += Math.round(Number(lg.stop.rbC) || 0); wStop += Math.round(Number(lg.stop.wageredC) || 0); }
+        const st = activeStop(lg); // (32) desfeito não conta
+        if (st && lg.ignored !== true) { n++; rbStop += Math.round(Number(st.rbC) || 0); wStop += Math.round(Number(st.wageredC) || 0); }
       });
     }
     if (n) box.appendChild(kpi('🏁 Paradas', `${n} · ${rbStop >= 0 ? '+' : '−'}${money(Math.abs(rbStop))}`, wStop > 0 ? `R.B. ÷ apostado: ${(rbStop / wStop).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}×` : 'sem aposta antes de parar', rbStop >= 0 ? 'plan-kpi-bonus' : ''));

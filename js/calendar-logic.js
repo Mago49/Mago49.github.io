@@ -65,6 +65,7 @@ import {
   evaluateRoutineDay, summarizeItems, forbiddenBetDays
 } from './routine-logic.js';
 import { buildDayLines, normalizeStakes } from './plan-logic.js';
+import { activeStop } from './stop-reasons.js'; // (32)
 
 export const DEFAULT_PARTIAL_THRESHOLD = 50;
 const MONTH_NAMES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -202,13 +203,13 @@ export function planDayFor(dayKey, platformId, world) {
     return pday ? fromPlan() : null;
   }
   // (29b) hoje 🏁 encerrado vale mesmo com o plano ainda tendo hoje
-  if (pday) return log && log.stop ? fromLog() : fromPlan();
+  if (pday) return activeStop(log) ? fromLog() : fromPlan(); // (32) 🏁 desfeito não vale
   return log ? fromLog() : null;
 }
 
 // (29) 🏁 Dia encerrado: meta efetiva = o apostado até parar.
 function stopInfo(log) {
-  const st = log && log.stop && typeof log.stop === 'object' ? log.stop : null;
+  const st = activeStop(log); // (32) 🏁 desfeito (undone) não vale
   if (!st) return {};
   const original = Math.round(Number(log.plannedC) || 0);
   const upto = Math.max(0, Math.round(Number(st.wageredC) || 0));

@@ -81,7 +81,10 @@ import { DEFAULT_STRATEGY_SETTINGS, sanitizeStrategySettings, STRATEGY_MONEY_MAX
 import { toLocalDateString } from './finance-logic.js';
 import { sanitizeSpeedConfig, priorityResolver } from './speed-logic.js';
 import { sanitizeNewPlatformsConfig } from './newplatform-logic.js';
-import { logPlanPastDays, DEFAULT_PLAN_LOG_RETENTION, PLAN_LOG_RETENTION_OPTIONS } from './plan-log-store.js';
+import {
+  logPlanPastDays, DEFAULT_PLAN_LOG_RETENTION, PLAN_LOG_RETENTION_OPTIONS,
+  prepareStopTodayOps, prepareUndoStopOps, addPlanLogOpsToBatch, applyPlanLogOps
+} from './plan-log-store.js';
 import { sanitizeCustomStopReasons, sanitizeCustomStopKinds, CUSTOM_STOP_REASON_MAX, CUSTOM_STOP_KIND_MAX } from './stop-reasons.js';
 
 const PALETTE_ID = 'palette';
@@ -350,6 +353,81 @@ export async function stopTodayOnly(uid, stopFor) {
   const logged = await logPlanPastDays(uid, plans, today, getCalendarSettings().retentionDays, { stopFor });
   if (!logged.ok) return { ok: false, error: `${logged.error} Hoje não foi encerrado.` };
   return { ok: true, stopped: logged.stopped || 0 };
+}
+
+// ============================================================
+// (Sub-entrega 32) 🏁 NO PRÓPRIO LUGAR (Calendário) — sem o Planejador
+// ============================================================
+// Grava NUM writeBatch só (tudo ou nada): o 🏁 no histórico de hoje
+// (planLog) + o plano de cada plataforma com o resto de hoje somado nos
+// próximos dias (newDoc). newDoc null = só encerra hoje (plano sem dia
+// depois de hoje, resto menor que 1 giro...). O Rollover e as OUTRAS
+// plataformas (mesmo do grupo) não são tocados. Memória só depois do commit.
+
+/**
+ * items: [{ platformId, stop, newDoc|null }]
+ * @returns {Promise<{ok:true} | {ok:false, error, already?, missing?}>}
+ */
+export async function stopTodayInPlace(uid, items) {
+  if (!uid) return { ok: false, error: 'Nenhum usuário logado.' };
+  if (!isPlannerLoaded(uid)) return { ok: false, error: 'Os planos ainda não foram carregados — recarregue a tela.' };
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) return { ok: false, error: 'Nenhuma plataforma marcada.' };
+  if (list.length > 150) return { ok: false, error: 'Plataformas demais de uma vez (máximo 150).' };
+  const seen = new Set();
+  for (const it of list) {
+    if (!it || !isSafeId(it.platformId) || seen.has(it.platformId)) return { ok: false, error: 'Plataforma inválida ou repetida. Nada foi gravado.' };
+    seen.add(it.platformId);
+    if (it.newDoc && (!cache.plans.has(it.platformId) || !isValidPlanDoc(it.platformId, it.newDoc))) {
+      return { ok: false, error: 'Plano inválido. Nada foi gravado.' };
+    }
+  }
+  const today = toLocalDateString(new Date());
+  const prep = await prepareStopTodayOps(uid, list.map(it => ({
+    platformId: it.platformId, plan: cache.plans.get(it.platformId) || null, stop: it.stop
+  })), today);
+  if (!prep.ok) return prep;
+  try {
+    const batch = writeBatch(db);
+    addPlanLogOpsToBatch(batch, uid, prep.ops);
+    list.forEach(it => { if (it.newDoc) batch.set(doc(plansCol(uid), it.platformId), { ...it.newDoc }); });
+    await batch.commit();
+  } catch (err) {
+    console.error('Erro ao encerrar o dia:', err);
+    return { ok: false, error: 'Não foi possível gravar no banco de dados. Nada mudou. Verifique a internet e tente de novo.' };
+  }
+  if (!cache || cache.uid !== uid) return { ok: false, error: 'A sessão mudou durante a gravação — recarregue a página.' };
+  applyPlanLogOps(uid, prep.ops);
+  list.forEach(it => { if (it.newDoc) cache.plans.set(it.platformId, { ...it.newDoc }); });
+  return { ok: true };
+}
+
+/**
+ * ↩️ Desfazer o 🏁 de hoje: o stop fica com undone:true e o plano volta
+ * (restoredDoc, ou null se não havia nada a devolver) — num lote só.
+ * @returns {Promise<{ok:true} | {ok:false, error}>}
+ */
+export async function undoStopTodayInPlace(uid, platformId, restoredDoc) {
+  if (!uid) return { ok: false, error: 'Nenhum usuário logado.' };
+  if (!isPlannerLoaded(uid)) return { ok: false, error: 'Os planos ainda não foram carregados — recarregue a tela.' };
+  if (!isSafeId(platformId)) return { ok: false, error: 'Plataforma inválida.' };
+  if (restoredDoc && (!cache.plans.has(platformId) || !isValidPlanDoc(platformId, restoredDoc))) return { ok: false, error: 'Plano inválido. Nada foi alterado.' };
+  const today = toLocalDateString(new Date());
+  const prep = await prepareUndoStopOps(uid, [platformId], today);
+  if (!prep.ok) return prep;
+  try {
+    const batch = writeBatch(db);
+    addPlanLogOpsToBatch(batch, uid, prep.ops);
+    if (restoredDoc) batch.set(doc(plansCol(uid), platformId), { ...restoredDoc });
+    await batch.commit();
+  } catch (err) {
+    console.error('Erro ao desfazer o 🏁:', err);
+    return { ok: false, error: 'Não foi possível gravar no banco de dados. Nada mudou. Verifique a internet e tente de novo.' };
+  }
+  if (!cache || cache.uid !== uid) return { ok: false, error: 'A sessão mudou durante a gravação — recarregue a página.' };
+  applyPlanLogOps(uid, prep.ops);
+  if (restoredDoc) cache.plans.set(platformId, { ...restoredDoc });
+  return { ok: true };
 }
 
 // (25) opts.ignorePast: os dias passados dos planos excluídos ficam 🙈 ignorados.

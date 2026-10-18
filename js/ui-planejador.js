@@ -178,8 +178,9 @@ import {
   computeGoalProgress, getCautionStatus, computeCautionStats,
   addDaysKey, toCents, fromCents, EMISSION_CYCLE_DAYS, emissionKeysInRange,
   WEEK_MODES, buildGroupPlan, RESERVE_MODES, cleanReserve, applyReserve,
-  planUpdateDiff, isSignificantChange, plannedAfterC, planDayOf
+  planUpdateDiff, isSignificantChange, plannedAfterC, planDayOf, overlaySavedDays
 } from './plan-logic.js';
+import { activeStop } from './stop-reasons.js'; // (32)
 import { getPlatformSpeed, dayBoostsFor, formatMult } from './speed-logic.js';
 import { openSpeedEditor } from './ui-speed.js';
 import { computeCash, CASH_PERIODS, weeklyRoutinePlatformIds } from './newplatform-logic.js';
@@ -2166,7 +2167,10 @@ function renderPreview() {
   // andamento nem apareceria. Qualquer alteração volta a exigir.
   const savedPlan = getSavedPlan(platform.id);
   const unchangedSaved = !!savedPlan && sameParams(savedPlan.params, params);
-  const plan = buildPlan(unchangedSaved ? { ...params, cashCap: null } : params, unchangedSaved ? null : todayKey()); // (28)
+  let plan = buildPlan(unchangedSaved ? { ...params, cashCap: null } : params, unchangedSaved ? null : todayKey()); // (28)
+  // (32) salvo e sem alteração: os dias que o 🏁 mudou (só no documento)
+  // entram por cima — o Planejador mostra o mesmo que o Calendário.
+  if (unchangedSaved) plan = overlaySavedDays(plan, savedPlan);
   lastPlan = plan.ok ? { params, plan } : null;
   renderGoalCard(platform, params);
 
@@ -2219,6 +2223,7 @@ function renderPreview() {
   if (warnBox) {
     warnBox.replaceChildren();
     const notes = [...plan.warnings];
+    if (plan.overlaidDays) notes.push(`🏁 ${plan.overlaidDays} dia(s) com o resto de um dia encerrado somado (Calendário → 🏁 Encerrar o dia).`);
     if (unchangedSaved && plan.days[0].key <= todayKey()) {
       notes.push(`Plano em andamento desde ${fmtDay(plan.days[0].key)}. A linha do Rollover parte do valor de hoje — use "Recalcular a partir de amanhã" pra replanejar os dias que faltam.`);
     }
@@ -3030,7 +3035,7 @@ async function onRecalc() {
 function todayLeftC(saved, platform, t = todayKey()) {
   if (!platform) return 0;
   const day = todayPlanDay(saved, platform, t);
-  if (!day || day.stop) return 0; // (29) 🏁 dia encerrado: nada mais a apostar hoje
+  if (!day || activeStop(day)) return 0; // (29) 🏁 dia encerrado: nada mais a apostar hoje (32: desfeito volta a cobrar)
   return Math.max(0, Math.round(Number(day.plannedC) || 0) - realWageredC(platform, t));
 }
 
@@ -3039,7 +3044,7 @@ function todayLeftC(saved, platform, t = todayKey()) {
 function todayPlanDay(saved, platform, t = todayKey()) {
   if (!platform) return null;
   const log = isPlanLogLoaded(state.currentUid) ? getPlanLogEntry(t, platform.id) : null;
-  if (log && log.stop) return log; // 🏁 vale mesmo com o plano ainda tendo hoje
+  if (activeStop(log)) return log; // 🏁 vale mesmo com o plano ainda tendo hoje
   return planDayOf(saved, t) || log;
 }
 
@@ -3270,7 +3275,7 @@ function describeWhy(w) {
   }
   if (w.inflowNow !== w.inflowBefore) out.push(`Entradas previstas ${m(w.inflowBefore)} → ${m(w.inflowNow)} (depósitos de rotina / bônus do Misterioso até o fim do plano).`);
   if (w.leftBefore !== null && w.leftNow !== w.leftBefore) out.push(`Falta apostar hoje ${m(w.leftBefore)} → ${m(w.leftNow)}${w.deducting ? '' : ' (não descontado)'}.`);
-  else if (w.leftNow > 0) out.push(`Falta apostar hoje ${m(w.leftNow)}${w.deducting ? ' — descontado da meta. Se você já parou por hoje, desligue "Descontar": o resto vai pros próximos dias e hoje fica 🏁.' : ' — vai pros próximos dias.'}`);
+  else if (w.leftNow > 0) out.push(`Falta apostar hoje ${m(w.leftNow)}${w.deducting ? ' — descontado da meta. Se você já parou por hoje, use 🏁 Encerrar o dia no Calendário: o resto vai pros próximos dias dela.' : ' — vai pros próximos dias.'}`);
   if (!w.group && w.speedNow !== w.speedBefore) out.push(`Peso ⚡ ${formatMult(w.speedBefore)} → ${formatMult(w.speedNow)}.`);
   if (!w.sameDay) out.push('O plano foi salvo em outro dia: os dias que já passaram saem da conta e a curva recomeça amanhã.');
   if (out.length === 1) out.push('Nada mudou no caixa — a diferença vem só do arredondamento dos giros.');
@@ -3500,7 +3505,7 @@ function openUpdatePlans(opts = {}) {
       const gref = (getSavedPlan(only) || {}).params && getSavedPlan(only).params.group;
       const key = gref ? `g:${gref.routineId}` : `p:${only}`;
       st.rows.forEach(r => { if (canPick(r) && (r.key === key || (r.kind === 'plan' && r.id === only))) st.checked.add(r.key); });
-    } else if (first) st.rows.forEach(r => { if (!r.error && r.significant && r.mode === 'auto') st.checked.add(r.key); });
+    } // (32) D1: nada vem marcado sozinho — o usuário marca (ou "Marcar os ⚠️")
     st.rows.forEach(r => { if (!canPick(r)) st.checked.delete(r.key); });
   };
   recompute(true);
@@ -3532,23 +3537,9 @@ function openUpdatePlans(opts = {}) {
     box.appendChild(el('p', 'plan-hint', `Refaz os planos a partir de amanhã (${fmtDay(tomorrow)}) com o Rollover de agora. Curva, dias, limites e valores de cada plano não mudam. Hoje continua com a meta de hoje — ela fica guardada no histórico, junto com os dias que já passaram.`));
 
     const tools = el('div', 'pu-tools');
-    const ded = el('label', 'plan-toggle pu-deduct');
-    const dedIn = el('input');
-    dedIn.type = 'checkbox';
-    dedIn.checked = st.deductToday;
-    dedIn.addEventListener('change', () => {
-      st.deductToday = dedIn.checked;
-      recompute();
-      // (29b) parou por hoje: marca quem tem resto (precisa salvar pra ficar 🏁)
-      if (!st.deductToday) st.rows.forEach(r => { if (canPick(r) && r.todayKeepC > 0) st.checked.add(r.key); });
-      draw();
-    });
-    ded.appendChild(dedIn);
-    ded.appendChild(document.createTextNode(' Descontar o que ainda falta apostar hoje'));
-    tools.appendChild(ded);
-    tools.appendChild(el('p', 'plan-hint pu-deduct-hint', st.deductToday
-      ? 'Ligado: você ainda vai apostar o resto de hoje. Já parou por hoje? Desligue.'
-      : '🏁 Desligado = parei por hoje: ao confirmar, hoje fica encerrado (conta como cumprido) nas plataformas marcadas e o resto vai pros próximos dias.'));
+    // (32) D2: sem a caixa "Descontar" — o que falta apostar hoje é sempre
+    // descontado; quem parou usa o 🏁 Encerrar o dia (Calendário).
+    tools.appendChild(el('p', 'plan-hint pu-deduct-hint', 'O que ainda falta apostar hoje é descontado (você ainda vai apostar). Parou por hoje numa plataforma? Use 🏁 Encerrar o dia no Calendário — o resto vai pros próximos dias dela.'));
     const row2 = el('div', 'plan-chips');
     const markSig = el('button', 'plan-chip', 'Marcar os ⚠️');
     markSig.type = 'button';

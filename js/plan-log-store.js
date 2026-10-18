@@ -53,7 +53,7 @@
 import { db, collection, doc, getDocs, writeBatch, query, where, orderBy, limit, documentId } from './firebase-init.js';
 import { state } from './state.js';
 import { toLocalDateString } from './finance-logic.js';
-import { isStopReasonId, stopReasonSnapshot, isStopKindId } from './stop-reasons.js';
+import { isStopReasonId, stopReasonSnapshot, isStopKindId, activeStop } from './stop-reasons.js';
 
 export const PLAN_LOG_RETENTION_OPTIONS = Object.freeze([90, 180, 365, 0]); // 0 = sempre
 export const DEFAULT_PLAN_LOG_RETENTION = 180;
@@ -273,10 +273,125 @@ function cleanStopMap(src, todayKey) {
         : stopReasonSnapshot(isStopReasonId(st.reason) ? st.reason : 'outro', []).reasonKindLabel, // (31)
       rbC: Math.round(Number(st.rbC) || 0),
       wageredC: Math.max(0, Math.round(Number(st.wageredC) || 0)),
-      plannedC: Math.max(0, Math.round(Number(st.plannedC) || 0))
+      plannedC: Math.max(0, Math.round(Number(st.plannedC) || 0)),
+      // (32) o que foi somado nos próximos dias (pro ↩️ Desfazer exato)
+      ...(st.spread && typeof st.spread === 'object' ? { spread: cleanSpread(st.spread) } : {}),
+      ...(typeof st.planAt === 'string' ? { planAt: st.planAt } : {}),
+      ...(Number.isFinite(Number(st.movedC)) ? { movedC: Math.round(Number(st.movedC)) } : {})
     });
   });
   return out;
+}
+
+// (32) { [dayKey]: { b, a, bt, bl } } — antes/depois de cada dia somado.
+function cleanSpread(src) {
+  const out = {};
+  Object.entries(src || {}).slice(0, 120).forEach(([k, v]) => {
+    if (!DAY_RE.test(k) || !v || typeof v !== 'object') return;
+    out[k] = {
+      b: Math.max(0, Math.round(Number(v.b) || 0)),
+      a: Math.max(0, Math.round(Number(v.a) || 0)),
+      bt: Math.max(0, Math.round(Number(v.bt) || 0)),
+      bl: (Array.isArray(v.bl) ? v.bl : []).filter(l => l && Number(l.stakeC) > 0).slice(0, 20).map(l => (l.kind === 'buy'
+        ? { kind: 'buy', stakeC: Math.round(Number(l.stakeC)), multiplier: Math.round(Number(l.multiplier) || 0), subtotalC: Math.round(Number(l.subtotalC) || 0) }
+        : { kind: 'spin', stakeC: Math.round(Number(l.stakeC)), count: Math.round(Number(l.count) || 0), subtotalC: Math.round(Number(l.subtotalC) || 0) }))
+    };
+  });
+  return out;
+}
+
+// ============================================================
+// (Sub-entrega 32) 🏁 NO PRÓPRIO LUGAR — operações preparadas SEM gravar:
+// quem chama (plan-store) junta histórico + planos num writeBatch só
+// (tudo ou nada). Lê o dia de HOJE do banco na hora (nunca grava em cima
+// do que não viu).
+// ============================================================
+
+/**
+ * items: [{ platformId, plan (documento salvo ATUAL ou null), stop }]
+ * @returns {Promise<{ok:true, ops} | {ok:false, error, already?, missing?}>}
+ */
+export async function prepareStopTodayOps(uid, items, todayKey) {
+  if (!uid) return { ok: false, error: 'Nenhum usuário logado.' };
+  const list = Array.isArray(items) ? items : [];
+  let existing;
+  try {
+    existing = await readRange(uid, todayKey, todayKey);
+  } catch (err) {
+    console.error('Histórico do planejado: falha ao ler hoje antes do 🏁:', err);
+    return { ok: false, error: 'Não foi possível ler o histórico de hoje. Nada foi gravado — verifique a internet e tente de novo.' };
+  }
+  const stops = cleanStopMap(Object.fromEntries(list.map(i => [String(i.platformId), i.stop])), todayKey);
+  const nowIso = new Date().toISOString();
+  const ops = [];
+  const already = [];
+  const missing = [];
+  list.forEach(i => {
+    const pid = String(i.platformId);
+    const id = planLogId(todayKey, pid);
+    const stop = stops.get(pid);
+    const ex = existing.get(id);
+    if (ex && activeStop(ex)) { already.push(pid); return; }
+    if (ex) { ops.push({ kind: 'update', id, data: { stop }, merged: { ...ex, stop } }); return; }
+    const day = i.plan && Array.isArray(i.plan.days) ? i.plan.days.find(d => d && d.key === todayKey) : null;
+    if (!day) { missing.push(pid); return; }
+    const data = buildDoc(i.plan, day, nowIso);
+    data.stop = stop;
+    ops.push({ kind: 'set', id, data });
+  });
+  if (already.length) return { ok: false, error: 'already', already };
+  if (missing.length) return { ok: false, error: 'missing', missing };
+  return { ok: true, ops };
+}
+
+/**
+ * ↩️ Desfazer 🏁 de hoje: o stop fica gravado com undone:true (o campo não
+ * é apagado — firebase-init não exporta deleteField e o rastro serve às
+ * análises). Só a chave `stop` muda (regra do Firestore).
+ * @returns {Promise<{ok:true, ops, stops:{[pid]: stop}} | {ok:false, error}>}
+ */
+export async function prepareUndoStopOps(uid, platformIds, todayKey) {
+  if (!uid) return { ok: false, error: 'Nenhum usuário logado.' };
+  let existing;
+  try {
+    existing = await readRange(uid, todayKey, todayKey);
+  } catch (err) {
+    console.error('Histórico do planejado: falha ao ler hoje antes de desfazer:', err);
+    return { ok: false, error: 'Não foi possível ler o histórico de hoje. Nada foi alterado — verifique a internet e tente de novo.' };
+  }
+  const nowIso = new Date().toISOString();
+  const ops = [];
+  const stops = {};
+  for (const pid of (platformIds || []).map(String)) {
+    const id = planLogId(todayKey, pid);
+    const ex = existing.get(id);
+    const st = ex ? activeStop(ex) : null;
+    if (!st) return { ok: false, error: 'O 🏁 de hoje não foi encontrado (já desfeito ou de outro dia). Nada foi alterado.' };
+    stops[pid] = st;
+    const stop = { ...st, undone: true, undoneAt: nowIso };
+    ops.push({ kind: 'update', id, data: { stop }, merged: { ...ex, stop } });
+  }
+  return { ok: true, ops, stops };
+}
+
+export function addPlanLogOpsToBatch(batch, uid, ops) {
+  (ops || []).forEach(o => (o.kind === 'set'
+    ? batch.set(doc(col(uid), o.id), o.data)
+    : batch.update(doc(col(uid), o.id), o.data)));
+}
+
+/** Depois do commit: a memória passa a ver o que foi gravado. */
+export function applyPlanLogOps(uid, ops) {
+  if (!cache || cache.uid !== uid) return;
+  (ops || []).forEach(o => {
+    if (o.kind === 'set') {
+      if (o.data.date >= cache.fromKey && o.data.date <= cache.toKey) cache.byId.set(o.id, o.data);
+    } else {
+      const cur = cache.byId.get(o.id);
+      if (cur) cache.byId.set(o.id, { ...cur, ...o.data });
+      else if (o.merged && o.merged.date >= cache.fromKey && o.merged.date <= cache.toKey) cache.byId.set(o.id, o.merged);
+    }
+  });
 }
 
 /**

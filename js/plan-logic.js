@@ -1071,3 +1071,125 @@ export function computeCautionStats(platforms, threshold = DEFAULT_CAUTION_THRES
 // Preset de proteção sugerido na semana de cautela (a tela aplica só se o
 // usuário tocar).
 export const CAUTION_PRESET = Object.freeze({ intensity: 2, curve: 'uniforme', buyEnabled: false });
+
+// ---------- (Sub-entrega 32) 🏁 resto de hoje → próximos dias ----------
+
+function cleanSpreadLines(lines) {
+  return (Array.isArray(lines) ? lines : []).map(l => (l && l.kind === 'buy'
+    ? { kind: 'buy', stakeC: Math.round(Number(l.stakeC) || 0), multiplier: Math.round(Number(l.multiplier) || 0), subtotalC: Math.round(Number(l.subtotalC) || 0) }
+    : { kind: 'spin', stakeC: Math.round(Number(l && l.stakeC) || 0), count: Math.round(Number(l && l.count) || 0), subtotalC: Math.round(Number(l && l.subtotalC) || 0) }));
+}
+
+function docTotals(doc, days) {
+  const plannedC = days.reduce((s, d) => s + (Math.round(Number(d.plannedC) || 0)), 0);
+  const targetC = Math.round(Number(doc && doc.totals && doc.totals.targetC) || 0);
+  return {
+    ...(doc && doc.totals ? doc.totals : {}),
+    plannedC,
+    excessC: Math.max(0, plannedC - targetC),
+    activeDays: days.filter(d => Number(d.plannedC) > 0).length
+  };
+}
+
+/**
+ * Soma o resto de hoje (leftoverC) nos dias DEPOIS de hoje do plano salvo,
+ * proporcional ao que cada dia já tem (dia sem aposta continua sem). Cada
+ * dia é remontado com os valores de aposta do plano (buildDayLines) — o
+ * arredondamento de um dia passa pro seguinte. Não mexe em hoje, nos dias
+ * passados nem nos parâmetros.
+ * @returns {{ ok, error?, days?, totals?, spread?: {[key]: {b, a, bt, bl}}, movedC? }}
+ *   spread guarda o ANTES de cada dia alterado (pro ↩️ Desfazer exato).
+ */
+export function spreadLeftoverOnPlan(doc, todayKey, leftoverC) {
+  const left = Math.max(0, Math.round(Number(leftoverC) || 0));
+  if (!doc || !Array.isArray(doc.days)) return { ok: false, error: 'no-plan' };
+  if (!(left > 0)) return { ok: false, error: 'nothing' };
+  const params = doc.params || {};
+  const stakesC = normalizeStakes(params.stakes);
+  if (!stakesC.length) return { ok: false, error: 'no-stakes' };
+  if (left < stakesC[0]) return { ok: false, error: 'too-small' }; // menos que 1 giro
+  const buy = params.buy && params.buy.enabled ? { enabled: true, multiplier: Math.round(Number(params.buy.multiplier) || 0) } : null;
+  const future = doc.days.filter(d => d && d.key > todayKey && Number(d.plannedC) > 0);
+  if (!future.length) return { ok: false, error: 'no-future' };
+  const weight = future.reduce((s, d) => s + Math.round(Number(d.plannedC) || 0), 0);
+  const spread = {};
+  const changed = new Map();
+  let given = 0;
+  let carry = 0;
+  future.forEach((d, i) => {
+    const before = Math.round(Number(d.plannedC) || 0);
+    const share = i === future.length - 1 ? left - given : Math.round(left * before / weight);
+    given += share;
+    const add = share + carry;
+    if (add <= 0) { carry = add; return; } // nunca diminui um dia
+    const need = before + add;
+    const built = buildDayLines(need, d.tier, stakesC, buy);
+    carry = need - built.plannedC; // passou do necessário → o próximo dia desconta
+    if (built.plannedC === before) return;
+    spread[d.key] = { b: before, a: built.plannedC, bt: Math.round(Number(d.targetC) || 0), bl: cleanSpreadLines(d.lines) };
+    changed.set(d.key, {
+      ...d,
+      targetC: Math.round(Number(d.targetC) || 0) + (built.plannedC - before),
+      plannedC: built.plannedC,
+      lines: cleanSpreadLines(built.lines)
+    });
+  });
+  const days = doc.days.map(d => changed.get(d && d.key) || d);
+  const movedC = Object.values(spread).reduce((s, x) => s + (x.a - x.b), 0);
+  return { ok: true, days, totals: docTotals(doc, days), spread, movedC };
+}
+
+/**
+ * ↩️ Desfaz o espalhamento: dia que AINDA está como o 🏁 deixou volta ao
+ * antes (exato); dia que mudou depois (plano refeito) fica como está.
+ * @returns {{ days, totals, restored, skipped }}
+ */
+export function unspreadLeftoverOnPlan(doc, spread) {
+  const sp = spread && typeof spread === 'object' ? spread : {};
+  let restored = 0;
+  let skipped = 0;
+  const days = (Array.isArray(doc && doc.days) ? doc.days : []).map(d => {
+    const s = d && sp[d.key];
+    if (!s) return d;
+    if (Math.round(Number(d.plannedC) || 0) !== Math.round(Number(s.a) || 0)) { skipped++; return d; }
+    restored++;
+    return { ...d, plannedC: Math.round(Number(s.b) || 0), targetC: Math.round(Number(s.bt) || 0), lines: cleanSpreadLines(s.bl) };
+  });
+  Object.keys(sp).forEach(k => { if (!days.some(d => d && d.key === k)) skipped++; });
+  return { days, totals: docTotals(doc, days), restored, skipped };
+}
+
+/**
+ * Prévia de um plano SALVO e sem alteração: o motor refaz os dias pelos
+ * parâmetros — os dias que o 🏁 mudou (só no documento) entram por cima,
+ * pra o Planejador mostrar o mesmo que o Calendário.
+ */
+export function overlaySavedDays(plan, savedDoc) {
+  if (!plan || !plan.ok || !savedDoc || !Array.isArray(savedDoc.days)) return plan;
+  const byKey = new Map(savedDoc.days.filter(d => d && d.key).map(d => [d.key, d]));
+  let changed = 0;
+  const days = plan.days.map(d => {
+    const s = byKey.get(d.key);
+    if (!s || Math.round(Number(s.plannedC) || 0) === d.plannedC) return d;
+    changed++;
+    return { ...d, plannedC: Math.round(Number(s.plannedC) || 0), targetC: Math.round(Number(s.targetC) || 0), lines: cleanSpreadLines(s.lines) };
+  });
+  if (!changed) return plan;
+  const planned = days.map(d => d.plannedC);
+  const plannedC = planned.reduce((a, b) => a + b, 0);
+  return {
+    ...plan,
+    days,
+    overlaidDays: changed,
+    totals: {
+      ...plan.totals,
+      plannedC,
+      excessC: Math.max(0, plannedC - plan.totals.targetC),
+      activeDays: days.filter(d => d.plannedC > 0).length,
+      maxDayC: Math.max(...planned),
+      minDayC: Math.min(...planned),
+      buys: days.reduce((s, d) => s + d.lines.filter(l => l.kind === 'buy').length, 0),
+      spins: days.reduce((s, d) => s + d.lines.filter(l => l.kind === 'spin').reduce((a, l) => a + l.count, 0), 0)
+    }
+  };
+}
