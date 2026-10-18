@@ -61,7 +61,7 @@ import {
 } from './calendar-logic.js';
 import { requestPlanejadorFocus, requestStopToday } from './ui-planejador.js';
 
-const STOP_REASON_LABEL = { premio: '💰 Prêmio alto', meta: '🎯 Meta de ganho batida', outro: '✋ Outro motivo' };
+const STOP_REASON_LABEL = { premio: '💰 Prêmio alto', meta: '🎯 Meta de ganho batida', outro: '✋ Outro motivo', adiado: '⏩ Resto adiado' }; // (29b) adiado: 🔄 com "Descontar" desligado
 import {
   loadPlannerData, isPlannerLoaded, getSavedPlans, getCalendarSettings, saveCalendarSettings, getStrategySettings
 } from './plan-store.js';
@@ -501,7 +501,7 @@ function openStopDay(d, x) {
   const chips = el('div', 'plan-chips');
   const drawChips = () => {
     chips.replaceChildren();
-    Object.entries(STOP_REASON_LABEL).forEach(([id, label]) => {
+    Object.entries(STOP_REASON_LABEL).filter(([id]) => id !== 'adiado').forEach(([id, label]) => {
       const b = button(label, `plan-chip${reason === id ? ' active' : ''}`, () => { reason = id; drawChips(); });
       b.setAttribute('aria-pressed', reason === id ? 'true' : 'false');
       chips.appendChild(b);

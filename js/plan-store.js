@@ -304,7 +304,10 @@ async function saveManyPlans(uid, planDocs, kind, opts = {}) {
     if (ids.has(d.platformId)) return { ok: false, error: `Plataforma repetida ${kind === 'grupo' ? 'no grupo' : 'no lote'}. Nada foi salvo.` };
     ids.add(d.platformId);
   }
-  const previous = docs.map(d => cache.plans.get(d.platformId)).filter(Boolean);
+  // (29b) 🏁 de plataforma cujo plano NÃO vai ser trocado (ficou como está):
+  // só o dia de hoje vai pro histórico, encerrado.
+  const extraStop = Object.keys(opts.stopFor || {}).filter(pid => !ids.has(pid)).map(pid => cache.plans.get(pid)).filter(Boolean);
+  const previous = [...docs.map(d => cache.plans.get(d.platformId)).filter(Boolean), ...extraStop];
   if (previous.length) {
     const today = toLocalDateString(new Date());
     const logged = await logPlanPastDays(uid, previous, today, getCalendarSettings().retentionDays, { includeTodayFor: todayFreezeIds(docs, today), ignoreFor: opts.ignoreFor || [], stopFor: opts.stopFor || null });
@@ -321,6 +324,19 @@ async function saveManyPlans(uid, planDocs, kind, opts = {}) {
   if (!cache || cache.uid !== uid) return { ok: false, error: 'A sessão mudou durante a gravação — recarregue a página.' };
   docs.forEach(d => cache.plans.set(d.platformId, { ...d }));
   return { ok: true, saved: docs.length };
+}
+
+// (29b) 🏁 só o dia de hoje (o plano não muda): { [platformId]: stop }.
+// Grava/atualiza o documento de hoje do histórico; nada mais é tocado.
+export async function stopTodayOnly(uid, stopFor) {
+  if (!uid) return { ok: false, error: 'Nenhum usuário logado.' };
+  if (!isPlannerLoaded(uid)) return { ok: false, error: 'Os planos ainda não foram carregados — recarregue a tela.' };
+  const plans = Object.keys(stopFor || {}).filter(isSafeId).map(pid => cache.plans.get(pid)).filter(Boolean);
+  if (!plans.length) return { ok: false, error: 'Nenhum plano pra encerrar hoje.' };
+  const today = toLocalDateString(new Date());
+  const logged = await logPlanPastDays(uid, plans, today, getCalendarSettings().retentionDays, { stopFor });
+  if (!logged.ok) return { ok: false, error: `${logged.error} Hoje não foi encerrado.` };
+  return { ok: true, stopped: logged.stopped || 0 };
 }
 
 // (25) opts.ignorePast: os dias passados dos planos excluídos ficam 🙈 ignorados.

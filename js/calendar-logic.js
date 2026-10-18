@@ -201,7 +201,8 @@ export function planDayFor(dayKey, platformId, world) {
     if (log) return fromLog();
     return pday ? fromPlan() : null;
   }
-  if (pday) return fromPlan();
+  // (29b) hoje 🏁 encerrado vale mesmo com o plano ainda tendo hoje
+  if (pday) return log && log.stop ? fromLog() : fromPlan();
   return log ? fromLog() : null;
 }
 
@@ -289,6 +290,14 @@ export function buildCalendarMonth(ym, world) {
           rbC: d.isFuture ? 0 : realRBC(p, d.key), // (29) resultado já obtido
           ...(pd.stopped ? { stopped: true, stop: pd.stop, originalC: pd.originalC } : {})
         });
+      } else if (pd && pd.stopped && !d.isFuture) {
+        // (29b) 🏁 encerrado sem ter apostado nada: conta como cumprido (R$ 0 de R$ 0)
+        d.plan.realC += realC;
+        d.plan.rows.push({
+          platformId: p.id, name: String(p.name || ''), plannedC: 0, realC, status: 'done', overC: realC,
+          tier: pd.tier, lines: pd.lines, stakesC: pd.stakesC, buy: pd.buy, source: pd.source,
+          rbC: realRBC(p, d.key), stopped: true, stop: pd.stop, originalC: pd.originalC
+        });
       } else if (realC > 0) {
         d.offPlan.push({ platformId: p.id, name: String(p.name || ''), realC });
       }
@@ -365,7 +374,8 @@ export function buildCalendarMonth(ym, world) {
   days.forEach(d => {
     if (d.plan.rows.length) {
       d.plan.status = d.isFuture ? 'future'
-        : (d.isToday && d.plan.realC < d.plan.plannedC ? 'today' : dayStatus(d.plan.plannedC, d.plan.realC, threshold));
+        : (!(d.plan.plannedC > 0) && d.plan.rows.every(r => r.stopped) ? 'done' // (29b) só 🏁 com R$ 0
+          : (d.isToday && d.plan.realC < d.plan.plannedC ? 'today' : dayStatus(d.plan.plannedC, d.plan.realC, threshold)));
     }
   });
   return days;

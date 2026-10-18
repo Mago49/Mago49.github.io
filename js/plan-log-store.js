@@ -168,7 +168,8 @@ export async function logPlanPastDays(uid, plans, todayKey, retentionDays = DEFA
   const wanted = [];
   (plans || []).forEach(plan => {
     if (!plan || !Array.isArray(plan.days)) return;
-    const withToday = todayFor.has(String(plan.platformId));
+    // (29b) 🏁 hoje: congela hoje também (o plano pode continuar com hoje)
+    const withToday = todayFor.has(String(plan.platformId)) || stopFor.has(String(plan.platformId));
     plan.days.forEach(day => {
       if (!day || !DAY_RE.test(day.key)) return;
       if (day.key > todayKey || (day.key === todayKey && !withToday)) return;
@@ -176,9 +177,13 @@ export async function logPlanPastDays(uid, plans, todayKey, retentionDays = DEFA
       wanted.push({ plan, day });
     });
   });
-  if (wanted.length === 0) return { ok: true, written: 0 };
+  // (29b) 🏁 de plataforma cujo plano JÁ foi refeito a partir de amanhã: a
+  // meta de hoje só existe no histórico — grava o stop no documento de hoje.
+  const todayInWanted = new Set(wanted.filter(w => w.day.key === todayKey).map(w => String(w.plan.platformId)));
+  const stopOnly = [...stopFor.keys()].filter(pid => !todayInWanted.has(pid));
+  if (wanted.length === 0 && stopOnly.length === 0) return { ok: true, written: 0 };
 
-  const keys = wanted.map(w => w.day.key).sort();
+  const keys = [...wanted.map(w => w.day.key), ...(stopOnly.length ? [todayKey] : [])].sort();
   let existing;
   try {
     existing = await readRange(uid, keys[0], keys[keys.length - 1]);
@@ -208,6 +213,12 @@ export async function logPlanPastDays(uid, plans, todayKey, retentionDays = DEFA
     if (stop) data.stop = stop;
     toWrite.push({ id, data });
   });
+  stopOnly.forEach(pid => {
+    const id = planLogId(todayKey, pid);
+    if (seen.has(id) || !existing.has(id)) return; // sem meta hoje: nada a encerrar
+    seen.add(id);
+    toStop.push({ id, stop: stopFor.get(pid) });
+  });
 
   // Um lote só quando cabe (tudo ou nada); acima de 400, em partes.
   const ops = [
@@ -234,11 +245,12 @@ export async function logPlanPastDays(uid, plans, todayKey, retentionDays = DEFA
     toIgnore.forEach(id => { const cur = cache.byId.get(id); if (cur) cache.byId.set(id, { ...cur, ignored: true, ignoredAt: nowIso }); });
     toStop.forEach(x => { const cur = cache.byId.get(x.id); if (cur) cache.byId.set(x.id, { ...cur, stop: x.stop }); });
   }
-  return { ok: true, written: toWrite.length, ignored: toIgnore.length + toWrite.filter(w => w.data.ignored).length };
+  return { ok: true, written: toWrite.length, ignored: toIgnore.length + toWrite.filter(w => w.data.ignored).length, stopped: toStop.length + toWrite.filter(w => w.data.stop).length };
 }
 
 // (29) { [platformId]: stop } → Map com o stop limpo (tipos garantidos).
-export const STOP_REASONS = Object.freeze(['premio', 'meta', 'outro']);
+// (29b) 'adiado': 🔄 Atualizar com "Descontar" desligado — parou por hoje.
+export const STOP_REASONS = Object.freeze(['premio', 'meta', 'outro', 'adiado']);
 function cleanStopMap(src, todayKey) {
   const out = new Map();
   if (!src || typeof src !== 'object') return out;
