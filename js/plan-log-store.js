@@ -53,6 +53,7 @@
 import { db, collection, doc, getDocs, writeBatch, query, where, orderBy, limit, documentId } from './firebase-init.js';
 import { state } from './state.js';
 import { toLocalDateString } from './finance-logic.js';
+import { isStopReasonId, stopReasonSnapshot, isStopKindId } from './stop-reasons.js';
 
 export const PLAN_LOG_RETENTION_OPTIONS = Object.freeze([90, 180, 365, 0]); // 0 = sempre
 export const DEFAULT_PLAN_LOG_RETENTION = 180;
@@ -250,7 +251,9 @@ export async function logPlanPastDays(uid, plans, todayKey, retentionDays = DEFA
 
 // (29) { [platformId]: stop } → Map com o stop limpo (tipos garantidos).
 // (29b) 'adiado': 🔄 Atualizar com "Descontar" desligado — parou por hoje.
-export const STOP_REASONS = Object.freeze(['premio', 'meta', 'outro', 'adiado']);
+// (31) Motivos em stop-reasons.js (fixos + criados pelo usuário 'c_…') e
+// uma cópia do nome/tipo na hora (reasonLabel/reasonKind) — apagar o motivo
+// depois não muda o histórico.
 function cleanStopMap(src, todayKey) {
   const out = new Map();
   if (!src || typeof src !== 'object') return out;
@@ -259,7 +262,15 @@ function cleanStopMap(src, todayKey) {
     out.set(String(pid), {
       at: typeof st.at === 'string' ? st.at : new Date().toISOString(),
       day: todayKey,
-      reason: STOP_REASONS.includes(st.reason) ? st.reason : 'outro',
+      reason: isStopReasonId(st.reason) ? st.reason : 'outro',
+      reasonLabel: typeof st.reasonLabel === 'string' && st.reasonLabel.trim()
+        ? st.reasonLabel.trim().slice(0, 40)
+        : stopReasonSnapshot(isStopReasonId(st.reason) ? st.reason : 'outro', []).reasonLabel,
+      reasonKind: isStopKindId(st.reasonKind) ? st.reasonKind
+        : stopReasonSnapshot(isStopReasonId(st.reason) ? st.reason : 'outro', []).reasonKind,
+      reasonKindLabel: typeof st.reasonKindLabel === 'string' && st.reasonKindLabel.trim()
+        ? st.reasonKindLabel.trim().slice(0, 40)
+        : stopReasonSnapshot(isStopReasonId(st.reason) ? st.reason : 'outro', []).reasonKindLabel, // (31)
       rbC: Math.round(Number(st.rbC) || 0),
       wageredC: Math.max(0, Math.round(Number(st.wageredC) || 0)),
       plannedC: Math.max(0, Math.round(Number(st.plannedC) || 0))

@@ -61,10 +61,16 @@ import {
 } from './calendar-logic.js';
 import { requestPlanejadorFocus, requestStopToday } from './ui-planejador.js';
 
-const STOP_REASON_LABEL = { premio: '💰 Prêmio alto', meta: '🎯 Meta de ganho batida', outro: '✋ Outro motivo', adiado: '⏩ Resto adiado' }; // (29b) adiado: 🔄 com "Descontar" desligado
 import {
-  loadPlannerData, isPlannerLoaded, getSavedPlans, getCalendarSettings, saveCalendarSettings, getStrategySettings
+  loadPlannerData, isPlannerLoaded, getSavedPlans, getCalendarSettings, saveCalendarSettings, getStrategySettings,
+  getCustomStopReasons, getCustomStopKinds, saveCustomStopReasons
 } from './plan-store.js';
+// (31) Motivos do 🏁: fixos + criados pelo usuário (botão +).
+import {
+  BUILTIN_STOP_REASONS, BUILTIN_STOP_KINDS, STOP_LABEL_MAX, STOP_EMOJI_MAX, CUSTOM_STOP_REASON_MAX, CUSTOM_STOP_KIND_MAX,
+  STOP_EMOJI_SUGGESTIONS, DEFAULT_CUSTOM_EMOJI, DEFAULT_KIND_EMOJI, newCustomStopReasonId, newCustomStopKindId,
+  isDuplicateStopLabel, isDuplicateKindLabel, stopReasonText, stopKindText, stopReasonSnapshot, suggestStopReason
+} from './stop-reasons.js';
 import {
   loadPlanLogs, getPlanLogEntry, logPlanPastDays, purgeOldPlanLogs, retentionCutoff, PLAN_LOG_RETENTION_OPTIONS,
   setPlanLogIgnored, planLogId
@@ -497,22 +503,226 @@ function openStopDay(d, x) {
   if (row.realC > 0 && rb > 0) line('Multiplicador', `${(rb / row.realC).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}× o apostado`);
   box.appendChild(nums);
   box.appendChild(el('span', 'plan-label', 'Motivo'));
-  let reason = rb > 0 && rb >= row.plannedC ? 'premio' : 'outro';
-  const chips = el('div', 'plan-chips');
+  // (31) sugestão pelo resultado (prêmio / perda / perda excessiva)
+  let reason = suggestStopReason(rb, row.plannedC);
+  const chips = el('div', 'plan-chips cal-stop-reasons');
+  // form: null | { id|null (novo), emoji, label, kind } ; kindForm: idem p/ tipo
+  // manage: lista de edição (motivos e tipos criados)
+  let form = null;
+  let kindForm = null;
+  let manage = false;
+  let saving = false;
+  const canEdit = isPlannerLoaded(state.currentUid);
   const drawChips = () => {
     chips.replaceChildren();
-    Object.entries(STOP_REASON_LABEL).filter(([id]) => id !== 'adiado').forEach(([id, label]) => {
-      const b = button(label, `plan-chip${reason === id ? ' active' : ''}`, () => { reason = id; drawChips(); });
-      b.setAttribute('aria-pressed', reason === id ? 'true' : 'false');
+    const customs = getCustomStopReasons();
+    const kinds = getCustomStopKinds();
+    if (!customs.some(c => c.id === reason) && !BUILTIN_STOP_REASONS.some(r => r.id === reason)) reason = 'outro';
+    const all = [...BUILTIN_STOP_REASONS.filter(r => !r.hidden), ...customs];
+    all.forEach(r => {
+      const b = button(`${r.emoji} ${r.label}`, `plan-chip${reason === r.id ? ' active' : ''}`, () => { reason = r.id; drawChips(); });
+      b.setAttribute('aria-pressed', reason === r.id ? 'true' : 'false');
       chips.appendChild(b);
     });
+    const editing = !!form || !!kindForm;
+    if (canEdit && !editing) {
+      if (customs.length < CUSTOM_STOP_REASON_MAX) {
+        const add = button('+ Motivo', 'plan-chip plan-chip-ghost cal-stop-add', () => { form = { id: null, emoji: '', label: '', kind: 'neutral' }; manage = false; drawChips(); });
+        add.setAttribute('aria-label', 'Adicionar motivo');
+        chips.appendChild(add);
+      }
+      if (customs.length || kinds.length) {
+        chips.appendChild(button(manage ? '✓ Pronto' : '✏️ Meus motivos e tipos', 'plan-chip plan-chip-ghost', () => { manage = !manage; drawChips(); }));
+      }
+    }
+    if (manage && !editing) chips.appendChild(manageList(customs, kinds));
+    if (form) chips.appendChild(reasonForm(customs, kinds));
+    else if (kindForm) chips.appendChild(kindFormEl(kinds));
+  };
+
+  const saveAll = async (reasons, kinds) => {
+    saving = true;
+    const res = await saveCustomStopReasons(state.currentUid, reasons, kinds);
+    saving = false;
+    if (!res.ok) await showAppAlert(res.error);
+    return res.ok;
+  };
+
+  // Lista dos motivos e tipos criados: ✏️ editar / 🗑️ excluir.
+  const manageList = (customs, kinds) => {
+    const wrap = el('div', 'cal-stop-manage');
+    if (customs.length) wrap.appendChild(el('span', 'plan-label', 'Motivos'));
+    customs.forEach(c => {
+      const line = el('div', 'cal-stop-mrow');
+      line.appendChild(el('span', 'cal-stop-mname', `${c.emoji} ${c.label} · ${stopKindText(c.kind, kinds)}`));
+      const e = button('✏️', 'rt-mini-btn', () => { form = { id: c.id, emoji: c.emoji, label: c.label, kind: c.kind }; drawChips(); });
+      e.setAttribute('aria-label', `Editar ${c.label}`);
+      const del = button('🗑️', 'rt-mini-btn', async () => {
+        if (saving) return;
+        const ok = await showAppConfirm(`Excluir o motivo "${c.label}"? Os dias já encerrados com ele continuam com o nome gravado.`);
+        if (!ok) return;
+        if (!(await saveAll(getCustomStopReasons().filter(x => x.id !== c.id), getCustomStopKinds()))) return;
+        if (reason === c.id) reason = 'outro';
+        if (!getCustomStopReasons().length && !getCustomStopKinds().length) manage = false;
+        drawChips();
+      });
+      del.setAttribute('aria-label', `Excluir ${c.label}`);
+      line.appendChild(e);
+      line.appendChild(del);
+      wrap.appendChild(line);
+    });
+    if (kinds.length) wrap.appendChild(el('span', 'plan-label', 'Tipos'));
+    kinds.forEach(k => {
+      const line = el('div', 'cal-stop-mrow');
+      const uses = customs.filter(c => c.kind === k.id).length;
+      line.appendChild(el('span', 'cal-stop-mname', `${k.emoji} ${k.label}${uses ? ` · ${uses} motivo(s)` : ''}`));
+      const e = button('✏️', 'rt-mini-btn', () => { kindForm = { id: k.id, emoji: k.emoji, label: k.label, inReason: false }; drawChips(); });
+      e.setAttribute('aria-label', `Editar tipo ${k.label}`);
+      const del = button('🗑️', 'rt-mini-btn', async () => {
+        if (saving) return;
+        const ok = await showAppConfirm(`Excluir o tipo "${k.label}"?${uses ? ` ${uses} motivo(s) com esse tipo passam pra ➖ Neutro.` : ''} Os dias já encerrados continuam com o nome gravado.`);
+        if (!ok) return;
+        const reasons = getCustomStopReasons().map(c => (c.kind === k.id ? { ...c, kind: 'neutral' } : c));
+        if (!(await saveAll(reasons, getCustomStopKinds().filter(x => x.id !== k.id)))) return;
+        if (!getCustomStopReasons().length && !getCustomStopKinds().length) manage = false;
+        drawChips();
+      });
+      del.setAttribute('aria-label', `Excluir tipo ${k.label}`);
+      line.appendChild(e);
+      line.appendChild(del);
+      wrap.appendChild(line);
+    });
+    return wrap;
+  };
+
+  // Campos emoji + nome (+ sugestões de emoji) — motivo e tipo usam igual.
+  const nameFields = (target, placeholder, defEmoji) => {
+    const frag = el('div', 'cal-stop-fields');
+    const rowIn = el('div', 'cal-stop-frow');
+    const emo = document.createElement('input');
+    emo.className = 'plan-input cal-stop-emoji';
+    emo.type = 'text';
+    emo.maxLength = 16;
+    emo.placeholder = defEmoji;
+    emo.value = target.emoji;
+    emo.setAttribute('aria-label', 'Emoji');
+    emo.addEventListener('input', () => { target.emoji = emo.value; });
+    const name = document.createElement('input');
+    name.className = 'plan-input cal-stop-name';
+    name.type = 'text';
+    name.maxLength = STOP_LABEL_MAX;
+    name.placeholder = placeholder;
+    name.value = target.label;
+    name.setAttribute('aria-label', 'Nome');
+    name.addEventListener('input', () => { target.label = name.value; });
+    rowIn.appendChild(emo);
+    rowIn.appendChild(name);
+    frag.appendChild(rowIn);
+    const sug = el('div', 'plan-chips cal-stop-emojis');
+    STOP_EMOJI_SUGGESTIONS.forEach(e2 => {
+      const b = button(e2, `plan-chip cal-stop-emo${target.emoji === e2 ? ' active' : ''}`, () => { target.emoji = e2; emo.value = e2; sug.querySelectorAll('.cal-stop-emo').forEach(x => x.classList.toggle('active', x.textContent === e2)); });
+      b.setAttribute('aria-label', `Usar ${e2}`);
+      sug.appendChild(b);
+    });
+    frag.appendChild(sug);
+    return { frag, name };
+  };
+  const cleanName = (t) => String(t || '').replace(/\s+/g, ' ').trim();
+  const cleanEmoji = (t, def) => Array.from(String(t || '').trim()).slice(0, STOP_EMOJI_MAX).join('') || def;
+
+  // Criar / editar um tipo (sozinho ou dentro do formulário do motivo).
+  const kindFormEl = (kinds) => {
+    const f = el('div', 'cal-stop-form cal-stop-kform');
+    f.appendChild(el('span', 'plan-label', kindForm.id ? 'Editar tipo' : 'Novo tipo'));
+    const { frag, name } = nameFields(kindForm, 'Nome do tipo (ex.: Emocional)', DEFAULT_KIND_EMOJI);
+    f.appendChild(frag);
+    const acts = el('div', 'plan-choice-actions');
+    acts.appendChild(button(kindForm.id ? 'Salvar tipo' : 'Adicionar tipo', 'plan-choice-btn', async () => {
+      if (saving) return;
+      const label = cleanName(kindForm.label);
+      if (!label) { await showAppAlert('Digite o nome do tipo.'); name.focus(); return; }
+      if (isDuplicateKindLabel(label, kinds, kindForm.id)) { await showAppAlert(`Já existe um tipo "${label}".`); return; }
+      const emoji = cleanEmoji(kindForm.emoji, DEFAULT_KIND_EMOJI);
+      const list = getCustomStopKinds();
+      let id = kindForm.id;
+      if (id) {
+        const i = list.findIndex(x => x.id === id);
+        if (i < 0) { await showAppAlert('Esse tipo não existe mais.'); kindForm = null; drawChips(); return; }
+        list[i] = { ...list[i], emoji, label };
+      } else {
+        if (list.length >= CUSTOM_STOP_KIND_MAX) { await showAppAlert(`No máximo ${CUSTOM_STOP_KIND_MAX} tipos criados.`); return; }
+        id = newCustomStopKindId();
+        list.push({ id, emoji, label, createdAt: new Date().toISOString() });
+      }
+      if (!(await saveAll(getCustomStopReasons(), list))) return;
+      if (kindForm.inReason && form) form.kind = id; // o novo já fica escolhido no motivo
+      kindForm = null;
+      drawChips();
+    }));
+    acts.appendChild(button('Cancelar', 'plan-choice-btn', () => { kindForm = null; drawChips(); }));
+    f.appendChild(acts);
+    setTimeout(() => name.focus(), 0);
+    return f;
+  };
+
+  // Criar / editar um motivo.
+  const reasonForm = (customs, kinds) => {
+    const f = el('div', 'cal-stop-form');
+    f.appendChild(el('span', 'plan-label', form.id ? 'Editar motivo' : 'Novo motivo'));
+    const { frag, name } = nameFields(form, 'Nome (ex.: Cansado)', DEFAULT_CUSTOM_EMOJI);
+    f.appendChild(frag);
+    f.appendChild(el('span', 'plan-label', 'Tipo (ajuda nas análises)'));
+    const kchips = el('div', 'plan-chips');
+    [...BUILTIN_STOP_KINDS, ...kinds].forEach(k => {
+      const b = button(`${k.emoji} ${k.label}`, `plan-chip${form.kind === k.id ? ' active' : ''}`, () => { form.kind = k.id; drawChips(); });
+      b.setAttribute('aria-pressed', form.kind === k.id ? 'true' : 'false');
+      kchips.appendChild(b);
+    });
+    if (!kindForm && kinds.length < CUSTOM_STOP_KIND_MAX) {
+      const addK = button('+ Tipo', 'plan-chip plan-chip-ghost cal-stop-add', () => { kindForm = { id: null, emoji: '', label: '', inReason: true }; drawChips(); });
+      addK.setAttribute('aria-label', 'Adicionar tipo');
+      kchips.appendChild(addK);
+    }
+    f.appendChild(kchips);
+    if (kindForm) {
+      f.appendChild(kindFormEl(kinds));
+      return f; // termina o tipo primeiro
+    }
+    const acts = el('div', 'plan-choice-actions');
+    acts.appendChild(button(form.id ? 'Salvar' : 'Adicionar', 'plan-choice-btn', async () => {
+      if (saving) return;
+      const label = cleanName(form.label);
+      if (!label) { await showAppAlert('Digite o nome do motivo.'); name.focus(); return; }
+      if (label.length > STOP_LABEL_MAX) { await showAppAlert(`Nome com no máximo ${STOP_LABEL_MAX} letras.`); return; }
+      if (isDuplicateStopLabel(label, customs, form.id)) { await showAppAlert(`Já existe um motivo "${label}".`); return; }
+      const emoji = cleanEmoji(form.emoji, DEFAULT_CUSTOM_EMOJI);
+      const list = getCustomStopReasons();
+      let id = form.id;
+      if (id) {
+        const i = list.findIndex(x => x.id === id);
+        if (i < 0) { await showAppAlert('Esse motivo não existe mais.'); form = null; drawChips(); return; }
+        list[i] = { ...list[i], emoji, label, kind: form.kind };
+      } else {
+        id = newCustomStopReasonId();
+        list.push({ id, emoji, label, kind: form.kind, createdAt: new Date().toISOString() });
+      }
+      if (!(await saveAll(list, getCustomStopKinds()))) return;
+      if (!form.id) reason = id; // o novo já fica escolhido
+      form = null;
+      drawChips();
+    }));
+    acts.appendChild(button('Cancelar', 'plan-choice-btn', () => { form = null; drawChips(); }));
+    f.appendChild(acts);
+    if (!form.id && !form.label) setTimeout(() => name.focus(), 0);
+    return f;
   };
   drawChips();
   box.appendChild(chips);
   box.appendChild(el('p', 'plan-hint', 'O dia conta como cumprido (🏁). O que faltava vai pros próximos dias do plano, pelo Rollover — você confere o antes × depois no 🔄 Atualizar planos antes de confirmar. Se a plataforma estiver num grupo, o grupo é refeito a partir de amanhã.'));
   const actions = el('div', 'plan-choice-actions');
   const go = button('Continuar', 'plan-choice-btn', () => {
-    const stop = { at: new Date().toISOString(), reason, rbC: rb, wageredC: row.realC, plannedC: row.plannedC };
+    // (31) id do motivo + cópia do nome/tipo (apagar o motivo depois não muda o dia)
+    const stop = { at: new Date().toISOString(), reason, ...stopReasonSnapshot(reason, getCustomStopReasons(), getCustomStopKinds()), rbC: rb, wageredC: row.realC, plannedC: row.plannedC };
     done();
     if (detailClose) detailClose();
     requestStopToday(x.platformId, stop);
@@ -522,7 +732,12 @@ function openStopDay(d, x) {
   actions.appendChild(go);
   actions.appendChild(button('Cancelar', 'plan-choice-btn', () => done()));
   box.appendChild(actions);
-  function onKey(e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(); } }
+  function onKey(e) {
+    if (e.key !== 'Escape') return;
+    const modal = document.getElementById('appModal');
+    if (modal && modal.style.display === 'flex') return; // (31) a confirmação cuida do Esc
+    e.preventDefault(); e.stopPropagation(); done();
+  }
   function done() { document.removeEventListener('keydown', onKey, true); overlay.remove(); }
   overlay.addEventListener('click', e => { if (e.target === overlay) done(); });
   document.addEventListener('keydown', onKey, true);
@@ -580,7 +795,7 @@ function platformCard(d, x) {
   if (x.plan && x.plan.stopped) {
     const st = x.plan.stop || {};
     const h = st.at ? new Date(st.at) : null;
-    card.appendChild(el('p', 'cal-pf-tip cal-pf-tip-stop', `🏁 Encerrado${h && !isNaN(h.getTime()) ? ` às ${String(h.getHours()).padStart(2, '0')}:${String(h.getMinutes()).padStart(2, '0')}` : ''} · ${STOP_REASON_LABEL[st.reason] || STOP_REASON_LABEL.outro} · R.B. ${st.rbC >= 0 ? '+' : '−'}${money(Math.abs(st.rbC || 0))} · meta original ${money(x.plan.originalC || 0)} (o resto foi pros próximos dias)`));
+    card.appendChild(el('p', 'cal-pf-tip cal-pf-tip-stop', `🏁 Encerrado${h && !isNaN(h.getTime()) ? ` às ${String(h.getHours()).padStart(2, '0')}:${String(h.getMinutes()).padStart(2, '0')}` : ''} · ${stopReasonText(st.reason, getCustomStopReasons(), st)} · R.B. ${st.rbC >= 0 ? '+' : '−'}${money(Math.abs(st.rbC || 0))} · meta original ${money(x.plan.originalC || 0)} (o resto foi pros próximos dias)`));
   }
   // 👉 o que apostar.
   if (x.plan && !x.plan.stopped) {
@@ -855,7 +1070,7 @@ function renderMetrics() {
         if (lg && lg.stop && lg.ignored !== true) { n++; rbStop += Math.round(Number(lg.stop.rbC) || 0); wStop += Math.round(Number(lg.stop.wageredC) || 0); }
       });
     }
-    if (n) box.appendChild(kpi('🏁 Paradas', `${n} · ${rbStop >= 0 ? '+' : '−'}${money(Math.abs(rbStop))}`, wStop > 0 ? `R.B. ÷ apostado: ${(rbStop / wStop).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}×` : 'encerradas com lucro', 'plan-kpi-bonus'));
+    if (n) box.appendChild(kpi('🏁 Paradas', `${n} · ${rbStop >= 0 ? '+' : '−'}${money(Math.abs(rbStop))}`, wStop > 0 ? `R.B. ÷ apostado: ${(rbStop / wStop).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}×` : 'sem aposta antes de parar', rbStop >= 0 ? 'plan-kpi-bonus' : ''));
   }
   if (m.limitC > 0) {
     box.appendChild(kpi('Acima do limite 🎲', m.overLimitPct > 0 ? `+${pct(m.overLimitPct, 1)}` : 'Dentro', `${money(m.betDepositC)} de ${money(m.limitC)} no mês`, m.overLimitPct > 0 ? 'cal-kpi-bad' : ''));

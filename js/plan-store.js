@@ -33,6 +33,12 @@
 //       updatedAt } — peso de investimento por plataforma e épocas
 //     (speed-logic.js). Sem documento: todas ×1.
 //
+//   users/{uid}/plannerConfig/stopReasons   (Sub-entrega 31)
+//     { reasons:[{id:'c_…', emoji, label, kind, createdAt}],
+//       kinds:[{id:'k_…', emoji, label, createdAt}], updatedAt } —
+//     motivos e tipos do 🏁 criados pelo usuário (stop-reasons.js). Sem
+//     documento: só os fixos.
+//
 //   users/{uid}/plannerConfig/newPlatforms   (Sub-entrega 11b)
 //     Reserva pra ativar plataformas AINDA NÃO cadastradas (orçamento
 //     separado do Misterioso) — newplatform-logic.js. Sem documento:
@@ -76,6 +82,7 @@ import { toLocalDateString } from './finance-logic.js';
 import { sanitizeSpeedConfig, priorityResolver } from './speed-logic.js';
 import { sanitizeNewPlatformsConfig } from './newplatform-logic.js';
 import { logPlanPastDays, DEFAULT_PLAN_LOG_RETENTION, PLAN_LOG_RETENTION_OPTIONS } from './plan-log-store.js';
+import { sanitizeCustomStopReasons, sanitizeCustomStopKinds, CUSTOM_STOP_REASON_MAX, CUSTOM_STOP_KIND_MAX } from './stop-reasons.js';
 
 const PALETTE_ID = 'palette';
 const SETTINGS_ID = 'settings';
@@ -83,6 +90,7 @@ const STRATEGY_ID = 'strategy';
 const CALENDAR_ID = 'calendar';
 const SPEED_ID = 'speed';
 const NEWPLAT_ID = 'newPlatforms';
+const STOP_REASONS_ID = 'stopReasons'; // (31)
 export const DEFAULT_CALENDAR_SETTINGS = Object.freeze({ partialThreshold: 50, retentionDays: DEFAULT_PLAN_LOG_RETENTION });
 
 export function sanitizeCalendarSettings(src) {
@@ -174,8 +182,13 @@ export async function loadPlannerData(uid) {
   const npDoc = configSnap.docs.find(d => d.id === NEWPLAT_ID);
   const newPlatforms = { ...sanitizeNewPlatformsConfig(npDoc ? npDoc.data() : null, toLocalDateString(new Date())), saved: !!npDoc };
 
+  // (31) Motivos do 🏁 criados pelo usuário.
+  const srDoc = configSnap.docs.find(d => d.id === STOP_REASONS_ID);
+  const stopKinds = sanitizeCustomStopKinds(srDoc ? (srDoc.data() || {}).kinds : []);
+  const stopReasons = sanitizeCustomStopReasons(srDoc ? (srDoc.data() || {}).reasons : [], stopKinds);
+
   if (state.currentUid !== uid) throw new Error('A sessão mudou durante a leitura.');
-  cache = { uid, plans, palette, settings, strategy, calendar, speed, newPlatforms, invalidPlans };
+  cache = { uid, plans, palette, settings, strategy, calendar, speed, newPlatforms, stopReasons, stopKinds, invalidPlans };
   return cache;
 }
 
@@ -491,6 +504,46 @@ export async function saveCalendarSettings(uid, patch) {
   }
   if (!cache || cache.uid !== uid) return { ok: false, error: 'A sessão mudou durante a gravação — recarregue a página.' };
   cache.calendar = { ...next, saved: true };
+  return { ok: true };
+}
+
+// ---------- (Sub-entrega 31) Motivos do 🏁 ----------
+
+export function getCustomStopReasons() {
+  return cache && Array.isArray(cache.stopReasons) ? cache.stopReasons.map(r => ({ ...r })) : [];
+}
+
+export function getCustomStopKinds() {
+  return cache && Array.isArray(cache.stopKinds) ? cache.stopKinds.map(k => ({ ...k })) : [];
+}
+
+/**
+ * Grava as listas INTEIRAS (criar/editar/excluir motivos e tipos) num
+ * documento só — motivos e tipos sempre juntos e coerentes. Não otimista.
+ * kinds omitido = mantém os tipos atuais.
+ */
+export async function saveCustomStopReasons(uid, list, kindsList = null) {
+  if (!uid) return { ok: false, error: 'Nenhum usuário logado.' };
+  if (!isPlannerLoaded(uid)) return { ok: false, error: 'As configurações ainda não foram carregadas — recarregue a tela.' };
+  const raw = Array.isArray(list) ? list : [];
+  const rawKinds = Array.isArray(kindsList) ? kindsList : getCustomStopKinds();
+  if (raw.length > CUSTOM_STOP_REASON_MAX) return { ok: false, error: `No máximo ${CUSTOM_STOP_REASON_MAX} motivos criados.` };
+  if (rawKinds.length > CUSTOM_STOP_KIND_MAX) return { ok: false, error: `No máximo ${CUSTOM_STOP_KIND_MAX} tipos criados.` };
+  const kinds = sanitizeCustomStopKinds(rawKinds);
+  if (kinds.length !== rawKinds.length) return { ok: false, error: 'Tipo inválido (o nome é obrigatório). Nada foi salvo.' };
+  const next = sanitizeCustomStopReasons(raw, kinds);
+  if (next.length !== raw.length) return { ok: false, error: 'Motivo inválido (o nome é obrigatório). Nada foi salvo.' };
+  try {
+    const batch = writeBatch(db);
+    batch.set(doc(configCol(uid), STOP_REASONS_ID), { reasons: next, kinds, updatedAt: new Date().toISOString() });
+    await batch.commit();
+  } catch (err) {
+    console.error('Erro ao salvar os motivos do 🏁:', err);
+    return { ok: false, error: 'Não foi possível salvar no banco de dados. Nada mudou. Verifique a internet e tente de novo.' };
+  }
+  if (!cache || cache.uid !== uid) return { ok: false, error: 'A sessão mudou durante a gravação — recarregue a página.' };
+  cache.stopReasons = next;
+  cache.stopKinds = kinds;
   return { ok: true };
 }
 

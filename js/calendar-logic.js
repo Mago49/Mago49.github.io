@@ -214,7 +214,11 @@ function stopInfo(log) {
   const upto = Math.max(0, Math.round(Number(st.wageredC) || 0));
   return {
     stopped: true,
-    stop: { at: String(st.at || ''), reason: String(st.reason || 'outro'), rbC: Math.round(Number(st.rbC) || 0), wageredC: upto },
+    stop: {
+      at: String(st.at || ''), reason: String(st.reason || 'outro'), rbC: Math.round(Number(st.rbC) || 0), wageredC: upto,
+      reasonLabel: typeof st.reasonLabel === 'string' ? st.reasonLabel : '', reasonKind: typeof st.reasonKind === 'string' ? st.reasonKind : '', // (31)
+      reasonKindLabel: typeof st.reasonKindLabel === 'string' ? st.reasonKindLabel : ''
+    },
     originalC: original,
     plannedC: Math.min(original, upto)
   };
