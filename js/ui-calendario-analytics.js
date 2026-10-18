@@ -54,7 +54,8 @@
 
 import { state } from './state.js';
 import { formatCurrency, showAppAlert, showAppConfirm } from './utils.js';
-import { toLocalDateString, getWeekStart, getWeekEnd } from './finance-logic.js';
+import { toLocalDateString, getWeekStart, getWeekEnd, computeLiveBalance } from './finance-logic.js';
+import { colorForLevel } from './cycle-logic.js'; // (33) cor do saldo = cor do nível
 import {
   buildMonthGrid, buildCalendarMonth, summarizePlanVsReal, computeRealMetrics,
   monthTitle, shiftMonth, monthRange, addDaysKey, buildDayPlatforms, suggestForRow, dayStatus
@@ -156,6 +157,20 @@ function todayKey() {
 function fmtDay(key) {
   const [y, m, d] = key.split('-').map(Number);
   return `${WEEKDAY_FULL[new Date(y, m - 1, d).getDay()]} ${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
+}
+
+// (33) Multiplicador legível: 2,1× · 0,81× · 0,005× (nunca "0×").
+function fmtX(v) {
+  const a = Math.abs(Number(v) || 0);
+  if (a > 0 && a < 0.0005) return '<0,001×';
+  return `${a.toLocaleString('pt-BR', { maximumFractionDigits: a >= 1 ? 1 : (a >= 0.1 ? 2 : 3) })}×`;
+}
+
+// (33) Saldo ao vivo da plataforma (mesma conta do Financeiro) — null se falhar.
+function liveBalanceOf(platformId) {
+  const p = (state.platforms || []).find(q => q.id === platformId);
+  if (!p) return null;
+  try { return computeLiveBalance(p, new Date(), resolveCtx(p) || {}); } catch (err) { return null; }
 }
 
 function kpi(label, value, note, extra = '') {
@@ -594,7 +609,8 @@ function openStopDay(d, x) {
   line('Falta (vai pros próximos dias)', money(leftC));
   const preview = buildStopItem(x, 'outro'); // (32) só pra mostrar a distribuição
   line('📈 R.B. do dia', `${rb > 0 ? '+' : (rb < 0 ? '−' : '')}${money(Math.abs(rb))}`);
-  if (row.realC > 0 && rb > 0) line('Multiplicador', `${(rb / row.realC).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}× o apostado`);
+  if (row.realC > 0 && rb > 0) line('Multiplicador', `${fmtX(rb / row.realC)} o apostado`);
+  if (row.realC > 0 && rb < 0) line('Perda ÷ apostado', `${fmtX(rb / row.realC)} o apostado`); // (33)
   box.appendChild(nums);
   box.appendChild(el('p', `cal-stop-spread${preview.sp.ok ? '' : ' cal-line-muted'}`, `📅 ${spreadText(preview)}`)); // (32)
   box.appendChild(el('span', 'plan-label', 'Motivo'));
@@ -934,7 +950,18 @@ function platformCard(d, x) {
   const card = el('div', `cal-pf${x.attention ? ' cal-pf-attn' : ''}${x.noPlan ? ' cal-pf-noplan' : ''}`);
   const head = el('div', 'cal-pf-head');
   const icon = x.plan ? (STATUS_ICON[x.plan.status] || '') : (x.noPlan ? '⚠️' : (x.restDay ? '😴' : '▫️'));
-  head.appendChild(el('span', 'cal-pf-name', `${icon} ${x.name}`));
+  const nameEl = el('span', 'cal-pf-name', `${icon} ${x.name}`);
+  // (33) hoje: saldo real ao vivo, na cor do nível (como no Financeiro)
+  if (d.isToday && x.platformId !== '_') {
+    const bal = liveBalanceOf(x.platformId);
+    if (bal !== null) {
+      const bb = el('span', 'platform-total-badge cal-pf-balance', `${contextConfirmed ? '' : '≈ '}${formatCurrency(bal)}`);
+      bb.style.background = colorForLevel(bal);
+      bb.title = contextConfirmed ? 'Saldo ao vivo (mesma conta do Financeiro)' : 'Saldo ao vivo aproximado — configurações de bônus ainda não carregadas';
+      nameEl.appendChild(bb);
+    }
+  }
+  head.appendChild(nameEl);
   let right = '';
   if (x.plan) right = d.isFuture ? money(x.plan.plannedC) : `${money(x.plan.realC)} de ${money(x.plan.plannedC)}`;
   else if (x.noPlan) right = 'sem plano';
@@ -959,7 +986,9 @@ function platformCard(d, x) {
   // (29) 📈 resultado já obtido no dia
   if (x.plan && !d.isFuture && (x.plan.realC > 0 || x.plan.rbC)) {
     const rb = x.plan.rbC || 0;
-    const mult = x.plan.realC > 0 && rb > 0 ? ` · ${(rb / x.plan.realC).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}× o apostado` : '';
+    // (33) ganho e perda no mesmo formato (perda em vermelho) + perda ÷ a mais
+    let mult = x.plan.realC > 0 && rb !== 0 ? ` · ${fmtX(rb / x.plan.realC)} o apostado` : '';
+    if (rb < 0 && x.plan.overC > 0) mult += ` · ${fmtX(rb / x.plan.overC)} o a mais`;
     card.appendChild(el('p', `cal-pf-line cal-pf-rb${rb < 0 ? ' cal-line-bad' : (rb > 0 ? ' cal-pf-rb-up' : '')}`, `📈 R.B. do dia: ${rb > 0 ? '+' : (rb < 0 ? '−' : '')}${money(Math.abs(rb))}${mult}`));
   }
   // (29) 🏁 dia encerrado
@@ -1242,6 +1271,9 @@ function renderMetrics() {
   box.appendChild(kpi('R.B. do período', `${m.rbC >= 0 ? '+' : ''}${money(m.rbC)}`, `${m.sessions} sessão(ões)`, m.rbC < 0 ? 'cal-kpi-bad' : 'plan-kpi-main'));
   box.appendChild(kpi('Multiplicador de perda', m.lossMultiple === null ? '—' : `${m.lossMultiple.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}x`, m.depositC ? `derrotas ÷ ${money(m.depositC)} depositado` : 'sem depósito no período', m.lossMultiple !== null && m.lossMultiple >= 1 ? 'cal-kpi-bad' : ''));
   box.appendChild(kpi('Giro', m.turnover === null ? '—' : `${m.turnover.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}x`, `apostado ${money(m.wageredC)} ÷ depositado`));
+  // (33) perda ÷ apostado (sessões com perda) e perda ÷ o que jogou a mais
+  box.appendChild(kpi('Perda ÷ apostado', m.lossOnWagered === null ? '—' : fmtX(m.lossOnWagered), m.lossWageredC ? `${money(m.lossC)} ÷ ${money(m.lossWageredC)} jogados` : 'sem sessão com perda', m.lossOnWagered !== null ? 'cal-kpi-bad' : ''));
+  box.appendChild(kpi('Perda ÷ a mais', m.lossOnOver === null ? '—' : fmtX(m.lossOnOver), m.overLossDays ? `${money(m.overLossC)} ÷ ${money(m.overOnLossC)} a mais · ${m.overLossDays} dia(s)` : 'sem dia acima do plano com perda', m.lossOnOver !== null ? 'cal-kpi-bad' : ''));
   box.appendChild(kpi('Real × plano', m.overPlanPct === null ? '—' : `${m.overPlanPct >= 0 ? '+' : ''}${pct(m.overPlanPct, 1)}`, m.plannedC ? `${m.daysAbove} dia(s) acima · real ${money(m.realOnPlanC)} de ${money(m.plannedC)}` : 'sem dia com plano fechado', m.overPlanPct !== null && m.overPlanPct > 0 ? 'plan-kpi-vip' : ''));
   renderGameStats(range);
   renderPvrDetail(m);
@@ -1256,7 +1288,7 @@ function renderMetrics() {
         if (st && lg.ignored !== true) { n++; rbStop += Math.round(Number(st.rbC) || 0); wStop += Math.round(Number(st.wageredC) || 0); }
       });
     }
-    if (n) box.appendChild(kpi('🏁 Paradas', `${n} · ${rbStop >= 0 ? '+' : '−'}${money(Math.abs(rbStop))}`, wStop > 0 ? `R.B. ÷ apostado: ${(rbStop / wStop).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}×` : 'sem aposta antes de parar', rbStop >= 0 ? 'plan-kpi-bonus' : ''));
+    if (n) box.appendChild(kpi('🏁 Paradas', `${n} · ${rbStop >= 0 ? '+' : '−'}${money(Math.abs(rbStop))}`, wStop > 0 ? `R.B. ÷ apostado: ${rbStop < 0 ? '−' : ''}${fmtX(rbStop / wStop)}` : 'sem aposta antes de parar', rbStop >= 0 ? 'plan-kpi-bonus' : ''));
   }
   if (m.limitC > 0) {
     box.appendChild(kpi('Acima do limite 🎲', m.overLimitPct > 0 ? `+${pct(m.overLimitPct, 1)}` : 'Dentro', `${money(m.betDepositC)} de ${money(m.limitC)} no mês`, m.overLimitPct > 0 ? 'cal-kpi-bad' : ''));

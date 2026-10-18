@@ -541,6 +541,8 @@ export function computeRealMetrics(platforms, fromKey, toKey, opts = {}) {
   const m = {
     fromKey, toKey: hi,
     sessions: 0, wins: 0, winC: 0, losses: 0, lossC: 0, even: 0,
+    lossWageredC: 0, // (33) apostado nas sessões com perda
+    overLossC: 0, overOnLossC: 0, overLossDays: 0, // (33) dias acima do plano E com perda
     wageredC: 0, rbC: 0, depositC: 0, betDepositC: 0,
     plannedC: 0, realOnPlanC: 0, daysAbove: 0,
     planRows: [] // (23) dias × plataformas que formam o planejado
@@ -554,7 +556,7 @@ export function computeRealMetrics(platforms, fromKey, toKey, opts = {}) {
       m.sessions++;
       m.wageredC += toC(e.wagered);
       m.rbC += rb;
-      if (rb > 0) { m.wins++; m.winC += rb; } else if (rb < 0) { m.losses++; m.lossC += -rb; } else m.even++;
+      if (rb > 0) { m.wins++; m.winC += rb; } else if (rb < 0) { m.losses++; m.lossC += -rb; m.lossWageredC += toC(e.wagered); } else m.even++;
     });
     (p.depositLog || []).forEach(e => {
       const k = entryKey(e);
@@ -569,7 +571,12 @@ export function computeRealMetrics(platforms, fromKey, toKey, opts = {}) {
         const real = realWageredC(p, k);
         m.plannedC += planned;
         m.realOnPlanC += real;
-        if (real > planned) m.daysAbove++;
+        if (real > planned) {
+          m.daysAbove++;
+          // (33) perda ÷ o que jogou a mais (só dia acima do plano E com perda)
+          const dayRb = realRBC(p, k);
+          if (dayRb < 0) { m.overLossDays++; m.overLossC += -dayRb; m.overOnLossC += real - planned; }
+        }
         m.planRows.push({ key: k, platformId: p.id, name: String(p.name || ''), plannedC: planned, realC: real, fromLog: !!(opts.world.getPlanLog && opts.world.getPlanLog(k, p.id)) });
       }
     }
@@ -591,6 +598,8 @@ function finish(m, opts) {
   return {
     ...m,
     lossMultiple: m.depositC > 0 ? m.lossC / m.depositC : null,
+    lossOnWagered: m.lossWageredC > 0 ? m.lossC / m.lossWageredC : null, // (33)
+    lossOnOver: m.overOnLossC > 0 ? m.overLossC / m.overOnLossC : null, // (33)
     turnover: m.depositC > 0 ? m.wageredC / m.depositC : null,
     overPlanPct: m.plannedC > 0 ? (m.realOnPlanC - m.plannedC) / m.plannedC : null,
     limitC,
