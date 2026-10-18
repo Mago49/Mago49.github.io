@@ -2916,3 +2916,6 @@
 .cal-stop-many-name { font-weight: 700; overflow-wrap: anywhere; }
 .cal-stop-many-note { font-size: .85em; opacity: .8; overflow-wrap: anywhere; }
 .cal-stop-many-sum { font-weight: 600; }
+
+/* (Sub-entrega 33) saldo ao vivo ao lado do nome (contêiner do dia, hoje) */
+.cal-pf-balance { margin-left: 6px; padding: 0.12rem 0.45rem; font-size: 0.72rem; vertical-align: middle; white-space: nowrap; }
