@@ -2891,3 +2891,28 @@
 /* (Sub-entrega 29b) data com aviso na tabela de ciclos */
 .cy-cand-warn span { color: #f0b429; }
 .cy-type-btn { white-space: nowrap; flex-shrink: 0; }
+
+/* (Sub-entrega 31) motivos do 🏁: + Motivo, edição */
+.cal-stop-reasons { flex-wrap: wrap; }
+.cal-stop-add { font-weight: 700; }
+.cal-stop-manage, .cal-stop-form { flex-basis: 100%; width: 100%; display: flex; flex-direction: column; gap: 6px; margin-top: 6px; padding: 8px; border: 1px dashed #cbd5e1; border-radius: 10px; box-sizing: border-box; }
+.cal-stop-mrow { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.cal-stop-mname { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.cal-stop-frow { display: flex; gap: 6px; min-width: 0; }
+.cal-stop-emoji { width: 56px; flex: 0 0 56px; text-align: center; font-size: 1.2em; }
+.cal-stop-name { flex: 1; min-width: 0; }
+.cal-stop-emo { min-width: 40px; justify-content: center; }
+.cal-stop-fields { display: flex; flex-direction: column; gap: 6px; }
+.cal-stop-kform { border-style: dotted; background: rgba(148, 163, 184, .08); }
+
+/* (Sub-entrega 32) 🏁 no próprio lugar: distribuição + Encerrar várias */
+.cal-stop-spread { margin: 4px 0 8px; font-size: .9em; overflow-wrap: anywhere; }
+.cal-stop-many-bar { margin: 4px 0 8px; }
+.cal-stop-many { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
+.cal-stop-many-row { display: flex; gap: 8px; align-items: flex-start; padding: 8px; border: 1px solid #e2e8f0; border-radius: 10px; cursor: pointer; min-width: 0; }
+.cal-stop-many-row input { margin-top: 3px; flex-shrink: 0; }
+.cal-stop-many-on { border-color: #2563eb; background: rgba(37, 99, 235, .06); }
+.cal-stop-many-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cal-stop-many-name { font-weight: 700; overflow-wrap: anywhere; }
+.cal-stop-many-note { font-size: .85em; opacity: .8; overflow-wrap: anywhere; }
+.cal-stop-many-sum { font-weight: 600; }
