@@ -2919,3 +2919,25 @@
 
 /* (Sub-entrega 33) saldo ao vivo ao lado do nome (contêiner do dia, hoje) */
 .cal-pf-balance { margin-left: 6px; padding: 0.12rem 0.45rem; font-size: 0.72rem; vertical-align: middle; white-space: nowrap; }
+
+/* (Sub-entrega 35) 🅁 Rollover do dia + 📊 painel do topo */
+.plan-r-btn { margin-left: 6px; min-width: 26px; height: 24px; padding: 0 7px; border-radius: 999px; border: 1px solid #cbd5e1; background: #fff; color: #1d4ed8; font-weight: 800; font-size: .75rem; cursor: pointer; flex-shrink: 0; }
+.plan-r-btn.active { background: #1d4ed8; color: #fff; border-color: #1d4ed8; }
+.plan-r-box { margin-top: 6px; padding: 8px 10px; border-radius: 10px; background: rgba(29, 78, 216, .05); border: 1px dashed #bfdbfe; }
+.plan-ov { grid-column: 1 / -1; padding: 0.6rem 1.1rem 0.8rem; }
+.plan-ov-head { width: 100%; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 10px; background: none; border: 0; padding: 4px 0; cursor: pointer; text-align: left; color: inherit; font: inherit; }
+.plan-ov-title { font-weight: 800; }
+.plan-ov-sum { font-size: .85rem; opacity: .85; overflow-wrap: anywhere; }
+.plan-ov-filter, .plan-ov-bet { margin: 6px 0; }
+.plan-ov-pick { max-height: 220px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 4px 10px; padding: 6px; border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 6px; }
+.plan-ov-pick-row { font-size: .85rem; min-width: 0; overflow-wrap: anywhere; cursor: pointer; }
+.plan-ov-toggle { display: block; margin: 6px 0; }
+.plan-ov-date { display: flex; align-items: center; gap: 8px; margin: 6px 0 2px; }
+.plan-ov-date-in { max-width: 170px; }
+.plan-ov-kpis { margin-top: 8px; }
+.plan-ov-list { margin-top: 8px; }
+.plan-ov-list summary { cursor: pointer; font-weight: 700; padding: 4px 0; }
+.plan-ov-row { display: flex; justify-content: space-between; gap: 8px; padding: 5px 0; border-bottom: 1px solid #f1f5f9; font-size: .85rem; min-width: 0; }
+.plan-ov-name { font-weight: 700; flex-shrink: 0; }
+.plan-ov-val { text-align: right; overflow-wrap: anywhere; min-width: 0; }
+.plan-ov-row-bad .plan-ov-val { color: #b91c1c; }
