@@ -490,6 +490,10 @@ function renderToday(body) {
           if (!item.deferredFrom) acts.appendChild(button('⏭ Adiar', 'rt-mini-btn', () => onDepositChoice(t, r.id, item.platformId, 'defer')));
         } else if (item.choice === 'force' || item.choice === 'defer') {
           acts.appendChild(button('Desfazer', 'rt-mini-btn', () => onDepositChoice(t, r.id, item.platformId, null)));
+        } else if (item.status === 'pending' && !item.deferredFrom) {
+          // (34) qualquer depósito de hoje (não só o pausado): ⏭ Adiar —
+          // hoje fica neutro (não vira ❌) e o depósito passa pro próximo dia.
+          acts.appendChild(button('⏭ Adiar', 'rt-mini-btn', () => onDepositChoice(t, r.id, item.platformId, 'defer')));
         }
         if (item.deferredFrom && !item.choice) {
           acts.appendChild(button('Desfazer adiamento', 'rt-mini-btn', () => onDepositChoice(item.deferredFrom, r.id, item.platformId, null)));

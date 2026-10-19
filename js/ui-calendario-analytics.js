@@ -1064,6 +1064,9 @@ function platformCard(d, x) {
         if (!it.deferredFrom) acts.appendChild(button('⏭ Adiar', 'cal-pf-ignore', () => chooseDeposit(d.key, it.routineId, x.platformId, 'defer')));
       } else if (it.choice === 'force' || it.choice === 'defer') {
         acts.appendChild(button('Desfazer', 'cal-pf-ignore', () => chooseDeposit(d.key, it.routineId, x.platformId, null)));
+      } else if (it.status === 'pending' && !it.deferredFrom) {
+        // (34) qualquer depósito de hoje: ⏭ Adiar (hoje neutro, vai pro próximo dia)
+        acts.appendChild(button('⏭ Adiar', 'cal-pf-ignore', () => chooseDeposit(d.key, it.routineId, x.platformId, 'defer')));
       }
       if (it.deferredFrom && !it.choice) acts.appendChild(button('Desfazer adiamento', 'cal-pf-ignore', () => chooseDeposit(it.deferredFrom, it.routineId, x.platformId, null, d.key)));
       if (acts.childNodes.length) card.appendChild(acts);
