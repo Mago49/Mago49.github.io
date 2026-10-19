@@ -178,7 +178,7 @@ import {
   computeGoalProgress, getCautionStatus, computeCautionStats,
   addDaysKey, toCents, fromCents, EMISSION_CYCLE_DAYS, emissionKeysInRange,
   WEEK_MODES, buildGroupPlan, RESERVE_MODES, cleanReserve, applyReserve,
-  planUpdateDiff, isSignificantChange, plannedAfterC, planDayOf, overlaySavedDays
+  planUpdateDiff, isSignificantChange, plannedAfterC, planDayOf, overlaySavedDays, projectRolloverPath
 } from './plan-logic.js';
 import { activeStop } from './stop-reasons.js'; // (32)
 import { getPlatformSpeed, dayBoostsFor, formatMult } from './speed-logic.js';
@@ -630,6 +630,7 @@ function renderSkeleton() {
     <button type="button" id="planRetryBtn" class="bet-manage-btn app-hidden" style="margin:0.6rem 1.1rem 0;">Tentar de novo</button>
 
     <div id="planMain" class="plan-grid app-hidden">
+      <section id="planOverview" class="card-shell graficos-section plan-ov" aria-label="Painel do Rollover"></section>
       <section class="card-shell graficos-section plan-top" aria-label="Plano">
         <div class="plan-top-row">
           <div class="plan-field plan-top-select">
@@ -2242,6 +2243,7 @@ function renderPreview() {
   if (daysBox) {
     daysBox.replaceChildren();
     const vipByDay = new Map(proj.vipReach.map(r => [r.key, r.level]));
+    const rPath = rolloverPathFor(platform, { planDays: plan.days }); // (35) botão R
     const list = showAllDays ? plan.days : plan.days.slice(0, DAYS_COLLAPSED);
     list.forEach(d => {
       const row = el('div', `plan-day plan-day-${d.tier}`);
@@ -2250,8 +2252,10 @@ function renderPreview() {
       head.appendChild(el('span', `plan-tier plan-tier-${d.tier}`, TIER_LABEL[d.tier]));
       if (vipByDay.has(d.key)) head.appendChild(el('span', 'plan-tier plan-tier-vip', `V${vipByDay.get(d.key)}`));
       head.appendChild(el('span', 'plan-day-amount', formatCurrency(fromCents(d.plannedC))));
+      head.appendChild(rButton(row, platform, rPath, d, speedBase())); // (35)
       row.appendChild(head);
       row.appendChild(el('div', 'plan-day-lines', d.capped ? `${d.plannedC > 0 ? `${describeLines(d.lines)} · ` : ''}🔒 limitado pelo caixa${d.plannedC > 0 ? '' : ' — aguardando a próxima entrada'}` : describeLines(d.lines)));
+      if (openR.has(rKey(platform.id, d.key))) row.appendChild(rDetail(platform, rPath, d, speedBase()));
       daysBox.appendChild(row);
     });
     if (plan.days.length > DAYS_COLLAPSED) {
@@ -2386,11 +2390,12 @@ function memberInflows(p, endKey) {
   const t = todayKey();
   if (endKey < t) return [];
   const routines = isRoutinesLoaded(state.currentUid) ? getRoutines() : [];
-  const items = depositRoutineInflows(routines, p, t, endKey).items.map(x => ({ key: x.key, valueC: x.valueC }));
+  // (35) name: de onde vem a entrada (botão R / painel)
+  const items = depositRoutineInflows(routines, p, t, endKey).items.map(x => ({ key: x.key, valueC: x.valueC, name: `💰 ${x.name || 'Depósito de rotina'}` }));
   let tpl = null;
   if (contextConfirmed) { try { tpl = (resolveCtx(p) || {}).misteriosoTemplate || null; } catch (err) { tpl = null; } }
   if (tpl && !p.cycleEnded) {
-    try { return [...items, ...projectMisteriosoInflows(p, tpl, items, endKey, new Date())]; } catch (err) { return items; }
+    try { return [...items, ...projectMisteriosoInflows(p, tpl, items, endKey, new Date()).map(x => ({ ...x, name: '🃏 Bônus do Misterioso' }))]; } catch (err) { return items; }
   }
   return items;
 }
@@ -2565,14 +2570,18 @@ function renderGroupPreview() {
       if (m.plan && openGroupRows.has(m.platformId)) {
         const box = el('div', 'plan-group-days');
         if (m.plan.warnings.length) box.appendChild(el('p', 'plan-hint', m.plan.warnings.join(' ')));
+        const mp = findPlatform(m.platformId);
+        const rPath = mp ? rolloverPathFor(mp, { planDays: m.plan.days }) : null; // (35) botão R
         m.plan.days.forEach(d => {
           const dr = el('div', `plan-day plan-day-${d.tier}`);
           const dh = el('div', 'plan-day-head');
           dh.appendChild(el('span', 'plan-day-date', fmtDay(d.key)));
           dh.appendChild(el('span', `plan-tier plan-tier-${d.tier}`, TIER_LABEL[d.tier]));
           dh.appendChild(el('span', 'plan-day-amount', formatCurrency(fromCents(d.plannedC))));
+          if (mp) dh.appendChild(rButton(dr, mp, rPath, d, members[i].speed)); // (35)
           dr.appendChild(dh);
           dr.appendChild(el('div', 'plan-day-lines', d.capped ? `${d.plannedC > 0 ? `${describeLines(d.lines)} · ` : ''}🔒 limitado pelo caixa${d.plannedC > 0 ? '' : ' — aguardando a próxima entrada'}` : describeLines(d.lines)));
+          if (mp && openR.has(rKey(mp.id, d.key))) dr.appendChild(rDetail(mp, rPath, d, members[i].speed));
           box.appendChild(dr);
         });
         row.appendChild(box);
@@ -2609,7 +2618,9 @@ function renderMemberReserve(pid, member) {
   box.appendChild(el('p', 'plan-hint', roll === null
     ? 'Rollover indisponível.'
     : (member.reserve.mode === 'none'
-      ? `Meta = Rollover ${formatCurrency(fromCents(roll))}${member.speed !== 1 ? ' (com o peso ⚡)' : ''}.`
+      ? (form.groupBase === 'projected' && member.inflowC > 0 // (35) Projetado: as entradas previstas entram na meta
+        ? `Meta = Rollover ${formatCurrency(fromCents(roll))} + entradas previstas ${formatCurrency(fromCents(Math.round(member.inflowC * member.speed)))} = ${formatCurrency(member.target)}${member.speed !== 1 ? ' (com o peso ⚡)' : ''}. Toque em R num dia pra ver o caixa dele.`
+        : `Meta = Rollover ${formatCurrency(fromCents(roll))}${member.speed !== 1 ? ' (com o peso ⚡)' : ''}.`)
       : (member.reserve.mode === 'all'
         ? `Guarda o Rollover inteiro (${formatCurrency(fromCents(member.reservedC))}); a meta cobre só os depósitos de ativação previstos: ${formatCurrency(member.target)}.`
         : `Guarda ${formatCurrency(fromCents(member.reservedC))} de ${formatCurrency(fromCents(roll))}; meta ${formatCurrency(member.target)}.`))));
@@ -3484,6 +3495,7 @@ function renderAlert() {
 function refreshAlert() {
   computeAlert();
   renderAlert();
+  renderOverview(); // (35)
 }
 
 // (26) opts.onlyPlatformId: "⏭ Parar hoje" do Calendário — sem desconto de
@@ -3832,6 +3844,246 @@ async function consumeFocus() {
   applyTab();
   if (rootEl && typeof rootEl.scrollIntoView === 'function') rootEl.scrollIntoView({ block: 'start' });
   if (pendingStopToday === id) { pendingStopToday = null; openUpdatePlans({ onlyPlatformId: id, stopInfo: pendingStopInfo }); pendingStopInfo = null; }
+}
+
+
+// ============================================================
+// (Sub-entrega 35) 🅁 ROLLOVER DO DIA + 📊 PAINEL DO TOPO
+// ============================================================
+// Só leitura e conta: nada é gravado. Rollover ao vivo (mesma conta do
+// resto do Planejador) − o que falta apostar hoje − os dias do plano +
+// entradas previstas (depósitos de rotina + Misterioso).
+
+const openR = new Set();
+function rKey(pid, key) { return `${pid}|${key}`; }
+
+/**
+ * Caminho do Rollover de UMA plataforma. planDays: os dias da prévia
+ * (botão R); sem eles, o plano SALVO (painel).
+ */
+function rolloverPathFor(p, { withInflows = true, untilKey = null, planDays = null } = {}) {
+  if (!p) return null;
+  const roll = platformRolloverC(p);
+  if (roll === null) return null;
+  const t = todayKey();
+  const saved = getSavedPlan(p.id);
+  const days = Array.isArray(planDays) ? planDays : (saved && Array.isArray(saved.days) ? saved.days : []);
+  const pday = Array.isArray(planDays) ? planDays.find(d => d && d.key === t) : null;
+  // hoje: o que AINDA vai ser apostado (o já apostado já saiu do Rollover)
+  const todayBetC = pday && !activeStop(isPlanLogLoaded(state.currentUid) ? getPlanLogEntry(t, p.id) : null)
+    ? Math.max(0, Math.round(Number(pday.plannedC) || 0) - realWageredC(p, t))
+    : todayLeftC(saved, p, t);
+  const lastKey = days.length ? days[days.length - 1].key : t;
+  const endK = untilKey && untilKey > lastKey ? untilKey : lastKey;
+  const inflows = withInflows ? memberInflows(p, endK > t ? endK : t) : [];
+  return projectRolloverPath({ rolloverC: roll, todayKey: t, todayBetC, bets: days.filter(d => d && d.key > t), inflows, untilKey });
+}
+
+function rButton(row, p, rPath, d, speed) {
+  const b = el('button', `plan-r-btn${openR.has(rKey(p.id, d.key)) ? ' active' : ''}`, 'R');
+  b.type = 'button';
+  b.title = 'Rollover previsto pra este dia';
+  b.setAttribute('aria-label', `Rollover previsto em ${fmtShort(d.key)}`);
+  b.setAttribute('aria-expanded', openR.has(rKey(p.id, d.key)) ? 'true' : 'false');
+  b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const k = rKey(p.id, d.key);
+    const cur = row.querySelector(':scope > .plan-r-box');
+    if (openR.has(k)) { openR.delete(k); if (cur) cur.remove(); b.classList.remove('active'); b.setAttribute('aria-expanded', 'false'); }
+    else { openR.add(k); if (!cur) row.appendChild(rDetail(p, rPath, d, speed)); b.classList.add('active'); b.setAttribute('aria-expanded', 'true'); }
+  });
+  return b;
+}
+
+function rDetail(p, rPath, d, speed) {
+  const box = el('div', 'plan-r-box');
+  const t = todayKey();
+  if (!rPath) { box.appendChild(el('p', 'plan-hint', 'Rollover indisponível (configurações de bônus não carregadas).')); return box; }
+  if (d.key < t) { box.appendChild(el('p', 'plan-hint', 'Dia que já passou — sem projeção.')); return box; }
+  const st = rPath.path.find(x => x.key === d.key);
+  if (!st) { box.appendChild(el('p', 'plan-hint', 'Sem projeção pra este dia.')); return box; }
+  const line = (l, r, cls = '') => { const x = el('div', `pu-line${cls ? ` ${cls}` : ''}`); x.appendChild(el('span', 'pu-l', l)); x.appendChild(el('span', 'pu-r', r)); box.appendChild(x); };
+  line(d.key === t ? 'Rollover agora' : 'Rollover no início do dia', moneyC(st.startC), st.startC <= 0 ? 'pu-down' : '');
+  if (st.inItems.length) st.inItems.forEach(x => line(`+ ${x.name || 'Entrada prevista'}`, `+${moneyC(x.valueC)}`, 'pu-up'));
+  else line('Entradas previstas no dia', 'nenhuma');
+  line(d.key === t ? '− Falta apostar hoje' : '− Aposta planejada do dia', `−${moneyC(st.betC)}`);
+  line('= Rollover no fim do dia', moneyC(st.endC), st.endC < 0 ? 'pu-down' : '');
+  if (st.endC < 0) box.appendChild(el('p', 'plan-hint pu-err', `⚠️ O plano aposta ${moneyC(-st.endC)} além do Rollover previsto até este dia${speed && speed !== 1 ? ` (peso ⚡ ${formatMult(speed)}: o teto do caixa é o Rollover × ${formatMult(speed)})` : ''}.`));
+  else if (speed && speed !== 1) box.appendChild(el('p', 'plan-hint', `Peso ⚡ ${formatMult(speed)}: o teto do caixa é o Rollover × ${formatMult(speed)}.`));
+  if (d.capped) box.appendChild(el('p', 'plan-hint', '🔒 O caixa limitou este dia.'));
+  return box;
+}
+
+// ---------- 📊 Painel ----------
+const OV_SHORTCUTS = [[1, 'Amanhã'], [3, '3 dias'], [7, '7 dias'], [15, '15 dias'], [30, '30 dias']];
+const OV_BET_MODES = [['today', 'Hoje'], ['all', 'Hoje → fim dos planos'], ['range', 'Amanhã → data']];
+const ov = { open: false, sel: null, pick: false, inflows: true, days: 7, untilKey: null, bet: 'today', list: false };
+try { ov.open = window.localStorage.getItem('planOvOpen') === '1'; } catch (e) { ov.open = false; }
+
+function ovUntil() {
+  return ov.untilKey || addDaysKey(todayKey(), ov.days || 7);
+}
+
+// Meta de HOJE designada (🏁 encerrado = o que apostou até parar).
+function todayDesignatedC(p) {
+  const t = todayKey();
+  const log = isPlanLogLoaded(state.currentUid) ? getPlanLogEntry(t, p.id) : null;
+  const st = activeStop(log);
+  if (st) return Math.round(Number(st.wageredC) || 0);
+  const day = planDayOf(getSavedPlan(p.id), t) || log;
+  return day ? Math.max(0, Math.round(Number(day.plannedC) || 0)) : 0;
+}
+
+function overviewRows() {
+  const t = todayKey();
+  const until = ovUntil();
+  const list = (state.platforms || []).filter(p => !ov.sel || ov.sel.has(p.id));
+  return list.map(p => {
+    const saved = getSavedPlan(p.id);
+    const rollNow = platformRolloverC(p);
+    const res = rollNow === null ? null : rolloverPathFor(p, { withInflows: ov.inflows, untilKey: until });
+    const futureDays = saved && Array.isArray(saved.days) ? saved.days.filter(d => d && d.key > t) : [];
+    let betC = 0;
+    if (ov.bet === 'today') betC = todayDesignatedC(p);
+    else if (ov.bet === 'all') betC = todayDesignatedC(p) + futureDays.reduce((s2, d) => s2 + Math.round(Number(d.plannedC) || 0), 0);
+    else betC = futureDays.filter(d => d.key <= until).reduce((s2, d) => s2 + Math.round(Number(d.plannedC) || 0), 0);
+    return {
+      p, name: String(p.name || ''), hasPlan: !!saved, rollNow,
+      projC: res ? res.endAt(until) : null,
+      zeroKey: res ? res.zeroKey : null,
+      lastBetKey: res ? res.lastBetKey : null,
+      betC
+    };
+  }).filter(r => (r.rollNow !== null && r.rollNow > 0) || r.hasPlan || r.betC > 0);
+}
+
+function renderOverview() {
+  const box = $('planOverview');
+  if (!box) return;
+  box.replaceChildren();
+  if (loadStatus !== 'ok') return;
+  const t = todayKey();
+  const until = ovUntil();
+  const rows = overviewRows();
+  const known = rows.filter(r => r.rollNow !== null);
+  const rollNowC = known.reduce((s2, r) => s2 + r.rollNow, 0);
+  const projC = known.reduce((s2, r) => s2 + Math.max(0, r.projC || 0), 0);
+  const over = known.filter(r => r.projC !== null && r.projC < 0);
+  const betC = rows.reduce((s2, r) => s2 + r.betC, 0);
+  const withPlan = known.filter(r => r.hasPlan && r.rollNow > 0);
+  const zeroing = withPlan.filter(r => r.zeroKey);
+  const lastZero = zeroing.map(r => r.zeroKey).sort().pop() || null;
+  const saqueTxt = !withPlan.length ? '—' : (zeroing.length === withPlan.length ? `todas em ${fmtShort(lastZero)}` : `${zeroing.length} de ${withPlan.length}${lastZero ? ` até ${fmtShort(lastZero)}` : ''}`);
+  const untilLabel = ov.untilKey ? fmtShort(until) : (OV_SHORTCUTS.find(x => x[0] === ov.days) || [0, fmtShort(until)])[1].toLowerCase();
+
+  const head = el('button', 'plan-ov-head');
+  head.type = 'button';
+  head.setAttribute('aria-expanded', ov.open ? 'true' : 'false');
+  head.appendChild(el('span', 'plan-ov-title', `📊 Rollover ${ov.sel ? `(${ov.sel.size})` : 'geral'}`));
+  head.appendChild(el('span', 'plan-ov-sum', `hoje ${moneyC(rollNowC)} · ${untilLabel} ${moneyC(projC)} · saque ${saqueTxt} ${ov.open ? '▴' : '▾'}`));
+  head.addEventListener('click', () => {
+    ov.open = !ov.open;
+    try { window.localStorage.setItem('planOvOpen', ov.open ? '1' : '0'); } catch (e) { /* aparelho sem armazenamento: só não lembra */ }
+    renderOverview();
+  });
+  box.appendChild(head);
+  if (!ov.open) return;
+  if (!contextConfirmed) box.appendChild(el('p', 'plan-hint', '⚠ Configurações de bônus não carregadas — o Rollover das plataformas fica indisponível.'));
+
+  // Filtro: todas / grupos / escolher
+  const f = el('div', 'plan-chips plan-ov-filter');
+  const chip = (label, active, fn) => { const b = el('button', `plan-chip${active ? ' active' : ''}`, label); b.type = 'button'; b.setAttribute('aria-pressed', active ? 'true' : 'false'); b.addEventListener('click', fn); f.appendChild(b); };
+  chip('Todas', !ov.sel, () => { ov.sel = null; renderOverview(); });
+  planGroups().forEach(g => {
+    const ids = groupPlatforms(g).map(p => p.id);
+    if (!ids.length) return;
+    const active = !!ov.sel && ov.sel.size === ids.length && ids.every(id => ov.sel.has(id));
+    chip(`${g.routine.emoji ? `${g.routine.emoji} ` : ''}${g.routine.name}`, active, () => { ov.sel = new Set(ids); renderOverview(); });
+  });
+  chip(ov.pick ? '✓ Escolher' : 'Escolher…', ov.pick, () => { ov.pick = !ov.pick; renderOverview(); });
+  box.appendChild(f);
+  if (ov.pick) {
+    const pl = el('div', 'plan-ov-pick');
+    [...(state.platforms || [])].sort((a, b) => String(a.name).localeCompare(String(b.name), 'pt-BR', { numeric: true })).forEach(p => {
+      const lab = el('label', 'plan-ov-pick-row');
+      const cb = el('input');
+      cb.type = 'checkbox';
+      cb.checked = !ov.sel || ov.sel.has(p.id);
+      cb.addEventListener('change', () => {
+        const cur = ov.sel ? new Set(ov.sel) : new Set((state.platforms || []).map(x => x.id));
+        if (cb.checked) cur.add(p.id); else cur.delete(p.id);
+        ov.sel = cur.size === (state.platforms || []).length ? null : cur;
+        renderOverview();
+      });
+      lab.appendChild(cb);
+      lab.appendChild(document.createTextNode(` ${p.name}`));
+      pl.appendChild(lab);
+    });
+    box.appendChild(pl);
+  }
+
+  // Entradas previstas liga/desliga
+  const tg = el('label', 'plan-toggle plan-ov-toggle');
+  const ti = el('input');
+  ti.type = 'checkbox';
+  ti.checked = ov.inflows;
+  ti.addEventListener('change', () => { ov.inflows = ti.checked; renderOverview(); });
+  tg.appendChild(ti);
+  tg.appendChild(document.createTextNode(' Contar entradas previstas (depósitos de rotina + Misterioso)'));
+  box.appendChild(tg);
+
+  // Data
+  const dr = el('div', 'plan-ov-date');
+  dr.appendChild(el('span', 'plan-label', 'Até'));
+  const di = el('input', 'plan-input plan-ov-date-in');
+  di.type = 'date';
+  di.min = addDaysKey(t, 1);
+  di.value = until;
+  di.setAttribute('aria-label', 'Data da projeção');
+  di.addEventListener('change', () => { if (/^\d{4}-\d{2}-\d{2}$/.test(di.value) && di.value > t) { ov.untilKey = di.value; ov.days = null; renderOverview(); } });
+  dr.appendChild(di);
+  box.appendChild(dr);
+  const sc = el('div', 'plan-chips');
+  OV_SHORTCUTS.forEach(([n, label]) => {
+    const b = el('button', `plan-chip${!ov.untilKey && ov.days === n ? ' active' : ''}`, label);
+    b.type = 'button';
+    b.addEventListener('click', () => { ov.days = n; ov.untilKey = null; renderOverview(); });
+    sc.appendChild(b);
+  });
+  box.appendChild(sc);
+  // Aposta: intervalo
+  const bm = el('div', 'plan-chips plan-ov-bet');
+  OV_BET_MODES.forEach(([id, label]) => {
+    const b = el('button', `plan-chip${ov.bet === id ? ' active' : ''}`, label);
+    b.type = 'button';
+    b.addEventListener('click', () => { ov.bet = id; renderOverview(); });
+    bm.appendChild(b);
+  });
+  box.appendChild(el('span', 'plan-label', 'Aposta projetada'));
+  box.appendChild(bm);
+
+  // Números
+  const k = el('div', 'plan-kpis plan-ov-kpis');
+  k.appendChild(kpi('Rollover hoje', moneyC(rollNowC), `${known.length} plataforma(s)`, 'plan-kpi-main'));
+  k.appendChild(kpi(`Rollover em ${fmtShort(until)}`, moneyC(projC), over.length ? `⚠ ${over.length} com plano acima do Rollover` : (ov.inflows ? 'com as entradas previstas' : 'sem entradas previstas'), over.length ? 'cal-kpi-bad' : ''));
+  k.appendChild(kpi('Aposta projetada', moneyC(betC), ov.bet === 'today' ? `hoje (${fmtShort(t)})` : (ov.bet === 'all' ? 'hoje até o fim dos planos' : `${fmtShort(addDaysKey(t, 1))} a ${fmtShort(until)}`)));
+  k.appendChild(kpi('Previsão de saque', lastZero ? fmtShort(lastZero) : '—', withPlan.length ? `${zeroing.length} de ${withPlan.length} zeram dentro do plano` : 'nenhuma com plano e Rollover', 'plan-kpi-vip'));
+  box.appendChild(k);
+
+  // Por plataforma
+  const det = el('details', 'plan-ov-list');
+  det.open = ov.list;
+  det.addEventListener('toggle', () => { ov.list = det.open; });
+  det.appendChild(el('summary', '', `Por plataforma (${rows.length})`));
+  const sorted = [...rows].sort((a, b) => (a.zeroKey || '9999').localeCompare(b.zeroKey || '9999') || a.name.localeCompare(b.name, 'pt-BR', { numeric: true }));
+  sorted.forEach(r => {
+    const line = el('div', `plan-ov-row${r.projC !== null && r.projC < 0 ? ' plan-ov-row-bad' : ''}`);
+    line.appendChild(el('span', 'plan-ov-name', r.name));
+    line.appendChild(el('span', 'plan-ov-val', r.rollNow === null ? '—'
+      : `${moneyC(r.rollNow)} → ${r.projC === null ? '—' : moneyC(r.projC)} · ${r.zeroKey ? `zera ${fmtShort(r.zeroKey)}` : (r.hasPlan ? (r.lastBetKey ? `não zera até ${fmtShort(r.lastBetKey)}` : 'plano sem dias à frente') : 'sem plano')}`));
+    det.appendChild(line);
+  });
+  box.appendChild(det);
 }
 
 // ---------- API pública (view-graficos.js) ----------

@@ -1193,3 +1193,58 @@ export function overlaySavedDays(plan, savedDoc) {
     }
   };
 }
+
+// ---------- (Sub-entrega 35) caminho do Rollover dia a dia ----------
+
+/**
+ * Rollover de UMA plataforma de hoje até untilKey (ou o último dia de
+ * aposta), em centavos. Puro.
+ *   rolloverC  Rollover ao vivo agora (já sem o que foi apostado hoje)
+ *   todayBetC  o que ainda vai ser apostado HOJE
+ *   bets       [{key, plannedC}] dias DEPOIS de hoje
+ *   inflows    [{key, valueC, name?}] entradas previstas (vazio = desligado)
+ * @returns {{ path: Array<{key, startC, inC, inItems, betC, endC}>,
+ *   zeroKey: string|null, lastBetKey: string|null, endAt(key): number|null }}
+ *   zeroKey: 1º dia em que o fim do dia chega a R$ 0 (null = não zera).
+ */
+export function projectRolloverPath({ rolloverC, todayKey, todayBetC = 0, bets = [], inflows = [], untilKey = null }) {
+  const betByKey = new Map();
+  (bets || []).forEach(b => { if (b && b.key > todayKey && Number(b.plannedC) > 0) betByKey.set(b.key, (betByKey.get(b.key) || 0) + Math.round(Number(b.plannedC))); });
+  const inByKey = new Map();
+  (inflows || []).forEach(x => {
+    if (!x || !(Number(x.valueC) > 0)) return;
+    const k = x.key < todayKey ? todayKey : x.key;
+    const cur = inByKey.get(k) || [];
+    cur.push(x);
+    inByKey.set(k, cur);
+  });
+  const betKeys = [...betByKey.keys()].sort();
+  const lastBetKey = betKeys.length ? betKeys[betKeys.length - 1] : null;
+  let end = untilKey && untilKey > todayKey ? untilKey : todayKey;
+  if (lastBetKey && lastBetKey > end) end = lastBetKey;
+  const path = [];
+  let run = Math.round(Number(rolloverC) || 0);
+  let zeroKey = run <= 0 ? todayKey : null;
+  let guard = 0;
+  for (let k = todayKey; k <= end && guard < 400; k = addDaysKey(k, 1), guard++) {
+    const items = inByKey.get(k) || [];
+    const inC = items.reduce((s, x) => s + Math.round(Number(x.valueC) || 0), 0);
+    const betC = k === todayKey ? Math.max(0, Math.round(Number(todayBetC) || 0)) : (betByKey.get(k) || 0);
+    const startC = run;
+    run = startC + inC - betC;
+    path.push({ key: k, startC, inC, inItems: items, betC, endC: run });
+    if (zeroKey === null && run <= 0 && (betC > 0 || startC <= 0)) zeroKey = k;
+    if (zeroKey !== null && run > 0 && k > zeroKey) zeroKey = null; // entrou dinheiro depois: volta a contar
+  }
+  const byKey = new Map(path.map(p => [p.key, p]));
+  return {
+    path,
+    zeroKey,
+    lastBetKey,
+    endAt(key) {
+      if (!key) return null;
+      if (byKey.has(key)) return byKey.get(key).endC;
+      return key > end && path.length ? path[path.length - 1].endC : null;
+    }
+  };
+}
