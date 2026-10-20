@@ -319,3 +319,5 @@
 
 /* (Sub-entrega 20) ⬇️ Abatimento — mesma caixa dos outros números, cor âmbar. */
 .finance-stat-value.finance-abat { color: #b45309; }
+/* (Sub-entrega 38) ⬆️ Aumento de rollover */
+.finance-stat-value.finance-aum { color: #15803d; }

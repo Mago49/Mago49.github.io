@@ -2941,3 +2941,19 @@
 .plan-ov-name { font-weight: 700; flex-shrink: 0; }
 .plan-ov-val { text-align: right; overflow-wrap: anywhere; min-width: 0; }
 .plan-ov-row-bad .plan-ov-val { color: #b91c1c; }
+
+/* (Sub-entrega 36) 📅 para onde vai o resto do 🏁 */
+.cal-dist { margin: 6px 0 8px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.cal-dist-modes { flex-wrap: wrap; }
+.cal-dist-manual { display: flex; flex-direction: column; gap: 6px; }
+.cal-dist-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.cal-dist-day { flex: 1; min-width: 0; font-size: .85rem; overflow-wrap: anywhere; }
+.cal-dist-plus { font-size: .8rem; opacity: .75; flex-shrink: 0; }
+.cal-dist-in { width: 84px; flex: 0 0 84px; text-align: right; }
+.cal-dist-in-bad { border-color: #dc2626 !important; }
+.cal-dist-count { font-weight: 700; font-size: .85rem; margin: 2px 0; }
+.cal-stop-many-item { border: 1px solid #e2e8f0; border-radius: 10px; padding: 4px 6px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cal-stop-many-item .cal-stop-many-row { border: 0; padding: 4px 2px; }
+.cal-stop-many-item.cal-stop-many-on { border-color: #2563eb; background: rgba(37, 99, 235, .06); }
+.cal-dist-toggle { align-self: flex-start; font-size: .8rem; }
+.cal-dist-toggle-bad { border-color: #dc2626 !important; color: #b91c1c; }

@@ -2108,3 +2108,12 @@
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
+
+/* (Sub-entrega 37) ⬆️ Rollover acima do sistema: sistema × informado × R */
+.bc-above { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr) 40px; gap: 6px 10px; align-items: center; margin: 0.4rem 0 0.6rem; }
+.bc-above-c { font-size: 0.92rem; text-align: right; overflow-wrap: anywhere; min-width: 0; }
+.bc-above-h { font-size: 0.72rem; font-weight: 800; text-transform: uppercase; opacity: 0.65; }
+.bc-above-k { text-align: left; font-weight: 700; }
+.bc-above-r { width: 36px; height: 36px; font-weight: 800; }
+.bc-above-mark { display: flex; align-items: center; gap: 6px; margin: 0.5rem 0; font-weight: 700; cursor: pointer; }
+.bc-above-mark input { width: 20px; height: 20px; }
