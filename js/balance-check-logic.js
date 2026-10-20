@@ -70,6 +70,12 @@
 //                         real MAIOR = só bônus com escala maior sobe o
 //                         rollover -> erro 'above' (nada é lançado).
 // Aparece no "Bônus da semana" (kind 'abatido', Excluir).
+//
+// === (Sub-entrega 37) ⬆️ AUMENTO DE ROLLOVER ===
+// Rollover real MAIOR que o sistema deixa de ser erro: 'above' traz a
+// diferença (value) e a pergunta. Confirmado com o marcador "Aumento",
+// grava platform.rolloverIncreases (addRolloverIncrease). Ou o usuário
+// sobe o R do bônus. Aparece no "Bônus da semana" (kind 'aumento', Excluir).
 
 import {
   computeLiveBalance, computeLiveBalanceRaw, getWeekStart, getWeekEnd, toLocalDateString, isCurrentWeekClosed, roundMoney,
@@ -93,7 +99,8 @@ export const BONUS_TYPE_LABELS = Object.freeze({
   misterioso: 'Misterioso',
   alto: 'Bônus Alto',
   avulso: 'Avulso',
-  abatido: 'Rollover abatido'
+  abatido: 'Rollover abatido',
+  aumento: 'Rollover aumentado' // (37)
 });
 
 // Grupo do filtro (VIP / Misterioso / Obrigado / Avulso).
@@ -325,6 +332,22 @@ export function listOpenWeekBonusItems(platform, ctx = {}, now = new Date()) {
     });
   });
 
+  // (37) ⬆️ aumentos de rollover da semana aberta.
+  (platform.rolloverIncreases || []).forEach(e => {
+    if (!e || !e.date) return;
+    const d = new Date(e.date);
+    if (isNaN(d.getTime()) || d < weekStart || d > weekEnd) return;
+    items.push({
+      id: `u|${e.id || e.date}`,
+      kind: 'aumento',
+      dayKey: toLocalDateString(d),
+      type: 'aumento',
+      value: r2(e.value),
+      entry: e,
+      sortKey: e.date
+    });
+  });
+
   getEffectiveOtherBonusEntries(platform, e => {
     const d = new Date(e.date);
     return d >= weekStart && d <= weekEnd;
@@ -524,6 +547,33 @@ export function addRolloverAdjustment(platform, value, { at = null, now = new Da
   return entry;
 }
 
+/** (37) Grava um aumento de rollover (value > 0). */
+export function addRolloverIncrease(platform, value, { at = null, now = new Date(), source = 'check', checkId = null } = {}) {
+  const v = r2(value);
+  if (!(v > 0) || v > BALANCE_MAX) return null;
+  if (!Array.isArray(platform.rolloverIncreases)) platform.rolloverIncreases = [];
+  const when = at && !isNaN(new Date(at).getTime()) ? new Date(at) : now;
+  const entry = {
+    id: newId('ru'),
+    date: when.toISOString(),
+    value: v,
+    source,
+    ...(checkId ? { checkId } : {}),
+    createdAt: now.toISOString()
+  };
+  platform.rolloverIncreases.push(entry);
+  return entry;
+}
+
+/** (37) Remove um aumento. true se removeu. */
+export function removeRolloverIncrease(platform, entry) {
+  const list = Array.isArray(platform.rolloverIncreases) ? platform.rolloverIncreases : [];
+  const idx = list.indexOf(entry);
+  if (idx === -1) return false;
+  list.splice(idx, 1);
+  return true;
+}
+
 /** Remove um abatimento. true se removeu. */
 export function removeRolloverAdjustment(platform, entry) {
   const list = Array.isArray(platform.rolloverAdjustments) ? platform.rolloverAdjustments : [];
@@ -567,11 +617,12 @@ export function planRolloverTarget(systemRollover, { abated, real } = {}) {
   const diff = r2(sys - rr);
   if (Math.abs(diff) <= ROLLOVER_TOLERANCE) return { kind: 'match', value: 0, after: sys };
   if (diff > 0) return { kind: 'abate', value: diff, after: rr };
+  // (37) acima do sistema: diferença + pergunta (Aumento ou R do bônus)
   return {
     kind: 'above',
-    value: 0,
-    after: sys,
-    error: `A plataforma mostra ${fmtBR(rr)}, ${fmtBR(-diff)} acima do sistema (${fmtBR(sys)}). O rollover só sobe por bônus com escala maior: aumente o R do bônus (aqui ou no "Bônus da semana").`
+    value: r2(-diff),
+    after: rr,
+    error: `O valor do rollover está ${fmtBR(-diff)} acima do sistema (${fmtBR(sys)} → ${fmtBR(rr)}). A plataforma multiplicou o rollover do bônus ou aumentou desde a última conferência?`
   };
 }
 

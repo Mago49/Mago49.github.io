@@ -34,7 +34,9 @@ export const RANK_METRICS = Object.freeze([
   { id: 'apostado', label: 'Apostado', kind: 'money', better: 'high', hint: 'Total apostado no período.' },
   { id: 'aderencia', label: 'Aderência', kind: 'pct', better: 'high', hint: 'Dias do plano cumpridos (✅) ÷ dias com plano.' },
   { id: 'rollover', label: 'Rollover restante', kind: 'money', better: 'low', hint: 'Quanto ainda falta apostar hoje — menos é melhor.' },
-  { id: 'abatimento', label: 'Abatimento', kind: 'money', better: 'high', hint: 'Rollover abatido no período (à mão, conferência de saldo ou em lote).' }
+  { id: 'abatimento', label: 'Abatimento', kind: 'money', better: 'high', hint: 'Rollover abatido no período (à mão, conferência de saldo ou em lote).' },
+  // (Sub-entrega 38) aumento de rollover pela plataforma — menos é melhor.
+  { id: 'aumento', label: 'Aumento', kind: 'money', better: 'low', hint: 'Rollover aumentado pela plataforma no período (conferência de saldo ou em lote) — menos é melhor.' }
 ]);
 
 export const PERIODS = Object.freeze([
@@ -116,6 +118,8 @@ function buildIndex(platform) {
   const rb = new Map();
   const adj = new Map();
   const ab = new Map();
+  const au = new Map(); // (38)
+  (platform.rolloverIncreases || []).forEach(e => { const k = entryKey(e); if (k) add(au, k, toC(e.value)); });
   (platform.rolloverAdjustments || []).forEach(e => { const k = entryKey(e); if (k) add(ab, k, toC(e.value)); });
   (platform.depositLog || []).forEach(e => { const k = entryKey(e); if (k) add(dep, k, toC(e.value)); });
   (platform.withdrawals || []).forEach(e => { const k = entryKey(e); if (k) add(wd, k, toC(e.value)); });
@@ -130,7 +134,7 @@ function buildIndex(platform) {
     if (!w || !isDayKey(w.weekEnd) || !Number.isFinite(a) || a === 0) return;
     add(adj, w.weekEnd, toC(a));
   });
-  return { dep, wd, bet, rb, adj, ab };
+  return { dep, wd, bet, rb, adj, ab, au };
 }
 
 /**
@@ -154,12 +158,13 @@ function dayMetrics(platform, key, ctx, idx) {
     wageredC: idx.bet.get(key) || 0,
     rbC: idx.rb.get(key) || 0,
     bonusC,
-    abatC: idx.ab.get(key) || 0
+    abatC: idx.ab.get(key) || 0,
+    aumC: idx.au ? (idx.au.get(key) || 0) : 0
   };
 }
 
 function emptyTotals() {
-  return { depositC: 0, withdrawC: 0, wageredC: 0, rbC: 0, bonusC: 0, abatC: 0, planDays: 0, done: 0, partial: 0, miss: 0, plannedC: 0, realOnPlanC: 0 };
+  return { depositC: 0, withdrawC: 0, wageredC: 0, rbC: 0, bonusC: 0, abatC: 0, aumC: 0, planDays: 0, done: 0, partial: 0, miss: 0, plannedC: 0, realOnPlanC: 0 };
 }
 
 function finishTotals(t) {
@@ -236,7 +241,7 @@ export function computeGroupStats(groups, platforms, range, opts = {}) {
         const m = getDay(p, k);
         if (!perP.has(p.id)) perP.set(p.id, { platformId: p.id, name: p.name, ...emptyTotals() });
         const pt = perP.get(p.id);
-        ['depositC', 'withdrawC', 'wageredC', 'rbC', 'bonusC', 'abatC'].forEach(f => { t[f] += m[f]; pt[f] += m[f]; });
+        ['depositC', 'withdrawC', 'wageredC', 'rbC', 'bonusC', 'abatC', 'aumC'].forEach(f => { t[f] += m[f] || 0; pt[f] += m[f] || 0; });
         dayLucro += m.rbC + m.bonusC;
         // Aderência: só dias fechados (hoje ainda em aberto).
         if (k < todayKey) {
@@ -286,6 +291,7 @@ export function metricValue(stat, metricId) {
     case 'aderencia': return t.aderencia;
     case 'rollover': return t.rolloverC;
     case 'abatimento': return t.abatC;
+    case 'aumento': return t.aumC || 0;
     default: return null;
   }
 }

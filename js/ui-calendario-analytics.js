@@ -54,7 +54,7 @@
 
 import { state } from './state.js';
 import { formatCurrency, showAppAlert, showAppConfirm } from './utils.js';
-import { toLocalDateString, getWeekStart, getWeekEnd, computeLiveBalance } from './finance-logic.js';
+import { toLocalDateString, getWeekStart, getWeekEnd, computeLiveBalance, sumRolloverIncreases } from './finance-logic.js';
 import { colorForLevel } from './cycle-logic.js'; // (33) cor do saldo = cor do nível
 import {
   buildMonthGrid, buildCalendarMonth, summarizePlanVsReal, computeRealMetrics,
@@ -507,16 +507,22 @@ const SPREAD_NOTE = {
   'too-small': 'O resto é menor que 1 giro — os próximos dias não mudam.',
   'no-plan': 'Sem plano salvo — o resto fica no Rollover.',
   'no-stakes': 'Sem valores de aposta no plano — o resto fica no Rollover.',
-  nothing: 'Nada faltando hoje — só registra o 🏁.'
+  nothing: 'Nada faltando hoje — só registra o 🏁.',
+  // (36)
+  'no-high': 'O plano não tem dia ALTO depois de hoje — escolha outra opção.',
+  'manual-empty': 'Escolha quanto vai em cada dia.',
+  none: 'Não distribuir: o resto fica no Rollover — entra quando você refizer o plano no 🔄.'
 };
 
 // Monta (sem gravar) o 🏁 + o plano com o resto somado.
-function buildStopItem(x, reason) {
+function buildStopItem(x, reason, dist = null) {
   const t = todayKey();
   const row = x.plan;
   const leftC = Math.max(0, row.plannedC - row.realC);
   const saved = getSavedPlan(x.platformId);
-  const sp = saved ? spreadLeftoverOnPlan(saved, t, leftC) : { ok: false, error: 'no-plan' };
+  const mode = dist && dist.mode ? dist.mode : 'auto'; // (36) para onde vai o resto
+  const sp = mode === 'none' ? { ok: false, error: leftC > 0 ? 'none' : 'nothing' }
+    : (saved ? spreadLeftoverOnPlan(saved, t, leftC, { mode, manual: dist ? dist.manual : null }) : { ok: false, error: 'no-plan' });
   const nowIso = new Date().toISOString();
   const newDoc = sp.ok ? { ...saved, days: sp.days, totals: sp.totals, updatedAt: nowIso } : null;
   const stop = {
@@ -532,6 +538,135 @@ function spreadText(item) {
   const keys = Object.keys(item.sp.spread).sort();
   const parts = keys.slice(0, 5).map(k => `${k.slice(8, 10)}/${k.slice(5, 7)} +${money(item.sp.spread[k].a - item.sp.spread[k].b)}`);
   return `+${money(item.sp.movedC)} em ${keys.length} dia(s): ${parts.join(' · ')}${keys.length > 5 ? ' …' : ''}${item.sp.movedC !== item.leftC ? ' (arredondado pelos valores de aposta)' : ''}`;
+}
+
+// ---------- (Sub-entrega 36) 📅 Para onde vai o resto ----------
+const DIST_MODES = [
+  ['auto', '⚖️ Automático'], ['next', '⏭ Próximo dia'], ['high', '🔝 Dias altos'],
+  ['manual', '✍️ Escolher por dia'], ['none', '⏸ Não distribuir']
+];
+// Sem jeito de distribuir (vale qualquer modo): só o 🏁 é gravado.
+const DIST_STOP_ONLY = new Set(['no-future', 'too-small', 'nothing', 'no-plan', 'no-stakes', 'none']);
+
+function newDist() { return { mode: 'auto', manual: {}, open: false }; }
+
+function parseMoneyC(text) {
+  const t = String(text || '').trim().replace(/[R$\s]/g, '').replace(/\./g, '').replace(',', '.');
+  if (!t) return 0;
+  const v = Number(t);
+  return Number.isFinite(v) && v >= 0 ? Math.round(v * 100) : null;
+}
+
+function fmtInputC(c) {
+  return (Math.round(Number(c) || 0) / 100).toFixed(2).replace('.', ',');
+}
+
+// Dias de aposta do plano salvo depois de hoje (onde dá pra mandar o resto).
+function futurePlanDays(platformId) {
+  const saved = getSavedPlan(platformId);
+  const t = todayKey();
+  return saved && Array.isArray(saved.days) ? saved.days.filter(dd => dd && dd.key > t && Number(dd.plannedC) > 0) : [];
+}
+
+// Pré-preenche o "Escolher por dia" com a divisão proporcional (soma exata).
+function proportionalShares(days, leftC) {
+  const weight = days.reduce((s2, dd) => s2 + Math.round(Number(dd.plannedC) || 0), 0);
+  const out = {};
+  let given = 0;
+  days.forEach((dd, i) => {
+    const share = i === days.length - 1 ? leftC - given : Math.round(leftC * Math.round(Number(dd.plannedC) || 0) / (weight || 1));
+    given += share;
+    if (share > 0) out[dd.key] = share;
+  });
+  return out;
+}
+
+function manualSumC(dist) {
+  return Object.values(dist.manual || {}).reduce((s2, v) => s2 + (Math.round(Number(v) || 0)), 0);
+}
+
+// O resto pode ser gravado assim? (manual: a soma tem que fechar)
+function distValid(item, dist) {
+  if (dist.mode === 'manual') return item.sp.ok && manualSumC(dist) === item.leftC;
+  return item.sp.ok || DIST_STOP_ONLY.has(item.sp.error);
+}
+
+/**
+ * Mini-contêiner da distribuição de UMA plataforma. onChange(item) a cada
+ * mudança (atualiza botão/nota de fora). Só monta os campos por dia quando
+ * o modo é "Escolher por dia".
+ */
+function distEditor(x, dist, onChange) {
+  const wrap = el('div', 'cal-dist');
+  const leftC = Math.max(0, x.plan.plannedC - x.plan.realC);
+  const days = futurePlanDays(x.platformId);
+  const note = el('p', 'cal-stop-spread');
+  const counter = el('p', 'cal-dist-count');
+  const refresh = () => {
+    const item = buildStopItem(x, 'outro', dist);
+    note.textContent = `📅 ${spreadText(item)}`;
+    note.classList.toggle('cal-line-muted', !item.sp.ok);
+    if (dist.mode === 'manual') {
+      const diff = leftC - manualSumC(dist);
+      counter.textContent = diff === 0 ? '✓ Fechou a conta.' : (diff > 0 ? `Falta distribuir ${money(diff)}.` : `Passou ${money(-diff)} do que faltava.`);
+      counter.classList.toggle('cal-line-bad', diff !== 0);
+    }
+    onChange(item);
+  };
+  if (!(leftC > 0) || !days.length) {
+    wrap.appendChild(note);
+    refresh();
+    return wrap;
+  }
+  wrap.appendChild(el('span', 'plan-label', `📅 Para onde vai o resto (${money(leftC)})`));
+  const chips = el('div', 'plan-chips cal-dist-modes');
+  const manualBox = el('div', 'cal-dist-manual');
+  const drawManual = () => {
+    manualBox.replaceChildren();
+    if (dist.mode !== 'manual') return;
+    days.forEach(dd => {
+      const r = el('label', 'cal-dist-row');
+      r.appendChild(el('span', 'cal-dist-day', `${dd.key.slice(8, 10)}/${dd.key.slice(5, 7)}${dd.tier === 'alto' ? ' · ALTO' : ''} · hoje ${money(dd.plannedC)}`));
+      const inp = el('input', 'plan-input cal-dist-in');
+      inp.type = 'text';
+      inp.inputMode = 'decimal';
+      inp.placeholder = '0,00';
+      inp.value = dist.manual[dd.key] ? fmtInputC(dist.manual[dd.key]) : '';
+      inp.setAttribute('aria-label', `Somar em ${dd.key.slice(8, 10)}/${dd.key.slice(5, 7)}`);
+      inp.addEventListener('input', () => {
+        const c = parseMoneyC(inp.value);
+        inp.classList.toggle('cal-dist-in-bad', c === null);
+        if (c === null) return;
+        if (c > 0) dist.manual[dd.key] = c; else delete dist.manual[dd.key];
+        refresh();
+      });
+      r.appendChild(el('span', 'cal-dist-plus', '+R$'));
+      r.appendChild(inp);
+      manualBox.appendChild(r);
+    });
+    manualBox.appendChild(counter);
+  };
+  const drawChips = () => {
+    chips.replaceChildren();
+    DIST_MODES.forEach(([id, label]) => {
+      const b = button(label, `plan-chip${dist.mode === id ? ' active' : ''}`, () => {
+        dist.mode = id;
+        if (id === 'manual' && !Object.keys(dist.manual).length) dist.manual = proportionalShares(days, leftC);
+        drawChips();
+        drawManual();
+        refresh();
+      });
+      b.setAttribute('aria-pressed', dist.mode === id ? 'true' : 'false');
+      chips.appendChild(b);
+    });
+  };
+  drawChips();
+  wrap.appendChild(chips);
+  wrap.appendChild(manualBox);
+  wrap.appendChild(note);
+  drawManual();
+  refresh();
+  return wrap;
 }
 
 async function commitStops(d, items) {
@@ -607,12 +742,15 @@ function openStopDay(d, x) {
   const line = (l, r) => { const dd = el('div', 'pu-line'); dd.appendChild(el('span', 'pu-l', l)); dd.appendChild(el('span', 'pu-r', r)); nums.appendChild(dd); };
   line('Apostado hoje', `${money(row.realC)} de ${money(row.plannedC)}`);
   line('Falta (vai pros próximos dias)', money(leftC));
-  const preview = buildStopItem(x, 'outro'); // (32) só pra mostrar a distribuição
   line('📈 R.B. do dia', `${rb > 0 ? '+' : (rb < 0 ? '−' : '')}${money(Math.abs(rb))}`);
   if (row.realC > 0 && rb > 0) line('Multiplicador', `${fmtX(rb / row.realC)} o apostado`);
   if (row.realC > 0 && rb < 0) line('Perda ÷ apostado', `${fmtX(rb / row.realC)} o apostado`); // (33)
   box.appendChild(nums);
-  box.appendChild(el('p', `cal-stop-spread${preview.sp.ok ? '' : ' cal-line-muted'}`, `📅 ${spreadText(preview)}`)); // (32)
+  // (36) 📅 para onde vai o resto (automático / próximo / altos / por dia / não distribuir)
+  const dist = newDist();
+  let distItem = null;
+  let go = null;
+  box.appendChild(distEditor(x, dist, (item) => { distItem = item; if (go) go.disabled = !distValid(item, dist); }));
   box.appendChild(el('span', 'plan-label', 'Motivo'));
   // (31) sugestão pelo resultado (prêmio / perda / perda excessiva)
   let reason = suggestStopReason(rb, row.plannedC);
@@ -831,15 +969,17 @@ function openStopDay(d, x) {
   box.appendChild(chips);
   box.appendChild(el('p', 'plan-hint', 'O dia conta como cumprido (🏁). O que faltava vai pros próximos dias SÓ desta plataforma — o Rollover, o plano das outras (mesmo do grupo) e a meta de hoje das outras não mudam. Dá pra ↩️ desfazer hoje.'));
   const actions = el('div', 'plan-choice-actions');
-  const go = button('🏁 Encerrar', 'plan-choice-btn', async () => {
+  go = button('🏁 Encerrar', 'plan-choice-btn', async () => {
     if (busy || saving) return;
     // (31) id do motivo + cópia do nome/tipo; (32) + o que foi somado em cada dia
-    const item = buildStopItem(x, reason);
+    const item = buildStopItem(x, reason, dist);
+    if (!distValid(item, dist)) { await showAppAlert(dist.mode === 'manual' ? 'A soma dos dias precisa fechar com o que faltava hoje.' : (SPREAD_NOTE[item.sp.error] || 'Escolha outra opção de distribuição.')); return; }
     go.disabled = true;
     const ok = await commitStops(d, [item]);
     if (ok) done();
     else go.disabled = false;
   });
+  if (distItem) go.disabled = !distValid(distItem, dist);
   actions.appendChild(go);
   actions.appendChild(button('Cancelar', 'plan-choice-btn', () => done()));
   box.appendChild(actions);
@@ -861,7 +1001,8 @@ function openStopDay(d, x) {
 // confirmação diz quais. Cada uma soma o próprio resto nos próprios dias.
 function openStopMany(d, open) {
   if (detailClose) detailClose();
-  const items = open.map(x => ({ x, preview: buildStopItem(x, 'outro') }));
+  // (36) cada plataforma com a própria distribuição (montada só quando aberta)
+  const items = open.map(x => { const dist = newDist(); return { x, dist, preview: buildStopItem(x, 'outro', dist) }; });
   const picked = new Set();
   let reason = 'outro';
   const overlay = el('div', 'cal-overlay cal-stop-overlay');
@@ -869,8 +1010,13 @@ function openStopMany(d, open) {
   overlay.setAttribute('aria-modal', 'true');
   const box = el('div', 'cal-box plan-choice-box');
   overlay.appendChild(box);
+  let goBtn = null; // (36) o editor avisa antes do botão existir
+  let chosenNow = [];
+  const updateGo = () => { if (goBtn) goBtn.disabled = !chosenNow.length || chosenNow.some(it => !distValid(it.preview, it.dist)); };
   const draw = () => {
     box.replaceChildren();
+    goBtn = null;
+    chosenNow = items.filter(it => picked.has(it.x.platformId));
     const head = el('div', 'cal-box-head');
     head.appendChild(el('h3', 'cal-box-title', '🏁 Encerrar várias'));
     const cl = button('✕', 'cal-box-close', () => done());
@@ -880,18 +1026,38 @@ function openStopMany(d, open) {
     box.appendChild(el('p', 'plan-hint', 'Marque só as plataformas em que você parou por hoje. Nada vem marcado. O resto de cada uma vai pros próximos dias dela.'));
     const listEl = el('div', 'cal-stop-many');
     items.forEach(it => {
-      const lab = el('label', `cal-stop-many-row${picked.has(it.x.platformId) ? ' cal-stop-many-on' : ''}`);
+      const on = picked.has(it.x.platformId);
+      const rowEl = el('div', `cal-stop-many-item${on ? ' cal-stop-many-on' : ''}`);
+      const lab = el('label', 'cal-stop-many-row');
       const cb = el('input');
       cb.type = 'checkbox';
-      cb.checked = picked.has(it.x.platformId);
+      cb.checked = on;
       cb.setAttribute('aria-label', `Encerrar ${it.x.name}`);
-      cb.addEventListener('change', () => { if (cb.checked) picked.add(it.x.platformId); else picked.delete(it.x.platformId); draw(); });
+      cb.addEventListener('change', () => { if (cb.checked) picked.add(it.x.platformId); else { picked.delete(it.x.platformId); it.dist.open = false; } draw(); });
       lab.appendChild(cb);
       const txt = el('div', 'cal-stop-many-txt');
       txt.appendChild(el('span', 'cal-stop-many-name', `${it.x.name} · falta ${money(it.preview.leftC)}`));
-      txt.appendChild(el('span', 'cal-stop-many-note', spreadText(it.preview)));
+      const noteEl = el('span', 'cal-stop-many-note', spreadText(it.preview));
+      txt.appendChild(noteEl);
       lab.appendChild(txt);
-      listEl.appendChild(lab);
+      rowEl.appendChild(lab);
+      // (36) distribuição desta plataforma: só monta quando aberta
+      if (on && it.preview.leftC > 0) {
+        const label = (DIST_MODES.find(m => m[0] === it.dist.mode) || DIST_MODES[0])[1];
+        const tg = button(`📅 ${label} ${it.dist.open ? '▴' : '▾'}`, `plan-chip plan-chip-ghost cal-dist-toggle${distValid(it.preview, it.dist) ? '' : ' cal-dist-toggle-bad'}`, () => { it.dist.open = !it.dist.open; draw(); });
+        rowEl.appendChild(tg);
+        if (it.dist.open) {
+          rowEl.appendChild(distEditor(it.x, it.dist, (item) => {
+            it.preview = item;
+            noteEl.textContent = spreadText(item);
+            const ok = distValid(item, it.dist);
+            tg.textContent = `📅 ${(DIST_MODES.find(m => m[0] === it.dist.mode) || DIST_MODES[0])[1]} ▴`;
+            tg.classList.toggle('cal-dist-toggle-bad', !ok);
+            updateGo();
+          }));
+        }
+      }
+      listEl.appendChild(rowEl);
     });
     box.appendChild(listEl);
     box.appendChild(el('span', 'plan-label', 'Motivo (vale pra todas as marcadas)'));
@@ -908,14 +1074,17 @@ function openStopMany(d, open) {
     const acts = el('div', 'plan-choice-actions');
     const go = button(chosen.length ? `🏁 Encerrar (${chosen.length})` : '🏁 Encerrar', 'plan-choice-btn', async () => {
       if (busy || !chosen.length) return;
+      const bad = chosen.filter(it => !distValid(buildStopItem(it.x, reason, it.dist), it.dist));
+      if (bad.length) { await showAppAlert(`Confira a distribuição de: ${bad.map(it => it.x.name).join(', ')}.`); return; }
       const ok = await showAppConfirm(`Encerrar hoje em ${chosen.length} plataforma(s): ${chosen.map(it => it.x.name).join(', ')}? Motivo: ${stopReasonText(reason, getCustomStopReasons())}. O que faltava de cada uma vai pros próximos dias dela.`);
       if (!ok) return;
       go.disabled = true;
-      const done2 = await commitStops(d, chosen.map(it => buildStopItem(it.x, reason)));
+      const done2 = await commitStops(d, chosen.map(it => buildStopItem(it.x, reason, it.dist)));
       if (done2) done();
       else go.disabled = false;
     });
-    go.disabled = !chosen.length;
+    goBtn = go;
+    updateGo();
     acts.appendChild(go);
     acts.appendChild(button('Cancelar', 'plan-choice-btn', () => done()));
     box.appendChild(acts);
@@ -1278,6 +1447,16 @@ function renderMetrics() {
   box.appendChild(kpi('Perda ÷ apostado', m.lossOnWagered === null ? '—' : fmtX(m.lossOnWagered), m.lossWageredC ? `${money(m.lossC)} ÷ ${money(m.lossWageredC)} jogados` : 'sem sessão com perda', m.lossOnWagered !== null ? 'cal-kpi-bad' : ''));
   box.appendChild(kpi('Perda ÷ a mais', m.lossOnOver === null ? '—' : fmtX(m.lossOnOver), m.overLossDays ? `${money(m.overLossC)} ÷ ${money(m.overOnLossC)} a mais · ${m.overLossDays} dia(s)` : 'sem dia acima do plano com perda', m.lossOnOver !== null ? 'cal-kpi-bad' : ''));
   box.appendChild(kpi('Real × plano', m.overPlanPct === null ? '—' : `${m.overPlanPct >= 0 ? '+' : ''}${pct(m.overPlanPct, 1)}`, m.plannedC ? `${m.daysAbove} dia(s) acima · real ${money(m.realOnPlanC)} de ${money(m.plannedC)}` : 'sem dia com plano fechado', m.overPlanPct !== null && m.overPlanPct > 0 ? 'plan-kpi-vip' : ''));
+  // (Sub-entrega 38) ⬆️ Rollover aumentado pela plataforma no período.
+  {
+    let aum = 0; let nAum = 0;
+    filteredPlatforms().forEach(p => {
+      const v = sumRolloverIncreases(p, range.fromKey, range.toKey);
+      if (v > 0) { aum += v; nAum++; }
+    });
+    const aumC = Math.round(aum * 100);
+    box.appendChild(kpi('⬆️ Rollover aumentado', money(aumC), nAum ? `${nAum} plataforma(s)` : 'nenhum aumento no período', aumC > 0 ? 'plan-kpi-vip' : ''));
+  }
   renderGameStats(range);
   renderPvrDetail(m);
   // (29) 🏁 Paradas no período (dias encerrados com o histórico)

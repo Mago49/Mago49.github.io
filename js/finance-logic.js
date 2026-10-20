@@ -126,6 +126,14 @@
 // `value` no horário (piso em zero, como aposta). Saldo e bônus não mudam.
 // O rollover só SOBE por bônus (escala do R) — abatimento é sempre > 0.
 //
+// === (Sub-entrega 37) ⬆️ AUMENTO DE ROLLOVER ===
+// platform.rolloverIncreases = [{ id, date, value, source, checkId?, createdAt }]:
+// a plataforma SUBIU o rollover sem mostrar o motivo (bônus com rollover
+// multiplicado, ajuste dela…), confirmado na conferência. simulateRollover
+// soma `value` no horário (como um depósito). Saldo e bônus não mudam.
+// Lista PRÓPRIA (não dentro dos abatimentos): versão antiga do app nunca
+// leria um aumento como abatimento.
+//
 // === (Sub-entrega 16) ➗ DIVIDIR NO FECHAMENTO ===
 // closeWeek / setClosedWeekRealBonus aceitam opts.diffParts = [{ value,
 // scale }]: a diferença positiva entra no Rollover parte a parte, cada uma
@@ -478,6 +486,14 @@ function simulateRollover(platform, { initialRollover = 0, windowStart = null, w
     if (!e || !e.date || !inWindow(e.date)) return;
     const v = Number(e.value) || 0;
     if (v > 0) events.push({ t: new Date(e.date).getTime(), p: 3, v: -v });
+  });
+
+  // (Sub-entrega 37) ⬆️ Aumentos de rollover: somam no horário deles, como
+  // um depósito (p 1 — antes da aposta do mesmo instante).
+  (platform.rolloverIncreases || []).forEach(e => {
+    if (!e || !e.date || !inWindow(e.date)) return;
+    const v = Number(e.value) || 0;
+    if (v > 0) events.push({ t: new Date(e.date).getTime(), p: 1, v });
   });
 
   // apostas brutas agrupadas pela segunda-feira da semana delas
@@ -1289,8 +1305,34 @@ function sumPlatformDays(platform, loKey, hiKey, ctx) {
 // limite. keyFilter opcional (ex.: só dias de semanas fechadas). Só
 // leitura — nada é gravado.
 export function sumRolloverAdjustments(platform, loKey = null, hiKey = null, keyFilter = null) {
+  return sumDatedList(platform && platform.rolloverAdjustments, loKey, hiKey, keyFilter);
+}
+
+// (Sub-entrega 38) ⬆️ AUMENTO — soma dos aumentos de rollover
+// (rolloverIncreases: conferência "acima do sistema" ou lote) com data
+// entre loKey e hiKey. Mesmas regras do ⬇️ Abatimento. Só leitura.
+export function sumRolloverIncreases(platform, loKey = null, hiKey = null, keyFilter = null) {
+  return sumDatedList(platform && platform.rolloverIncreases, loKey, hiKey, keyFilter);
+}
+
+// (38) Por dia LOCAL: { 'AAAA-MM-DD': valor } — séries dos gráficos.
+export function rolloverIncreasesByDay(platform, loKey = null, hiKey = null) {
+  const out = {};
+  (platform && platform.rolloverIncreases || []).forEach(e => {
+    if (!e || !e.date) return;
+    const d = new Date(e.date);
+    if (isNaN(d.getTime())) return;
+    const k = toLocalDateString(d);
+    if (loKey && k < loKey) return;
+    if (hiKey && k > hiKey) return;
+    out[k] = roundMoney((out[k] || 0) + (Number(e.value) || 0));
+  });
+  return out;
+}
+
+function sumDatedList(list, loKey, hiKey, keyFilter) {
   let total = 0;
-  (platform && platform.rolloverAdjustments || []).forEach(e => {
+  (Array.isArray(list) ? list : []).forEach(e => {
     if (!e || !e.date) return;
     const d = new Date(e.date);
     if (isNaN(d.getTime())) return;
@@ -1304,7 +1346,7 @@ export function sumRolloverAdjustments(platform, loKey = null, hiKey = null, key
 }
 
 export function computeOverallTotalsPeriod(platforms, from = null, to = null, resolveCtx = () => ({}), refDate = new Date(), phaseFilter = null, mode = 'total') {
-  const totals = { deposit: 0, withdrawal: 0, difference: 0, wagered: 0, betCount: 0, bonus: 0, resultBetting: 0, rbPlusBonus: 0, balance: 0, rollover: 0, abatimento: 0 };
+  const totals = { deposit: 0, withdrawal: 0, difference: 0, wagered: 0, betCount: 0, bonus: 0, resultBetting: 0, rbPlusBonus: 0, balance: 0, rollover: 0, abatimento: 0, aumento: 0 };
   const estimatedWeeks = [];
   const excludedBackfill = [];
   let unclosedPastWeeks = 0;
@@ -1352,6 +1394,7 @@ export function computeOverallTotalsPeriod(platforms, from = null, to = null, re
         ? (k => (platform.financeWeeks || []).some(w => w && w.weekStart <= k && k <= w.weekEnd))
         : null;
       totals.abatimento += sumRolloverAdjustments(platform, lo, hi, inClosed);
+      totals.aumento += sumRolloverIncreases(platform, lo, hi, inClosed); // (38) mesma janela
     }
 
     // --- Semanas fechadas ---

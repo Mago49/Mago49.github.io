@@ -285,7 +285,8 @@ export function computeMonthlyComparison(platforms, from = null, to = null, reso
       deposit: res.totals.deposit,
       withdrawal: res.totals.withdrawal,
       bonus: res.totals.bonus,
-      resultBetting: res.totals.resultBetting
+      resultBetting: res.totals.resultBetting,
+      aumento: res.totals.aumento || 0 // (Sub-entrega 38) ⬆️ rollover aumentado no mês
     });
   });
 

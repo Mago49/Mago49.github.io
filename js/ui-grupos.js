@@ -435,6 +435,7 @@ function renderDetail(s) {
     grid.appendChild(stat('Aderência', t.planDays ? `${pct(t.aderencia)} · ✅${t.done} 🟡${t.partial} ❌${t.miss}` : '—'));
     grid.appendChild(stat('Rollover restante', g.archived ? '—' : (t.rolloverC === null ? '—' : money(t.rolloverC))));
     grid.appendChild(stat('⬇️ Abatimento', money(t.abatC)));
+    grid.appendChild(stat('⬆️ Aumento', money(t.aumC || 0))); // (38)
     box.appendChild(grid);
     const mem = s.members;
     if (mem.length) {

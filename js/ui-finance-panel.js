@@ -181,7 +181,7 @@ import {
   updateClosedWeek, deleteClosedWeek, addHistoricalWeek, setClosedWeekRealBonus,
   computePlatformTotals, computeOverallTotalsPeriod, computeLiveBalance, computeRolloverLive,
   computePhaseHistory, startNewPhase, removePhaseByNumber, roundMoney,
-  sumRolloverAdjustments
+  sumRolloverAdjustments, sumRolloverIncreases
 } from './finance-logic.js';
 import {
   getExpectedBonusToday, computeBonusDiffToday, getEffectiveOtherBonusForDay,
@@ -464,6 +464,10 @@ function statsGridHtml(totals, opts = {}) {
   const abatBox = (opts.abatimentoValue !== undefined && opts.abatimentoValue !== null)
     ? statBox(opts.abatimentoLabel || '⬇️ Abatimento', formatCurrency(Math.max(0, Number(opts.abatimentoValue) || 0)), 'finance-abat')
     : '';
+  // (Sub-entrega 38) ⬆️ Aumento — opcional, ao lado do Abatimento.
+  const aumBox = (opts.aumentoValue !== undefined && opts.aumentoValue !== null)
+    ? statBox(opts.aumentoLabel || '⬆️ Aumento', formatCurrency(Math.max(0, Number(opts.aumentoValue) || 0)), 'finance-aum')
+    : '';
   return `
     ${initialBalanceBox}
     ${initialRolloverBox}
@@ -478,6 +482,7 @@ function statsGridHtml(totals, opts = {}) {
     ${statBox(balanceLabel, formatCurrency(safeBalance), 'positive')}
     ${rolloverBox}
     ${abatBox}
+    ${aumBox}
   `;
 }
 
@@ -644,7 +649,8 @@ export function renderFinanceOverview() {
     ? `Rollover (Fase ${phaseFilter}, todas as plataformas)`
     : 'Rollover (todas as plataformas)';
   const abatLabel = overviewMode === 'live' ? '⬇️ Abatimento (semana atual)' : (overviewMode === 'closed' ? '⬇️ Abatimento (semanas fechadas)' : '⬇️ Abatimento (total)');
-  statsEl.innerHTML = statsGridHtml(totals, { rolloverValue: totals.rollover, rolloverLabel, abatimentoValue: totals.abatimento, abatimentoLabel: abatLabel });
+  const aumLabel = overviewMode === 'live' ? '⬆️ Aumento (semana atual)' : (overviewMode === 'closed' ? '⬆️ Aumento (semanas fechadas)' : '⬆️ Aumento (total)');
+  statsEl.innerHTML = statsGridHtml(totals, { rolloverValue: totals.rollover, rolloverLabel, abatimentoValue: totals.abatimento, abatimentoLabel: abatLabel, aumentoValue: totals.aumento, aumentoLabel: aumLabel });
 }
 
 // ---------- RECONCILIAÇÃO DE DOM ----------
@@ -843,6 +849,18 @@ function buildRow(p) {
     abBadge.textContent = `⬇️ Abatido ${formatCurrency(abatWeekBadge)}`;
     abBadge.title = 'Rollover abatido nesta semana (lançado à mão, conferência de saldo ou em lote).';
     badges.appendChild(abBadge);
+  }
+
+  // (Sub-entrega 38) ⬆️ Aumento da semana — só aparece quando houve.
+  const aumWeekBadge = sumRolloverIncreases(p, toLocalDateString(live.weekStart), toLocalDateString(new Date()));
+  if (aumWeekBadge > 0) {
+    const auBadge = document.createElement('span');
+    auBadge.className = 'platform-total-badge';
+    auBadge.style.background = '#dcfce7';
+    auBadge.style.color = '#166534';
+    auBadge.textContent = `⬆️ Aumentado ${formatCurrency(aumWeekBadge)}`;
+    auBadge.title = 'Rollover aumentado pela plataforma nesta semana (conferência de saldo ou em lote).';
+    badges.appendChild(auBadge);
   }
 
   if (closed) {
@@ -1064,6 +1082,9 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
   // (Sub-entrega 20) ⬇️ Abatimento ao vivo: semana atual e total.
   const abatWeek = sumRolloverAdjustments(p, toLocalDateString(live.weekStart), toLocalDateString(new Date()));
   const abatTotal = sumRolloverAdjustments(p);
+  // (Sub-entrega 38) ⬆️ Aumento ao vivo: semana atual e total.
+  const aumWeek = sumRolloverIncreases(p, toLocalDateString(live.weekStart), toLocalDateString(new Date()));
+  const aumTotal = sumRolloverIncreases(p);
   const statsWrap = document.createElement('div');
   statsWrap.className = 'finance-week-current';
   statsWrap.innerHTML = `
@@ -1079,6 +1100,8 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
       ${statBox('Rollover', formatCurrency(rolloverLive), 'positive')}
       ${statBox('⬇️ Abatimento (semana)', formatCurrency(abatWeek), 'finance-abat')}
       ${statBox('⬇️ Abatimento (total)', formatCurrency(abatTotal), 'finance-abat')}
+      ${statBox('⬆️ Aumento (semana)', formatCurrency(aumWeek), 'finance-aum')}
+      ${statBox('⬆️ Aumento (total)', formatCurrency(aumTotal), 'finance-aum')}
     </div>`;
   section.appendChild(statsWrap);
 
@@ -1825,8 +1848,10 @@ function buildPlatformTotalContent(p) {
   const stats = document.createElement('div');
   stats.className = 'finance-stats-grid';
   // (20) Abatimento das semanas fechadas (mesmo conjunto deste card).
-  const closedAbat = sumRolloverAdjustments(p, null, null, k => weeks.some(w => w && w.weekStart <= k && k <= w.weekEnd));
-  stats.innerHTML = statsGridHtml(totals, { rolloverValue: totals.rollover, rolloverLabel: 'Rollover da fase atual', abatimentoValue: closedAbat, abatimentoLabel: '⬇️ Abatimento (semanas fechadas)' });
+  const inClosedWeeks = k => weeks.some(w => w && w.weekStart <= k && k <= w.weekEnd);
+  const closedAbat = sumRolloverAdjustments(p, null, null, inClosedWeeks);
+  const closedAum = sumRolloverIncreases(p, null, null, inClosedWeeks); // (38)
+  stats.innerHTML = statsGridHtml(totals, { rolloverValue: totals.rollover, rolloverLabel: 'Rollover da fase atual', abatimentoValue: closedAbat, abatimentoLabel: '⬇️ Abatimento (semanas fechadas)', aumentoValue: closedAum, aumentoLabel: '⬆️ Aumento (semanas fechadas)' });
   card.appendChild(stats);
 
   return card;
@@ -2067,7 +2092,12 @@ function buildPhaseCard(phase, platformId) {
       abatimentoValue: sumRolloverAdjustments(p,
         phase.startDate ? toLocalDateString(new Date(phase.startDate)) : null,
         phase.endDate ? toLocalDateString(new Date(new Date(phase.endDate).getTime() - 1)) : null),
-      abatimentoLabel: '⬇️ Abatimento da fase'
+      abatimentoLabel: '⬇️ Abatimento da fase',
+      // (38) Aumento dentro da fase.
+      aumentoValue: sumRolloverIncreases(p,
+        phase.startDate ? toLocalDateString(new Date(phase.startDate)) : null,
+        phase.endDate ? toLocalDateString(new Date(new Date(phase.endDate).getTime() - 1)) : null),
+      aumentoLabel: '⬆️ Aumento da fase'
     });
     card.appendChild(stats);
   }
@@ -2637,7 +2667,9 @@ function buildWeekCardReadOnly(p, w, isFirst) {
       rolloverLabel: 'Rollover (no momento do fechamento)',
       // (20) Abatimento lançado nos dias desta semana.
       abatimentoValue: sumRolloverAdjustments(p, w.weekStart, w.weekEnd),
-      abatimentoLabel: '⬇️ Abatimento da semana'
+      abatimentoLabel: '⬇️ Abatimento da semana',
+      aumentoValue: sumRolloverIncreases(p, w.weekStart, w.weekEnd), // (38)
+      aumentoLabel: '⬆️ Aumento da semana'
     });
     card.appendChild(stats);
   }

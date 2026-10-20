@@ -1100,7 +1100,10 @@ function docTotals(doc, days) {
  * @returns {{ ok, error?, days?, totals?, spread?: {[key]: {b, a, bt, bl}}, movedC? }}
  *   spread guarda o ANTES de cada dia alterado (pro ↩️ Desfazer exato).
  */
-export function spreadLeftoverOnPlan(doc, todayKey, leftoverC) {
+export function spreadLeftoverOnPlan(doc, todayKey, leftoverC, opts = {}) {
+  // (36) opts.mode: 'auto' (proporcional) | 'next' (próximo dia de aposta) |
+  // 'high' (só dias ALTO, proporcional) | 'manual' (opts.manual {key: centavos})
+  const mode = ['auto', 'next', 'high', 'manual'].includes(opts.mode) ? opts.mode : 'auto';
   const left = Math.max(0, Math.round(Number(leftoverC) || 0));
   if (!doc || !Array.isArray(doc.days)) return { ok: false, error: 'no-plan' };
   if (!(left > 0)) return { ok: false, error: 'nothing' };
@@ -1109,21 +1112,36 @@ export function spreadLeftoverOnPlan(doc, todayKey, leftoverC) {
   if (!stakesC.length) return { ok: false, error: 'no-stakes' };
   if (left < stakesC[0]) return { ok: false, error: 'too-small' }; // menos que 1 giro
   const buy = params.buy && params.buy.enabled ? { enabled: true, multiplier: Math.round(Number(params.buy.multiplier) || 0) } : null;
-  const future = doc.days.filter(d => d && d.key > todayKey && Number(d.plannedC) > 0);
-  if (!future.length) return { ok: false, error: 'no-future' };
-  const weight = future.reduce((s, d) => s + Math.round(Number(d.plannedC) || 0), 0);
+  const after = doc.days.filter(d => d && d.key > todayKey);
+  const active = after.filter(d => Number(d.plannedC) > 0);
+  // [{ day, share }] — quanto cada dia recebe antes do arredondamento
+  let targets = [];
+  if (mode === 'manual') {
+    const m = opts.manual && typeof opts.manual === 'object' ? opts.manual : {};
+    targets = after.map(d => ({ day: d, share: Math.max(0, Math.round(Number(m[d.key]) || 0)) })).filter(t => t.share > 0);
+    if (!targets.length) return { ok: false, error: 'manual-empty' };
+  } else {
+    let pool = active;
+    if (mode === 'next') pool = active.slice(0, 1);
+    if (mode === 'high') pool = active.filter(d => d.tier === 'alto');
+    if (!pool.length) return { ok: false, error: mode === 'high' ? 'no-high' : 'no-future' };
+    const weight = pool.reduce((s0, d) => s0 + Math.round(Number(d.plannedC) || 0), 0);
+    let given = 0;
+    targets = pool.map((d, i) => {
+      const share = i === pool.length - 1 ? left - given : Math.round(left * Math.round(Number(d.plannedC) || 0) / weight);
+      given += share;
+      return { day: d, share };
+    });
+  }
   const spread = {};
   const changed = new Map();
-  let given = 0;
   let carry = 0;
-  future.forEach((d, i) => {
+  targets.forEach(({ day: d, share }) => {
     const before = Math.round(Number(d.plannedC) || 0);
-    const share = i === future.length - 1 ? left - given : Math.round(left * before / weight);
-    given += share;
-    const add = share + carry;
+    const add = share + (mode === 'manual' ? 0 : carry);
     if (add <= 0) { carry = add; return; } // nunca diminui um dia
     const need = before + add;
-    const built = buildDayLines(need, d.tier, stakesC, buy);
+    const built = buildDayLines(need, d.tier || 'baixo', stakesC, buy);
     carry = need - built.plannedC; // passou do necessário → o próximo dia desconta
     if (built.plannedC === before) return;
     spread[d.key] = { b: before, a: built.plannedC, bt: Math.round(Number(d.targetC) || 0), bl: cleanSpreadLines(d.lines) };
@@ -1135,8 +1153,8 @@ export function spreadLeftoverOnPlan(doc, todayKey, leftoverC) {
     });
   });
   const days = doc.days.map(d => changed.get(d && d.key) || d);
-  const movedC = Object.values(spread).reduce((s, x) => s + (x.a - x.b), 0);
-  return { ok: true, days, totals: docTotals(doc, days), spread, movedC };
+  const movedC = Object.values(spread).reduce((s0, x) => s0 + (x.a - x.b), 0);
+  return { ok: true, days, totals: docTotals(doc, days), spread, movedC, mode };
 }
 
 /**
@@ -1207,7 +1225,10 @@ export function overlaySavedDays(plan, savedDoc) {
  *   zeroKey: string|null, lastBetKey: string|null, endAt(key): number|null }}
  *   zeroKey: 1º dia em que o fim do dia chega a R$ 0 (null = não zera).
  */
-export function projectRolloverPath({ rolloverC, todayKey, todayBetC = 0, bets = [], inflows = [], untilKey = null }) {
+export function projectRolloverPath({ rolloverC, todayKey, todayBetC = 0, bets = [], inflows = [], untilKey = null, tolC = 0 }) {
+  // (36) O SAQUE é decidido só até o último dia de aposta do plano —
+  // entrada depois do fim do plano não "desfaz" o zero. tolC: sobra menor
+  // que isto (1 giro) conta como zerado.
   const betByKey = new Map();
   (bets || []).forEach(b => { if (b && b.key > todayKey && Number(b.plannedC) > 0) betByKey.set(b.key, (betByKey.get(b.key) || 0) + Math.round(Number(b.plannedC))); });
   const inByKey = new Map();
@@ -1219,32 +1240,84 @@ export function projectRolloverPath({ rolloverC, todayKey, todayBetC = 0, bets =
     inByKey.set(k, cur);
   });
   const betKeys = [...betByKey.keys()].sort();
-  const lastBetKey = betKeys.length ? betKeys[betKeys.length - 1] : null;
+  const todayBet = Math.max(0, Math.round(Number(todayBetC) || 0));
+  const lastBetKey = betKeys.length ? betKeys[betKeys.length - 1] : (todayBet > 0 ? todayKey : null);
   let end = untilKey && untilKey > todayKey ? untilKey : todayKey;
   if (lastBetKey && lastBetKey > end) end = lastBetKey;
   const path = [];
   let run = Math.round(Number(rolloverC) || 0);
-  let zeroKey = run <= 0 ? todayKey : null;
   let guard = 0;
   for (let k = todayKey; k <= end && guard < 400; k = addDaysKey(k, 1), guard++) {
     const items = inByKey.get(k) || [];
-    const inC = items.reduce((s, x) => s + Math.round(Number(x.valueC) || 0), 0);
-    const betC = k === todayKey ? Math.max(0, Math.round(Number(todayBetC) || 0)) : (betByKey.get(k) || 0);
+    const inC = items.reduce((s0, x) => s0 + Math.round(Number(x.valueC) || 0), 0);
+    const betC = k === todayKey ? todayBet : (betByKey.get(k) || 0);
     const startC = run;
     run = startC + inC - betC;
     path.push({ key: k, startC, inC, inItems: items, betC, endC: run });
-    if (zeroKey === null && run <= 0 && (betC > 0 || startC <= 0)) zeroKey = k;
-    if (zeroKey !== null && run > 0 && k > zeroKey) zeroKey = null; // entrou dinheiro depois: volta a contar
   }
-  const byKey = new Map(path.map(p => [p.key, p]));
+  const tol = Math.max(0, Math.round(Number(tolC) || 0));
+  const byKey = new Map(path.map(x => [x.key, x]));
+  // Sobra no fim do plano e o dia em que zera (e não volta a subir até o fim).
+  let residualC = null;
+  let zeroKey = null;
+  if (lastBetKey) {
+    const inPlan = path.filter(x => x.key <= lastBetKey);
+    residualC = inPlan.length ? inPlan[inPlan.length - 1].endC : null;
+    if (residualC !== null && residualC <= tol) {
+      zeroKey = lastBetKey;
+      for (let i = inPlan.length - 1; i >= 0; i--) {
+        if (inPlan[i].endC <= tol) zeroKey = inPlan[i].key; else break;
+      }
+    }
+  } else if (run <= tol && Math.round(Number(rolloverC) || 0) <= tol) {
+    zeroKey = todayKey; // já está zerado e não há plano
+  }
   return {
     path,
     zeroKey,
     lastBetKey,
+    residualC,
     endAt(key) {
       if (!key) return null;
       if (byKey.has(key)) return byKey.get(key).endC;
       return key > end && path.length ? path[path.length - 1].endC : null;
+    },
+    // menor fim de dia até a data (dentro do que foi calculado)
+    minEndUntil(key) {
+      const list = path.filter(x => !key || x.key <= key);
+      return list.length ? Math.min(...list.map(x => x.endC)) : null;
     }
   };
+}
+
+// (36) Grupo salvo e sem alteração: cada plataforma mostra os dias SALVOS
+// (com o 🏁 somado) — a prévia do grupo passa a ser o que vale no Calendário.
+// getSaved(platformId) → documento salvo DESTE grupo (ou null).
+export function overlayGroupSavedDays(res, getSaved) {
+  if (!res || !res.ok || !Array.isArray(res.members) || typeof getSaved !== 'function') return res;
+  let changed = 0;
+  const members = res.members.map(m => {
+    if (!m.plan) return m;
+    const sv = getSaved(m.platformId);
+    if (!sv) return m;
+    const plan = overlaySavedDays(m.plan, sv);
+    if (plan !== m.plan) changed += plan.overlaidDays || 0;
+    return plan === m.plan ? m : { ...m, plan };
+  });
+  if (!changed) return res;
+  const byDay = new Map();
+  let plannedC = 0;
+  members.forEach(m => {
+    if (!m.plan) return;
+    plannedC += m.plan.totals.plannedC;
+    m.plan.days.forEach(d => {
+      if (!(d.plannedC > 0)) return;
+      const cur = byDay.get(d.key) || { key: d.key, plannedC: 0, platforms: 0 };
+      cur.plannedC += d.plannedC;
+      cur.platforms += 1;
+      byDay.set(d.key, cur);
+    });
+  });
+  const days = [...byDay.values()].sort((a, b) => a.key.localeCompare(b.key));
+  return { ...res, members, days, overlaidDays: changed, totals: { ...res.totals, plannedC, activeDays: days.length } };
 }

@@ -40,7 +40,7 @@ import {
   listOpenWeekBonusItems, excludeBonusItems, restoreExclusion, removeAvulsoEntry,
   getOpenWeekRange, BONUS_TYPE_LABELS, bonusTypeGroup,
   removeHighBonusEntry, updateHighBonusEntry, BALANCE_MAX,
-  setFormulaScale, setAvulsoScale, removeRolloverAdjustment
+  setFormulaScale, setAvulsoScale, removeRolloverAdjustment, removeRolloverIncrease
 } from './balance-check-logic.js';
 import { openRolloverAdjust, openBatchCheck } from './ui-rollover-adjust.js'; // (Sub-entrega 17)
 import { parseMoneyInput } from './wager-total-logic.js';
@@ -315,6 +315,24 @@ export function openBonusManager({ resolveCtx = () => ({}), focusPlatformId = nu
 
   function itemRow(p, it) {
     if (it.kind === 'alto') return highBonusRow(p, it);
+    if (it.kind === 'aumento') {
+      // (37) ⬆️ aumento de rollover: só Excluir.
+      const row = el('div', 'bm-item bm-item-aumento');
+      row.style.background = '#dcfce7';
+      const info = el('div', 'bm-item-info');
+      info.appendChild(el('span', 'bm-item-day', fmtDay(it.dayKey)));
+      info.appendChild(el('span', 'bm-item-type', '⬆️ Rollover aumentado (não é bônus)'));
+      row.appendChild(info);
+      row.appendChild(el('span', 'bm-item-value', `+${formatCurrency(it.value)}`));
+      const actions = actionsBox();
+      const del = btn('Excluir', 'bm-act bm-act-del', () => act(p,
+        () => (removeRolloverIncrease(p, it.entry) ? { allowShrink: ['rolloverIncreases'] } : false),
+        `Excluir o aumento de rollover de ${formatCurrency(it.value)} (${fmtDay(it.dayKey)}) de ${p.name}? O Rollover deixa de contar esse valor.`));
+      del.style.marginLeft = '0';
+      actions.appendChild(del);
+      row.appendChild(actions);
+      return row;
+    }
     if (it.kind === 'abatido') {
       // (17) ⬇️ abatimento de rollover: só Excluir.
       const row = el('div', 'bm-item bm-item-abatido');
@@ -404,9 +422,11 @@ export function openBonusManager({ resolveCtx = () => ({}), focusPlatformId = nu
       h.type = 'button';
       h.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
       h.appendChild(el('span', 'bm-row-name', p.name));
-      const received = all.filter(i => i.kind !== 'excluded' && i.kind !== 'abatido').reduce((s, i) => s + i.value, 0);
+      const received = all.filter(i => i.kind !== 'excluded' && i.kind !== 'abatido' && i.kind !== 'aumento').reduce((s, i) => s + i.value, 0);
       const off = all.filter(i => i.kind === 'excluded').length;
-      h.appendChild(el('span', 'bm-row-meta', `${formatCurrency(received)}${off ? ` · ${off} não recebido(s)` : ''}`));
+      // (Sub-entrega 38) ⬆️ aumento de rollover da semana ao lado do bônus.
+      const aum = all.filter(i => i.kind === 'aumento').reduce((s, i) => s + (Number(i.value) || 0), 0);
+      h.appendChild(el('span', 'bm-row-meta', `${formatCurrency(received)}${aum > 0 ? ` · ⬆️ +${formatCurrency(aum)}` : ''}${off ? ` · ${off} não recebido(s)` : ''}`));
       h.appendChild(el('span', 'platform-manage-chevron', '▾'));
       h.addEventListener('click', () => { ui.openId = isOpen ? null : p.id; render(); });
       card.appendChild(h);

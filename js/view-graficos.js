@@ -219,7 +219,9 @@ function renderKpis() {
     kpiCard('Resultado Líquido (R.B.)', formatCurrency(kpis.resultadoLiquido)),
     kpiCard('Bônus Distribuído', formatCurrency(kpis.bonusDistribuidoTotal), 'Soma das semanas já fechadas'),
     kpiCard('ROI Global', roiText, 'Resultado Betting ÷ Bônus'),
-    kpiCard('Dependência de Bônus (IDB)', idbText, 'Bônus ÷ Resultado Betting')
+    kpiCard('Dependência de Bônus (IDB)', idbText, 'Bônus ÷ Resultado Betting'),
+    // (Sub-entrega 38)
+    kpiCard('⬆️ Rollover aumentado', formatCurrency(kpis.aumentoTotal || 0), `Esta semana: ${formatCurrency(kpis.aumentoSemana || 0)}`)
   ].join('');
 }
 
@@ -972,6 +974,7 @@ export async function mount(container) {
           <option value="apostado">Valor Apostado</option>
           <option value="resultBetting">Resultado Betting</option>
           <option value="bonus">Bônus Avulso</option>
+          <option value="aumento">⬆️ Rollover aumentado</option>
         </select>
       </div>
       <div class="heatmap-scroll">

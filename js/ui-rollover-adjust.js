@@ -33,7 +33,7 @@ import { savePlatform } from './platforms-store.js';
 import { computeRolloverLive } from './finance-logic.js';
 import {
   computeBalanceGap, applyPositiveGap, recordBalanceCheck,
-  previewRollover, planRolloverTarget, addRolloverAdjustment, ROLLOVER_TOLERANCE
+  previewRollover, planRolloverTarget, addRolloverAdjustment, addRolloverIncrease, ROLLOVER_TOLERANCE
 } from './balance-check-logic.js';
 import { parseSplitMoney } from './ui-bonus-split.js';
 
@@ -190,10 +190,28 @@ export function openRolloverAdjust({ platform, ctx = {} } = {}) {
     box.appendChild(error);
     box.appendChild(el('p', 'bc-note', 'Use quando a plataforma deu baixa no rollover sem aposta (ex.: bônus de ontem que não precisa mais ser apostado). Só o Rollover muda — Saldo e bônus não. Pode ser excluído depois no "Bônus da semana".'));
 
+    // (37) acima do sistema: pergunta + marcador ⬆️ Aumento
+    const upMark = el('label', 'bc-above-mark');
+    const upCb = el('input');
+    upCb.type = 'checkbox';
+    upMark.appendChild(upCb);
+    const upTxt = document.createTextNode('');
+    upMark.appendChild(upTxt);
+    upMark.hidden = true;
+    upCb.addEventListener('change', () => render());
+    box.insertBefore(upMark, error.nextSibling);
     function plan() { return planRolloverTarget(sysNow, pair.get()); }
     function render() {
       const p = plan();
       error.hidden = true;
+      upMark.hidden = p.kind !== 'above';
+      if (p.kind === 'above') {
+        upTxt.textContent = ` ⬆️ Aumento — lançar +${formatCurrency(p.value)} no Rollover`;
+        preview.textContent = upCb.checked ? `Aumento +${formatCurrency(p.value)} · Rollover depois: ${formatCurrency(p.after)}` : 'Marque "Aumento" se a plataforma subiu o rollover (ou suba o R do bônus no "Bônus da semana").';
+        error.textContent = p.error;
+        error.hidden = false;
+        return;
+      }
       if (p.kind === 'abate') preview.textContent = `Abatimento −${formatCurrency(p.value)} · Rollover depois: ${formatCurrency(p.after)}`;
       else if (p.kind === 'match') preview.textContent = 'Igual ao sistema — nada a abater.';
       else if (p.kind === 'none') preview.textContent = 'Preencha um dos dois campos.';
@@ -205,6 +223,11 @@ export function openRolloverAdjust({ platform, ctx = {} } = {}) {
     f.appendChild(btn('Cancelar', 'bc-cancel', () => close(null)));
     f.appendChild(btn('Confirmar', 'btn-confirm', () => {
       const p = plan();
+      if (p.kind === 'above' && upCb.checked) { // (37)
+        addRolloverIncrease(platform, p.value, { at: now, now, source: 'manual' });
+        close({ status: 'done', value: -p.value });
+        return;
+      }
       if (p.kind !== 'abate') { render(); if (p.kind === 'none' || p.kind === 'match') { error.textContent = p.kind === 'none' ? 'Preencha o valor abatido ou o rollover que a plataforma mostra.' : 'Nada a abater.'; error.hidden = false; } return; }
       addRolloverAdjustment(platform, p.value, { at: now, now, source: 'manual' });
       close({ status: 'done', value: p.value });
@@ -258,7 +281,7 @@ export function openBatchCheck({ resolveCtx = () => ({}) } = {}) {
     const rows = platforms.map(p => {
       let ctx = {};
       try { ctx = resolveCtx(p) || {}; } catch (_) { ctx = {}; }
-      return { p, ctx, saldoRaw: '', scale: 1, rollKind: null, rollRaw: '', view: null };
+      return { p, ctx, saldoRaw: '', scale: 1, rollKind: null, rollRaw: '', view: null, upOk: false }; // (37) upOk: ⬆️ Aumento marcado
     });
     const rowById = new Map(rows.map(r => [r.p.id, r]));
     const ui = { search: '', onlyFilled: false, pasteKind: 'saldo' };
@@ -355,7 +378,9 @@ export function openBatchCheck({ resolveCtx = () => ({}) } = {}) {
         const v = parseSplitMoney(rollTxt);
         if (!Number.isFinite(v)) { out.error = 'Rollover inválido.'; return out; }
         out.plan = planRolloverTarget(out.sys, r.rollKind === 'real' ? { real: v } : { abated: v });
-        if (out.plan.kind === 'error' || out.plan.kind === 'above') out.error = out.plan.error;
+        if (out.plan.kind === 'error') out.error = out.plan.error;
+        // (37) acima do sistema: só grava com o ⬆️ Aumento marcado (ou subindo o R do bônus)
+        if (out.plan.kind === 'above' && !r.upOk) out.error = `${out.plan.error} Marque ⬆️ Aumento ou suba o R do bônus.`;
       }
       return out;
     }
@@ -428,6 +453,16 @@ export function openBatchCheck({ resolveCtx = () => ({}) } = {}) {
           sc.append(minus, val, plus);
           extra.appendChild(sc);
         }
+        if (v.plan.kind === 'above') { // (37) marcador ⬆️ Aumento da linha
+          const m = el('label', 'bc-above-mark');
+          const c = el('input');
+          c.type = 'checkbox';
+          c.checked = !!r.upOk;
+          c.addEventListener('change', () => { r.upOk = c.checked; paint(); paintFooter(); });
+          m.appendChild(c);
+          m.appendChild(document.createTextNode(` ⬆️ Aumento +${formatCurrency(v.plan.value)}`));
+          extra.appendChild(m);
+        }
         const bits = [];
         if (v.gap) {
           if (v.gap.kind === 'match') bits.push('saldo ✓ confere');
@@ -436,8 +471,9 @@ export function openBatchCheck({ resolveCtx = () => ({}) } = {}) {
         }
         bits.push(...v.notes);
         if (v.plan.kind === 'abate') bits.push(`abatimento −${formatCurrency(v.plan.value)}`);
+        if (v.plan.kind === 'above') bits.push(`⬆️ aumento +${formatCurrency(v.plan.value)}`);
         if (v.plan.kind === 'match') bits.push('rollover ✓ confere');
-        if (v.filled && !v.error) bits.push(`Rollover depois: ${formatCurrency(v.plan.kind === 'abate' ? v.plan.after : v.sys)}`);
+        if (v.filled && !v.error) bits.push(`Rollover depois: ${formatCurrency(v.plan.kind === 'abate' || v.plan.kind === 'above' ? v.plan.after : v.sys)}`);
         status.textContent = v.error ? `⚠ ${v.error}` : bits.join(' · ');
         status.style.color = v.error ? '#b91c1c' : '';
         card.style.borderColor = v.error ? '#fca5a5' : (v.filled ? '#86efac' : '');
@@ -473,14 +509,15 @@ export function openBatchCheck({ resolveCtx = () => ({}) } = {}) {
       const bad = f.filter(x => x.v.error);
       if (!f.length) return;
       if (bad.length) { paintFooter(); return; }
-      const count = { bonus: 0, match: 0, divergent: 0, abate: 0 };
+      const count = { bonus: 0, match: 0, divergent: 0, abate: 0, up: 0 };
       f.forEach(({ v }) => {
         if (v.gap) count[v.gap.kind === 'over' ? 'bonus' : v.gap.kind === 'match' ? 'match' : 'divergent']++;
         if (v.plan.kind === 'abate') count.abate++;
+        if (v.plan.kind === 'above') count.up++; // (37)
       });
       const ok = await showAppConfirm(
         `Gravar ${f.length} plataforma(s)? ` +
-        [count.match && `${count.match} saldo(s) conferido(s)`, count.bonus && `${count.bonus} bônus avulso(s)`, count.divergent && `${count.divergent} saldo(s) divergente(s)`, count.abate && `${count.abate} abatimento(s) de rollover`].filter(Boolean).join(' · ') + '.'
+        [count.match && `${count.match} saldo(s) conferido(s)`, count.bonus && `${count.bonus} bônus avulso(s)`, count.divergent && `${count.divergent} saldo(s) divergente(s)`, count.abate && `${count.abate} abatimento(s) de rollover`, count.up && `${count.up} aumento(s) de rollover`].filter(Boolean).join(' · ') + '.'
       );
       if (!ok) return;
       const changed = [];
@@ -497,6 +534,10 @@ export function openBatchCheck({ resolveCtx = () => ({}) } = {}) {
           // rollover do sistema já com o bônus gravado acima — confere de novo.
           const plan2 = planRolloverTarget(previewRollover(p, r.ctx, now), r.rollKind === 'real' ? { real: parseSplitMoney(r.rollRaw) } : { abated: parseSplitMoney(r.rollRaw) });
           if (plan2.kind === 'abate') addRolloverAdjustment(p, plan2.value, { at: now, now, source: 'batch', checkId: check && check.id ? check.id : null });
+        }
+        if (v.plan.kind === 'above' && r.upOk) { // (37) ⬆️ aumento — confere de novo com o bônus já gravado
+          const plan3 = planRolloverTarget(previewRollover(p, r.ctx, now), { real: parseSplitMoney(r.rollRaw) });
+          if (plan3.kind === 'above') addRolloverIncrease(p, plan3.value, { at: now, now, source: 'batch', checkId: check && check.id ? check.id : null });
         }
         savePlatform(state.currentUid, p);
         changed.push(p);

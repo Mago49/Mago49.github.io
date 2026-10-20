@@ -93,6 +93,9 @@ export function normalizePlatformData(parsed) {
       // (Sub-entrega 17) Abatimentos de rollover (baixa da plataforma, sem
       // aposta) — ver finance-logic.js. Mesma regra.
       rolloverAdjustments: Array.isArray(p.rolloverAdjustments) ? p.rolloverAdjustments : [],
+      // (Sub-entrega 37) Aumentos de rollover (a plataforma subiu sem mostrar
+      // o motivo) — ver finance-logic.js. Mesma regra.
+      rolloverIncreases: Array.isArray(p.rolloverIncreases) ? p.rolloverIncreases : [],
       codigoConfig: (p.codigoConfig && typeof p.codigoConfig === 'object')
         ? p.codigoConfig : { tipo: null, fixo: '', baseDate: null, variavelInicio: 0 },
       codigoDeposito: (p.codigoDeposito && typeof p.codigoDeposito === 'object')
@@ -241,7 +244,9 @@ const GUARDED_FIELDS = [
   // (Sub-entrega 14) escalas do R: só são atualizadas, nunca diminuem.
   'bonusScales',
   // (Sub-entrega 17) abatimentos: só o "Excluir" (allowShrink) diminui.
-  'rolloverAdjustments'
+  'rolloverAdjustments',
+  // (Sub-entrega 37) aumentos: só o "Excluir" (allowShrink) diminui.
+  'rolloverIncreases'
 ];
 
 // id da plataforma -> { campo: quantidade de itens } (carga ou última gravação)

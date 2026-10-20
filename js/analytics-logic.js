@@ -26,7 +26,7 @@
 // (Sub-entrega G2) Obrigado do donut conta só os dias que existem no mês
 // (29–31 seguem o calendário) — computeObrigadoMonthlyTotals recebe o mês.
 
-import { computeOverallTotals, computePlatformTotals } from './finance-logic.js';
+import { computeOverallTotals, computePlatformTotals, sumRolloverIncreases, getWeekStart, toLocalDateString } from './finance-logic.js';
 import {
   computeVipMonthlyTotals, computeObrigadoMonthlyTotals, computeMisteriosoMonthlyTotal
 } from './vip-history-store.js';
@@ -54,7 +54,10 @@ export function computeGlobalKpis(platforms, refDate = new Date(), resolveCtx = 
     bonusDistribuidoTotal: overall.bonus,
     resultadoLiquido: overall.resultBetting,
     roiGlobal,
-    idb
+    idb,
+    // (Sub-entrega 38) ⬆️ Rollover aumentado pela plataforma (total e semana atual).
+    aumentoTotal: Math.round((platforms || []).reduce((s, p) => s + sumRolloverIncreases(p), 0) * 100) / 100,
+    aumentoSemana: Math.round((platforms || []).reduce((s, p) => s + sumRolloverIncreases(p, toLocalDateString(getWeekStart(refDate)), toLocalDateString(refDate)), 0) * 100) / 100
   };
 }
 
@@ -260,6 +263,13 @@ export function computeHeatmapMatrix(platforms, metric = 'deposito', days = 14, 
       (p.betEntries || []).forEach(e => {
         const k = toLocalDayKey(e.date);
         if (k in dayTotals) dayTotals[k] += Number(e.resultBetting) || 0;
+      });
+    } else if (metric === 'aumento') {
+      // (Sub-entrega 38) ⬆️ Rollover aumentado no dia.
+      (p.rolloverIncreases || []).forEach(e => {
+        if (!e || !e.date) return;
+        const k = toLocalDayKey(e.date);
+        if (k in dayTotals) dayTotals[k] += Number(e.value) || 0;
       });
     } else if (metric === 'bonus') {
       const ctx = resolveCtx(p) || {};

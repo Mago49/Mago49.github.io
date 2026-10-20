@@ -329,7 +329,9 @@ function renderMonthlySection(range, cache, refDate) {
         { label: 'Depósito', data: data.months.map(m => m.deposit), backgroundColor: '#2563eb' },
         { label: 'Saque', data: data.months.map(m => m.withdrawal), backgroundColor: '#ef4444' },
         { label: 'Bônus', data: data.months.map(m => m.bonus), backgroundColor: '#7c3aed' },
-        { label: 'R.B.', data: data.months.map(m => m.resultBetting), backgroundColor: '#f59e0b' }
+        { label: 'R.B.', data: data.months.map(m => m.resultBetting), backgroundColor: '#f59e0b' },
+        // (Sub-entrega 38)
+        { label: '⬆️ Rollover aumentado', data: data.months.map(m => m.aumento || 0), backgroundColor: '#16a34a' }
       ]
     },
     options: {

@@ -38,7 +38,7 @@ import { formatCurrency } from './utils.js';
 import { createBonusSplit } from './ui-bonus-split.js'; // (Sub-entrega 16)
 import { parseSplitMoney } from './ui-bonus-split.js'; // (Sub-entrega 17)
 import {
-  previewRollover, planRolloverTarget, addRolloverAdjustment
+  previewRollover, planRolloverTarget, addRolloverAdjustment, addRolloverIncrease
 } from './balance-check-logic.js'; // (Sub-entrega 17)
 import {
   computeBalanceGap, parseRealBalance, applyPositiveGap, recordBalanceCheck,
@@ -218,13 +218,8 @@ export function openBalanceCheck({ platform, ctx = {}, pendingRB = 0, mode = 'st
       const sys = previewRollover(platform, ctx, t, c => { applyFn(c, t); pushPending(c); });
       const plan = planRolloverTarget(sys, { real: rollReal });
       if (plan.kind === 'above') {
-        if (onAboveInline) { onAboveInline(plan.error); return; }
-        header('Rollover acima do sistema', platform.name);
-        box.appendChild(el('p', 'bc-warn', plan.error));
-        footer(
-          btn('Cancelar', 'bc-cancel', () => close({ status: 'cancelled' })),
-          btn('Continuar sem ajustar o rollover', 'btn-confirm', () => { applyFn(platform, t); done(); })
-        );
+        // (37) acima do sistema: diferença + pergunta + marcador ⬆️ Aumento
+        stepAbove(gap, plan, sys, applyFn, done, !!onAboveInline);
         return;
       }
       if (plan.kind === 'abate') {
@@ -248,6 +243,53 @@ export function openBalanceCheck({ platform, ctx = {}, pendingRB = 0, mode = 'st
       }
       applyFn(platform, t);
       done();
+    }
+
+    // (37) ⬆️ Rollover acima do sistema:
+    //   [Saldo no sistema]    [Saldo informado]
+    //   [Rollover no sistema] [Rollover informado] [R]
+    //   [ ] Aumento   [Cancelar] [Confirmar]
+    // Marcado: lança +diferença como ⬆️ aumento de rollover. Sem marcar:
+    // grava a conferência e o Rollover fica como está. R: volta pro R do
+    // bônus desta conferência (quando há bônus novo nela).
+    function stepAbove(gap, plan, sys, applyFn, done, fromBonus) {
+      const t = at();
+      header('⬆️ Rollover acima do sistema', platform.name);
+      const tbl = el('div', 'bc-above');
+      const cell = (txt, cls = '') => tbl.appendChild(el('span', `bc-above-c${cls ? ` ${cls}` : ''}`, txt));
+      cell(''); cell('No sistema', 'bc-above-h'); cell('Informado', 'bc-above-h'); cell('');
+      cell('Saldo', 'bc-above-k'); cell(formatCurrency(gap ? gap.expected : 0)); cell(formatCurrency(gap ? gap.real : 0)); cell('');
+      cell('Rollover', 'bc-above-k'); cell(formatCurrency(sys)); cell(formatCurrency(rollReal), 'bc-pos');
+      const rBtn = btn('R', 'bc-step bc-above-r', () => { if (fromBonus && gap) stepOver(gap); });
+      rBtn.disabled = !(fromBonus && gap);
+      rBtn.title = fromBonus ? 'Voltar e subir o R do bônus desta conferência' : 'Sem bônus novo nesta conferência — ajuste o R no 🧾 Bônus da semana';
+      rBtn.setAttribute('aria-label', rBtn.title);
+      tbl.appendChild(rBtn);
+      box.appendChild(tbl);
+      box.appendChild(el('p', 'bc-warn', plan.error));
+      const mark = el('label', 'bc-above-mark');
+      const cb = el('input');
+      cb.type = 'checkbox';
+      mark.appendChild(cb);
+      mark.appendChild(document.createTextNode(` ⬆️ Aumento — lançar +${formatCurrency(plan.value)} no Rollover`));
+      box.appendChild(mark);
+      const hint = el('p', 'bc-note', '');
+      const paint = () => {
+        hint.textContent = cb.checked
+          ? `O Rollover passa a ${formatCurrency(plan.after)}. Só o Rollover muda — Saldo e bônus não. Pode ser excluído depois no "Bônus da semana".`
+          : `Sem marcar: grava a conferência e o Rollover fica como está (${formatCurrency(sys)}).${fromBonus ? ' Se foi o bônus com rollover multiplicado, toque em R.' : ''}`;
+      };
+      cb.addEventListener('change', paint);
+      paint();
+      box.appendChild(hint);
+      footer(
+        btn('Cancelar', 'bc-cancel', () => close({ status: 'cancelled' })),
+        btn('Confirmar', 'btn-confirm', () => {
+          const check = applyFn(platform, t);
+          if (cb.checked) addRolloverIncrease(platform, plan.value, { at: t, now: t, source: pendingBet ? 'session' : 'check', checkId: check && check.id ? check.id : null });
+          done();
+        })
+      );
     }
 
     function proceed(gap) {

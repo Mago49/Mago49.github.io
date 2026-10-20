@@ -188,6 +188,16 @@ export function buildDayFeed(platforms, dayKey, resolveCtx = () => ({}), refDate
       });
     });
 
+    // (Sub-entrega 37) ⬆️ aumento de rollover (não é bônus: value null).
+    (p.rolloverIncreases || []).forEach(e => {
+      if (!e || !isOnDay(e.date, dayKey)) return;
+      const src = e.source === 'batch' ? 'conferência em lote' : e.source === 'session' ? 'conferência da sessão' : e.source === 'check' ? 'conferência de saldo' : 'lançado à mão';
+      events.push({
+        ...base, ts: new Date(e.date).getTime(), kind: 'rollover-aumentado', icon: '⬆️', label: 'Rollover aumentado',
+        value: null, detail: `+${money(e.value)} no Rollover · ${src}`
+      });
+    });
+
     (p.financeWeeks || []).forEach(w => {
       if (!isOnDay(w.closedAt, dayKey)) return;
       const adj = Number(w.bonusAdjustment);
