@@ -144,6 +144,7 @@ export function explainError(err) {
   if (m.includes('decode')) return 'Não consegui abrir uma das imagens. Use print em PNG ou JPG.';
   if (m.includes('timeout')) return 'O Gemini demorou demais pra responder. Tente de novo (ou com menos prints de uma vez).';
   if (m.includes('app-check') || m.includes('appcheck') || m.includes('recaptcha')) return 'O App Check recusou o pedido. Confira a chave de site do reCAPTCHA (domínio mago49.github.io) e o App Check no console.';
+  if (m.includes('prepayment') || m.includes('credits are depleted') || m.includes('billing')) return 'Os créditos pré-pagos do Gemini acabaram (ou não foram colocados). Recarregue em AI Studio → Faturamento, ou use o "Colar texto".';
   if (m.includes('429') || m.includes('quota') || m.includes('resource_exhausted') || m.includes('rate limit') || m.includes('too many')) return 'A cota grátis do Gemini acabou por agora. Tente mais tarde ou use o "Colar texto".';
   if (m.includes('api-not-enabled') || m.includes('not been used') || m.includes('disabled')) return 'O Firebase AI Logic ainda não está ativado no console (AI Services → AI Logic).';
   if (m.includes('404') || (m.includes('not found') && m.includes('model'))) return `O modelo "${GEMINI_MODEL}" não respondeu. Pode ter mudado de nome — me avise.`;
