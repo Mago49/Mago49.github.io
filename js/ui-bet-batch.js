@@ -14,6 +14,10 @@
 // Toda a conta está em bet-batch-logic.js.
 //
 // Segurança: tudo que vem do texto colado entra por textContent/value.
+//
+// (Sub-entrega 39) 📷 Ler print: o Gemini (gemini-reader.js) transforma os
+// prints em TEXTO e o texto cai nesta mesma caixa — o usuário confere e
+// toca em "Ler texto" como sempre. Nada é gravado pela leitura do print.
 
 import { state } from './state.js';
 import { formatCurrency } from './utils.js';
@@ -21,6 +25,7 @@ import { getWeekStart, toLocalDateString } from './finance-logic.js';
 import { parseBatchText, planBatch, missingGames, parseSignedMoney, parseDayField } from './bet-batch-logic.js';
 import { loadGameCatalog, isGameCatalogLoaded, getGames, getProviders, addGamesBulk, saveProviders } from './game-catalog-store.js';
 import { normalizeKey } from './game-catalog-logic.js';
+import { readPrints, isPrintReaderConfigured, PRINT_MAX_FILES } from './gemini-reader.js';
 
 function el(tag, className = '', text = null) {
   const n = document.createElement(tag);
@@ -75,6 +80,10 @@ export function mountBatchView(container, { platform, initial = null, onSubmit, 
   let busy = false;
   let error = '';
   let repeatedNote = '';
+  let reading = false;   // (39) 📷 lendo prints
+  let readStage = '';
+  let readNote = '';
+  let readToken = 0;
 
   container.replaceChildren();
   const body = el('div', 'bb-body');
@@ -102,13 +111,14 @@ export function mountBatchView(container, { platform, initial = null, onSubmit, 
     ta.addEventListener('input', () => { text = ta.value; });
     f.appendChild(ta);
     body.appendChild(f);
+    body.appendChild(printBox(ta));
     body.appendChild(el('p', 'be-note', 'Aceita o histórico em blocos (um campo por linha, com ou sem numeração), uma linha por jogo com "|" ou a tabela copiada. Resumo e filtros do texto são ignorados.'));
     body.appendChild(el('p', 'be-note', 'Pode colar vários jogos de uma vez. Cada jogo vira uma aposta no histórico (o "Por jogo" continua funcionando). Colou o mesmo dia de novo mais tarde? Só a diferença é registrada.'));
     const err = el('p', 'be-error', error);
     body.appendChild(err);
     const footer = el('div', 'be-footer');
     footer.appendChild(btn('Cancelar', 'be-cancel', () => onCancel && onCancel()));
-    footer.appendChild(btn('Ler texto', 'btn-confirm', () => {
+    const readBtn = btn('Ler texto', 'btn-confirm', () => {
       error = '';
       const parsed = parseBatchText(text, new Date());
       if (!parsed.rows.length) {
@@ -120,10 +130,70 @@ export function mountBatchView(container, { platform, initial = null, onSubmit, 
       repeatedNote = parsed.repeated ? `${parsed.repeated} bloco(s) repetido(s) no texto (o mesmo jogo, dia e valores) foram contados 1 vez só.` : '';
       if (parsed.truncated) error = 'Texto muito grande: só os primeiros 60 jogos foram lidos.';
       whenTime = hhmm(new Date());
+      readNote = '';
       render();
-    }));
+    });
+    readBtn.disabled = reading;
+    footer.appendChild(readBtn);
     body.appendChild(footer);
     setTimeout(() => { try { ta.focus({ preventScroll: true }); } catch (_) { /* ignora */ } }, 40);
+  }
+
+  // ---------- (39) 📷 ler print ----------
+  function printBox(ta) {
+    const box = el('div', 'bb-print');
+    const input = el('input');
+    input.type = 'file';
+    input.accept = 'image/png,image/jpeg,image/webp,image/*';
+    input.multiple = true;
+    input.hidden = true;
+    input.addEventListener('change', () => {
+      const files = Array.from(input.files || []);
+      input.value = '';
+      if (files.length) runRead(files);
+    });
+    box.appendChild(input);
+    const b = btn(reading ? '⏳ Lendo…' : '📷 Ler print', 'bb-print-btn', () => {
+      if (reading) return;
+      error = '';
+      if (!isPrintReaderConfigured()) {
+        error = 'A leitura de print ainda não foi configurada (falta a chave de site do reCAPTCHA). Use o "Colar texto" por enquanto.';
+        render();
+        return;
+      }
+      input.click();
+    });
+    b.disabled = reading;
+    box.appendChild(b);
+    let hint;
+    if (reading) hint = readStage === 'send' ? 'O Gemini está lendo os prints… pode levar alguns segundos.' : 'Preparando as imagens…';
+    else hint = `Até ${PRINT_MAX_FILES} prints por vez. O texto lido aparece na caixa acima pra você conferir.`;
+    box.appendChild(el('span', `bb-print-hint${reading ? ' bb-print-busy' : ''}`, hint));
+    if (readNote && !reading) box.appendChild(el('p', 'bb-print-ok', readNote));
+    if (reading) ta.disabled = true;
+    return box;
+  }
+
+  async function runRead(files) {
+    const token = ++readToken;
+    reading = true;
+    readStage = 'prepare';
+    readNote = '';
+    render();
+    const res = await readPrints(files, {
+      onStage: (st) => { if (token === readToken && body.isConnected) { readStage = st; render(); } }
+    });
+    if (token !== readToken || !body.isConnected) return; // tela fechada ou nova leitura
+    reading = false;
+    readStage = '';
+    if (res.ok) {
+      const had = text && text.trim();
+      text = had ? `${text.replace(/\s+$/, '')}\n\n${res.text}` : res.text;
+      readNote = `✅ ${files.length} print(s) lido(s)${had ? ' — o texto foi somado ao que já estava na caixa' : ''}. Confira e toque em "Ler texto".`;
+    } else {
+      error = res.error;
+    }
+    render();
   }
 
   // ---------- 2) prévia ----------
