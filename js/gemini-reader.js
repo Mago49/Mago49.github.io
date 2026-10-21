@@ -186,6 +186,9 @@ export async function readPrints(files, { onStage } = {}) {
     return { ok: true, text };
   } catch (err) {
     console.error('Leitura de print (Gemini):', err);
-    return { ok: false, error: explainError(err) };
+    // Detalhe técnico curto (sem dado pessoal): ajuda a achar a causa pelo print da tela.
+    const raw = String((err && (err.code ? `${err.code} ` : '')) + (err && err.message ? err.message : err || ''))
+      .replace(/\s+/g, ' ').trim().slice(0, 220);
+    return { ok: false, error: `${explainError(err)}${raw ? ` · Detalhe: ${raw}` : ''}` };
   }
 }
