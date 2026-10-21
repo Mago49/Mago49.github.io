@@ -2117,3 +2117,39 @@
 .bc-above-r { width: 36px; height: 36px; font-weight: 800; }
 .bc-above-mark { display: flex; align-items: center; gap: 6px; margin: 0.5rem 0; font-weight: 700; cursor: pointer; }
 .bc-above-mark input { width: 20px; height: 20px; }
+
+/* (Sub-entrega 39) 📷 Ler print com o Gemini — dentro do 📋 Colar em lote */
+.bb-print {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  margin: 0.1rem 0 0.2rem;
+}
+.bb-print-btn {
+  padding: 0.5rem 0.9rem;
+  border: 1px solid #c7d2fe;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-weight: 700;
+  font-size: 0.86rem;
+  cursor: pointer;
+}
+.bb-print-btn:disabled { opacity: 0.6; cursor: progress; }
+.bb-print-hint {
+  flex: 1 1 12rem;
+  min-width: 0;
+  font-size: 0.78rem;
+  color: #64748b;
+}
+.bb-print-busy { color: #3730a3; font-weight: 600; }
+.bb-print-ok {
+  flex: 1 1 100%;
+  margin: 0;
+  padding: 0.45rem 0.6rem;
+  border-radius: 10px;
+  background: #f0fdf4;
+  color: #166534;
+  font-size: 0.8rem;
+}
