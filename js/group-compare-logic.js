@@ -119,8 +119,8 @@ function buildIndex(platform) {
   const adj = new Map();
   const ab = new Map();
   const au = new Map(); // (38)
-  (platform.rolloverIncreases || []).forEach(e => { const k = entryKey(e); if (k) add(au, k, toC(e.value)); });
-  (platform.rolloverAdjustments || []).forEach(e => { const k = entryKey(e); if (k) add(ab, k, toC(e.value)); });
+  (platform.rolloverIncreases || []).forEach(e => { if (e && e.statsIgnored === true) return; const k = entryKey(e); if (k) add(au, k, toC(e.value)); }); // (41) 🙈 fora
+  (platform.rolloverAdjustments || []).forEach(e => { if (e && e.statsIgnored === true) return; const k = entryKey(e); if (k) add(ab, k, toC(e.value)); }); // (41) 🙈 fora
   (platform.depositLog || []).forEach(e => { const k = entryKey(e); if (k) add(dep, k, toC(e.value)); });
   (platform.withdrawals || []).forEach(e => { const k = entryKey(e); if (k) add(wd, k, toC(e.value)); });
   (platform.betEntries || []).forEach(e => {

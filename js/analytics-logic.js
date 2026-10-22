@@ -267,7 +267,7 @@ export function computeHeatmapMatrix(platforms, metric = 'deposito', days = 14, 
     } else if (metric === 'aumento') {
       // (Sub-entrega 38) ⬆️ Rollover aumentado no dia.
       (p.rolloverIncreases || []).forEach(e => {
-        if (!e || !e.date) return;
+        if (!e || !e.date || e.statsIgnored === true) return; // (41) 🙈 fora
         const k = toLocalDayKey(e.date);
         if (k in dayTotals) dayTotals[k] += Number(e.value) || 0;
       });

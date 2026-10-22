@@ -184,7 +184,7 @@ export function buildDayFeed(platforms, dayKey, resolveCtx = () => ({}), refDate
       const src = e.source === 'batch' ? 'conferência em lote' : e.source === 'session' ? 'conferência da sessão' : e.source === 'check' ? 'conferência de saldo' : 'lançado à mão';
       events.push({
         ...base, ts: new Date(e.date).getTime(), kind: 'rollover-abatido', icon: '⬇️', label: 'Rollover abatido',
-        value: null, detail: `−${money(e.value)} no Rollover · ${src}`
+        value: null, detail: `−${money(e.value)} no Rollover · ${src}${e.statsIgnored === true ? ' · 🙈 fora das estatísticas' : ''}`
       });
     });
 
@@ -194,7 +194,7 @@ export function buildDayFeed(platforms, dayKey, resolveCtx = () => ({}), refDate
       const src = e.source === 'batch' ? 'conferência em lote' : e.source === 'session' ? 'conferência da sessão' : e.source === 'check' ? 'conferência de saldo' : 'lançado à mão';
       events.push({
         ...base, ts: new Date(e.date).getTime(), kind: 'rollover-aumentado', icon: '⬆️', label: 'Rollover aumentado',
-        value: null, detail: `+${money(e.value)} no Rollover · ${src}`
+        value: null, detail: `+${money(e.value)} no Rollover · ${src}${e.statsIgnored === true ? ' · 🙈 fora das estatísticas' : ''}`
       });
     });
 

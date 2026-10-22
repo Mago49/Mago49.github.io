@@ -42,7 +42,8 @@ import {
   removeHighBonusEntry, updateHighBonusEntry, BALANCE_MAX,
   setFormulaScale, setAvulsoScale, removeRolloverAdjustment, removeRolloverIncrease
 } from './balance-check-logic.js';
-import { openRolloverAdjust, openBatchCheck } from './ui-rollover-adjust.js'; // (Sub-entrega 17)
+import { openRolloverAdjust, openBatchCheck, openRolloverReview } from './ui-rollover-adjust.js'; // (Sub-entrega 17 · 41)
+import { computeLiveBalance, computeRolloverLive } from './finance-logic.js'; // (41) saldo/rollover ao vivo no card
 import { parseMoneyInput } from './wager-total-logic.js';
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
@@ -325,6 +326,7 @@ export function openBonusManager({ resolveCtx = () => ({}), focusPlatformId = nu
       row.appendChild(info);
       row.appendChild(el('span', 'bm-item-value', `+${formatCurrency(it.value)}`));
       const actions = actionsBox();
+      if (it.entry && it.entry.statsIgnored === true) { const tg = el('span', 'bm-tag', '🙈 fora das estatísticas'); tg.style.marginLeft = '0'; actions.appendChild(tg); } // (41)
       const del = btn('Excluir', 'bm-act bm-act-del', () => act(p,
         () => (removeRolloverIncrease(p, it.entry) ? { allowShrink: ['rolloverIncreases'] } : false),
         `Excluir o aumento de rollover de ${formatCurrency(it.value)} (${fmtDay(it.dayKey)}) de ${p.name}? O Rollover deixa de contar esse valor.`));
@@ -343,6 +345,7 @@ export function openBonusManager({ resolveCtx = () => ({}), focusPlatformId = nu
       row.appendChild(info);
       row.appendChild(el('span', 'bm-item-value', `−${formatCurrency(it.value)}`));
       const actions = actionsBox();
+      if (it.entry && it.entry.statsIgnored === true) { const tg = el('span', 'bm-tag', '🙈 fora das estatísticas'); tg.style.marginLeft = '0'; actions.appendChild(tg); } // (41)
       const del = btn('Excluir', 'bm-act bm-act-del', () => act(p,
         () => (removeRolloverAdjustment(p, it.entry) ? { allowShrink: ['rolloverAdjustments'] } : false),
         `Excluir o abatimento de rollover de ${formatCurrency(it.value)} (${fmtDay(it.dayKey)}) de ${p.name}? O Rollover volta a contar esse valor.`));
@@ -425,7 +428,7 @@ export function openBonusManager({ resolveCtx = () => ({}), focusPlatformId = nu
       const received = all.filter(i => i.kind !== 'excluded' && i.kind !== 'abatido' && i.kind !== 'aumento').reduce((s, i) => s + i.value, 0);
       const off = all.filter(i => i.kind === 'excluded').length;
       // (Sub-entrega 38) ⬆️ aumento de rollover da semana ao lado do bônus.
-      const aum = all.filter(i => i.kind === 'aumento').reduce((s, i) => s + (Number(i.value) || 0), 0);
+      const aum = all.filter(i => i.kind === 'aumento' && !(i.entry && i.entry.statsIgnored === true)).reduce((s, i) => s + (Number(i.value) || 0), 0);
       h.appendChild(el('span', 'bm-row-meta', `${formatCurrency(received)}${aum > 0 ? ` · ⬆️ +${formatCurrency(aum)}` : ''}${off ? ` · ${off} não recebido(s)` : ''}`));
       h.appendChild(el('span', 'platform-manage-chevron', '▾'));
       h.addEventListener('click', () => { ui.openId = isOpen ? null : p.id; render(); });
@@ -441,6 +444,21 @@ export function openBonusManager({ resolveCtx = () => ({}), focusPlatformId = nu
           render();
         })));
         body.appendChild(chips);
+        // (41) Saldo e Rollover do sistema AO VIVO — conferir sem sair da tela.
+        {
+          let ctxL = {};
+          try { ctxL = resolveCtx(p) || {}; } catch (_) { ctxL = {}; }
+          let bal = 0;
+          let roll = 0;
+          try { bal = computeLiveBalance(p, new Date(), ctxL); } catch (_) { bal = 0; }
+          try { roll = computeRolloverLive(p, new Date(), ctxL); } catch (_) { roll = 0; }
+          const liveBox = el('div', 'bm-live');
+          const cell = (k, v) => { const c = el('div', 'bm-live-cell'); c.appendChild(el('span', 'bm-live-k', k)); c.appendChild(el('span', 'bm-live-v', v)); liveBox.appendChild(c); };
+          cell('Saldo no sistema', formatCurrency(bal));
+          cell('Rollover no sistema', formatCurrency(roll));
+          body.appendChild(liveBox);
+        }
+        const toolRow = el('div', 'bm-tool-row');
         // (17) ⬇️ Abatido — baixa de rollover sem aposta nesta plataforma.
         const abBtn = btn('⬇️ Abatido (rollover)', 'bet-manage-btn', async () => {
           let ctx = {};
@@ -448,8 +466,15 @@ export function openBonusManager({ resolveCtx = () => ({}), focusPlatformId = nu
           const res = await openRolloverAdjust({ platform: p, ctx });
           if (res && res.status === 'done') act(p, () => ({}));
         });
-        abBtn.style.alignSelf = 'flex-start';
-        body.appendChild(abBtn);
+        toolRow.appendChild(abBtn);
+        // (41) 🧹 Revisar ajustes de rollover (ignorar nas estatísticas / excluir).
+        toolRow.appendChild(btn('🧹 Revisar ajustes', 'bet-manage-btn', async () => {
+          let ctx = {};
+          try { ctx = resolveCtx(p) || {}; } catch (_) { ctx = {}; }
+          const res = await openRolloverReview({ platform: p, ctx });
+          if (res && res.status === 'done') act(p, () => (res.shrink && res.shrink.length ? { allowShrink: res.shrink } : {}));
+        }));
+        body.appendChild(toolRow);
         const filtered = all.filter(i => current === 'all' || bonusTypeGroup(i.type) === current);
         const limit = ui.dateKey ? filtered.length : (ui.shown.get(p.id) || PAGE);
         if (filtered.length === 0) body.appendChild(el('p', 'bm-empty', 'Nada desse tipo nesta semana.'));

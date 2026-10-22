@@ -30,10 +30,11 @@
 import { state } from './state.js';
 import { formatCurrency, showAppConfirm } from './utils.js';
 import { savePlatform } from './platforms-store.js';
-import { computeRolloverLive } from './finance-logic.js';
+import { computeRolloverLive, computeLiveBalance, getWeekStart, toLocalDateString } from './finance-logic.js';
 import {
   computeBalanceGap, applyPositiveGap, recordBalanceCheck,
-  previewRollover, planRolloverTarget, addRolloverAdjustment, addRolloverIncrease, ROLLOVER_TOLERANCE
+  previewRollover, planRolloverTarget, addRolloverAdjustment, addRolloverIncrease, ROLLOVER_TOLERANCE,
+  listRolloverEntries, setRolloverEntriesIgnored, removeRolloverEntries, ROLLOVER_SOURCE_LABELS // (41)
 } from './balance-check-logic.js';
 import { parseSplitMoney } from './ui-bonus-split.js';
 
@@ -546,5 +547,170 @@ export function openBatchCheck({ resolveCtx = () => ({}) } = {}) {
     }
 
     renderRows();
+  });
+}
+
+// === (Sub-entrega 41) 🧹 REVISAR AJUSTES DE ROLLOVER ===
+// Uma plataforma: ⬆️ aumentos e ⬇️ abatimentos do período (padrão: segunda
+// da semana passada até ontem). Nada vem marcado — o usuário escolhe
+// ("Marcar todos" é um toque explícito).
+//   🙈 Ignorar nas estatísticas: o lançamento continua no Rollover (nada
+//      muda no financeiro); só sai das contagens. "Voltar a contar" desfaz.
+//   🗑 Excluir: apaga — o Rollover do sistema muda (mostra antes/depois).
+// NÃO grava: devolve { status:'done', shrink } e quem chamou (Bônus da
+// semana) grava com savePlatform (allowShrink só quando excluiu).
+const pad2 = n => String(n).padStart(2, '0');
+function addDaysKeyLocal(key, n) {
+  const [y, m, d] = key.split('-').map(Number);
+  return toLocalDateString(new Date(y, m - 1, d + n, 12));
+}
+
+export function openRolloverReview({ platform, ctx = {} } = {}) {
+  return new Promise(resolve => {
+    const { box, close, setOnClose } = openOverlay();
+    let changed = false;
+    const shrink = new Set();
+    // Fechou por fora (✕, toque fora, voltar) depois de mudar algo: devolve
+    // 'done' do mesmo jeito — quem chamou grava o que já mudou na memória.
+    setOnClose(result => resolve(result || (changed ? { status: 'done', shrink: [...shrink] } : { status: 'cancelled' })));
+    const now = new Date();
+    const todayKey = toLocalDateString(now);
+    const thisMonday = toLocalDateString(getWeekStart(now));
+    let fromKey = addDaysKeyLocal(thisMonday, -7);
+    let toKey = addDaysKeyLocal(todayKey, -1);
+    if (toKey < fromKey) toKey = fromKey;
+    const marked = new Set(); // entradas marcadas (objetos)
+
+    box.appendChild(el('h3', 'bc-title', '🧹 Revisar ajustes de rollover'));
+    box.appendChild(el('p', 'bc-sub', platform.name));
+    const live = el('div', 'bc-grid');
+    box.appendChild(live);
+    const dates = el('div', 'rr-dates');
+    const mkDate = (label, get, set) => {
+      const f = el('label', 'rr-date');
+      f.appendChild(el('span', 'bc-k', label));
+      const i = el('input', 'bc-input');
+      i.type = 'date';
+      i.value = get();
+      i.max = todayKey;
+      i.addEventListener('change', () => { if (/^\d{4}-\d{2}-\d{2}$/.test(i.value)) { set(i.value); marked.clear(); render(); } });
+      f.appendChild(i);
+      dates.appendChild(f);
+    };
+    mkDate('De', () => fromKey, v => { fromKey = v; });
+    mkDate('Até', () => toKey, v => { toKey = v; });
+    box.appendChild(dates);
+    const listBox = el('div', 'rr-list');
+    box.appendChild(listBox);
+    const note = el('p', 'bc-note', '🙈 Ignorar: continua valendo no Rollover (o financeiro não muda) e só sai das contagens de ⬆️ Aumento / ⬇️ Abatimento, gráficos e grupos. 🗑 Excluir: apaga e o Rollover do sistema muda — confira o saldo real depois.');
+    box.appendChild(note);
+    const tools = el('div', 'rr-tools');
+    box.appendChild(tools);
+    const foot = el('div', 'bc-footer');
+    box.appendChild(foot);
+
+    function paintLive() {
+      live.replaceChildren();
+      let bal = 0;
+      let roll = 0;
+      try { bal = computeLiveBalance(platform, new Date(), ctx); } catch (_) { bal = 0; }
+      try { roll = computeRolloverLive(platform, new Date(), ctx); } catch (_) { roll = 0; }
+      live.appendChild(el('span', 'bc-k', 'Saldo do sistema agora'));
+      live.appendChild(el('span', 'bc-v', formatCurrency(bal)));
+      live.appendChild(el('span', 'bc-k', 'Rollover do sistema agora'));
+      live.appendChild(el('span', 'bc-v', formatCurrency(roll)));
+    }
+
+    const fmtWhen = it => {
+      const d = new Date(it.entry.date);
+      return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+    };
+
+    function items() { return listRolloverEntries(platform, fromKey, toKey); }
+
+    function render() {
+      paintLive();
+      listBox.replaceChildren();
+      const all = items();
+      [...marked].forEach(e => { if (!all.some(it => it.entry === e)) marked.delete(e); });
+      if (!all.length) listBox.appendChild(el('p', 'bm-empty', 'Nenhum aumento ou abatimento de rollover neste período.'));
+      all.forEach(it => {
+        const row = el('label', `rr-row rr-${it.kind}${it.ignored ? ' rr-ignored' : ''}`);
+        const cb = el('input');
+        cb.type = 'checkbox';
+        cb.checked = marked.has(it.entry);
+        cb.addEventListener('change', () => { if (cb.checked) marked.add(it.entry); else marked.delete(it.entry); paintTools(); });
+        row.appendChild(cb);
+        const info = el('span', 'rr-info');
+        info.appendChild(el('span', 'rr-when', fmtWhen(it)));
+        info.appendChild(el('span', 'rr-src', `${it.kind === 'aumento' ? '⬆️ Aumento' : '⬇️ Abatimento'} · ${ROLLOVER_SOURCE_LABELS[it.entry.source] || 'lançado'}`));
+        row.appendChild(info);
+        row.appendChild(el('span', 'rr-val', `${it.kind === 'aumento' ? '+' : '−'}${formatCurrency(it.value)}`));
+        if (it.ignored) row.appendChild(el('span', 'bm-tag rr-tag', '🙈 ignorado'));
+        listBox.appendChild(row);
+      });
+      paintTools();
+    }
+
+    function selected() { return items().filter(it => marked.has(it.entry)); }
+
+    function paintTools() {
+      tools.replaceChildren();
+      foot.replaceChildren();
+      const all = items();
+      const sel = selected();
+      if (all.length) {
+        const allMarked = sel.length === all.length;
+        tools.appendChild(btn(allMarked ? 'Desmarcar todos' : 'Marcar todos', 'bet-manage-btn', () => {
+          if (allMarked) marked.clear(); else all.forEach(it => marked.add(it.entry));
+          render();
+        }));
+      }
+      const toIgnore = sel.filter(it => !it.ignored);
+      const toCount = sel.filter(it => it.ignored);
+      const ign = btn(`🙈 Ignorar nas estatísticas${toIgnore.length ? ` (${toIgnore.length})` : ''}`, 'btn-confirm', async () => {
+        const roll = computeRolloverLive(platform, new Date(), ctx);
+        const ok = await showAppConfirm(`Ignorar ${toIgnore.length} lançamento(s) nas estatísticas de ${platform.name}? Eles continuam valendo no Rollover (${formatCurrency(roll)} não muda) — só saem das contagens.`);
+        if (!ok || !box.isConnected) return;
+        if (setRolloverEntriesIgnored(toIgnore, true, new Date())) changed = true;
+        marked.clear();
+        render();
+      });
+      ign.disabled = !toIgnore.length;
+      foot.appendChild(ign);
+      if (toCount.length) {
+        foot.appendChild(btn(`↩️ Voltar a contar (${toCount.length})`, 'bet-manage-btn', () => {
+          if (setRolloverEntriesIgnored(toCount, false)) changed = true;
+          marked.clear();
+          render();
+        }));
+      }
+      const del = btn(`🗑 Excluir${sel.length ? ` (${sel.length})` : ''}`, 'bm-act bm-act-del', async () => {
+        // Mesmo número dos painéis (Rollover ao vivo), antes × depois.
+        const liveOf = (mutate) => {
+          const copy = JSON.parse(JSON.stringify(platform));
+          if (mutate) mutate(copy);
+          return r2(computeRolloverLive(copy, new Date(), ctx));
+        };
+        const before = liveOf(null);
+        const after = liveOf(copy => {
+          const ids = new Set(sel.map(it => it.entry.id || it.entry.date));
+          const keep = list => (Array.isArray(list) ? list : []).filter(e => !ids.has(e.id || e.date));
+          copy.rolloverIncreases = keep(copy.rolloverIncreases);
+          copy.rolloverAdjustments = keep(copy.rolloverAdjustments);
+        });
+        const ok = await showAppConfirm(`Excluir ${sel.length} lançamento(s) de ${platform.name}? ${Math.abs(after - before) < 0.005 ? `O Rollover do sistema fica igual (${formatCurrency(before)}).` : `Isso MUDA o Rollover do sistema: ${formatCurrency(before)} → ${formatCurrency(after)}. Depois confira o saldo real (🔎).`} Não dá pra desfazer.`);
+        if (!ok || !box.isConnected) return;
+        removeRolloverEntries(platform, sel).forEach(f => shrink.add(f));
+        if (shrink.size) changed = true;
+        marked.clear();
+        render();
+      });
+      del.disabled = !sel.length;
+      foot.appendChild(del);
+      foot.appendChild(btn(changed ? 'Concluir' : 'Fechar', changed ? 'btn-confirm' : 'bc-cancel', () => close(changed ? { status: 'done', shrink: [...shrink] } : { status: 'cancelled' })));
+    }
+
+    render();
   });
 }

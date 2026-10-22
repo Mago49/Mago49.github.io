@@ -134,6 +134,27 @@
 // Lista PRÓPRIA (não dentro dos abatimentos): versão antiga do app nunca
 // leria um aumento como abatimento.
 //
+// === (Sub-entrega 40) ⏱ HORÁRIO DOS BÔNUS NA SEMANA FECHADA ===
+// Antes: ao fechar, todo o rollover de bônus da semana (bonusRollover)
+// entrava de uma vez na SEGUNDA 00:00. Com o piso em zero, isso fazia as
+// apostas da semana "comerem" bônus que chegaram DEPOIS delas — o Rollover
+// caía na virada de domingo pra segunda sem nada ser lançado.
+// Agora closeWeek grava financeWeeks[].bonusEvents = [{ t (ms), p, v }]: os
+// MESMOS eventos de bônus que a semana aberta usava (fórmula do dia, VIP
+// "com aposta" no horário da coleta, avulso e bônus alto no horário deles).
+// simulateRollover usa esses eventos e o RESTO (bonusRollover − soma dos
+// eventos = diferença do bônus real do domingo, confirmações e edições
+// posteriores) entra no FIM da semana (domingo 23:59:59.999).
+// Semanas fechadas ANTES desta sub-entrega (sem bonusEvents) continuam
+// exatamente como eram (lote na segunda) — nada do passado é recalculado.
+//
+// === (Sub-entrega 41) 🙈 AJUSTE IGNORADO NAS ESTATÍSTICAS ===
+// rolloverAdjustments[] / rolloverIncreases[] podem ter statsIgnored:true
+// (🧹 Revisar ajustes, no Bônus da semana). O lançamento CONTINUA valendo
+// em simulateRollover (o Rollover não muda); só as SOMAS de estatística
+// (sumRolloverAdjustments, sumRolloverIncreases, rolloverIncreasesByDay —
+// painéis, gráficos, calendário, grupos) pulam ele.
+//
 // === (Sub-entrega 16) ➗ DIVIDIR NO FECHAMENTO ===
 // closeWeek / setClosedWeekRealBonus aceitam opts.diffParts = [{ value,
 // scale }]: a diferença positiva entra no Rollover parte a parte, cada uma
@@ -463,6 +484,51 @@ export function computeLiveBalanceRaw(platform, refDate = new Date(), ctx = {}) 
 // cada dia; avulso EFETIVO (Sub-entrega G) no horário de cada lançamento.
 // Com dados que nunca passam do Rollover disponível, o resultado é
 // IDÊNTICO ao da fórmula antiga.
+// (Sub-entrega 40) Eventos de BÔNUS da semana aberta de refDate (até o fim
+// do dia de refDate), cada um no seu horário — p 0 (fórmula do dia, VIP
+// "com aposta") ou p 1 (avulso efetivo, bônus alto). Usado ao vivo por
+// simulateRollover e gravado no fechamento (financeWeeks[].bonusEvents).
+export const BONUS_EVENTS_MAX = 400;
+export function openWeekBonusEvents(platform, refDate = new Date(), ctx = {}, entryFilter = null) {
+  const weekStart = getWeekStart(refDate);
+  const weekEnd = getWeekEnd(weekStart);
+  const inOpenWeek = entryFilter || ((e) => {
+    if (!e || !e.date) return false;
+    const d = new Date(e.date);
+    return d >= weekStart && d <= weekEnd;
+  });
+  const out = [];
+  // (Sub-entrega G) avulso EFETIVO, cada lançamento no seu horário.
+  getEffectiveOtherBonusEntries(platform, inOpenWeek, ctx).forEach(item => {
+    const v = Number(item.rollover) || 0;
+    if (v) out.push({ t: new Date(item.entry.date).getTime(), p: 1, v });
+  });
+  const today = new Date(refDate);
+  today.setHours(0, 0, 0, 0);
+  const lastDay = today < weekEnd ? today : weekEnd;
+  const cursor = new Date(weekStart);
+  while (cursor <= lastDay) {
+    // (13) lote do dia SEM o bônus alto — ele entra no horário dele.
+    // (14) cada tipo da fórmula na escala do R (0 = sem rollover).
+    const v = getExpectedRolloverForDate(platform, cursor, ctx, { splitTimed: true }) || 0;
+    if (v > 0.0000001) out.push({ t: cursor.getTime(), p: 0, v });
+    // (15) VIP diário "com aposta": no horário da coleta.
+    const timed = getTimedVipDailyRollover(platform, cursor, ctx);
+    if (timed) out.push({ t: timed.t, p: 0, v: timed.v });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  const dayEnd = new Date(lastDay);
+  dayEnd.setHours(23, 59, 59, 999);
+  getHighBonusEntries(platform).forEach(e => {
+    if (!inOpenWeek(e)) return;
+    const d = new Date(e.date);
+    if (d > dayEnd) return;
+    const v = highBonusRollover(e);
+    if (v) out.push({ t: d.getTime(), p: 1, v });
+  });
+  return out;
+}
+
 function simulateRollover(platform, { initialRollover = 0, windowStart = null, windowEnd = null, refDate = new Date(), includeOpenWeek = true, ctx = {}, cutoff = null } = {}) {
   const inWindow = (dateStr) => {
     const d = new Date(dateStr);
@@ -511,7 +577,23 @@ function simulateRollover(platform, { initialRollover = 0, windowStart = null, w
     const end = getWeekEnd(start);
 
     const bonusLump = Number(w.bonusRollover) || 0;
-    if (bonusLump) events.push({ t: start.getTime(), p: 0, v: bonusLump });
+    if (Array.isArray(w.bonusEvents)) {
+      // (40) bônus no horário em que entraram; o resto (diferença do bônus
+      // real, confirmações/edições depois) no fim da semana.
+      let sum = 0;
+      w.bonusEvents.forEach(ev => {
+        const t = Number(ev && ev.t);
+        const v = Number(ev && ev.v) || 0;
+        if (!Number.isFinite(t) || !v) return;
+        sum += v;
+        events.push({ t, p: ev.p === 1 ? 1 : 0, v });
+      });
+      const rest = r2(bonusLump - sum);
+      if (Math.abs(rest) >= 0.005) events.push({ t: end.getTime(), p: 0, v: rest });
+    } else if (bonusLump) {
+      // Semana fechada antes da Sub-entrega 40: lote na segunda (como sempre foi).
+      events.push({ t: start.getTime(), p: 0, v: bonusLump });
+    }
 
     const frozen = Number(w.wagered) || 0;
     const raw = betsByWeek.get(w.weekStart) || [];
@@ -541,35 +623,9 @@ function simulateRollover(platform, { initialRollover = 0, windowStart = null, w
       const v = Number(e.wagered) || 0;
       if (v) events.push({ t: new Date(e.date).getTime(), p: 2, v: -v });
     });
-    // (Sub-entrega G) avulso EFETIVO, cada lançamento no seu horário.
-    getEffectiveOtherBonusEntries(platform, inOpenWeek, ctx).forEach(item => {
-      const v = Number(item.rollover) || 0;
-      if (v) events.push({ t: new Date(item.entry.date).getTime(), p: 1, v });
-    });
-
-    const today = new Date(refDate);
-    today.setHours(0, 0, 0, 0);
-    const lastDay = today < weekEnd ? today : weekEnd;
-    const cursor = new Date(weekStart);
-    while (cursor <= lastDay) {
-      // (13) lote do dia SEM o bônus alto — ele entra no horário dele.
-      // (14) cada tipo da fórmula na escala do R (0 = sem rollover).
-      const v = getExpectedRolloverForDate(platform, cursor, ctx, { splitTimed: true }) || 0;
-      if (v > 0.0000001) events.push({ t: cursor.getTime(), p: 0, v });
-      // (15) VIP diário "com aposta": no horário da coleta.
-      const timed = getTimedVipDailyRollover(platform, cursor, ctx);
-      if (timed) events.push({ t: timed.t, p: 0, v: timed.v });
-      cursor.setDate(cursor.getDate() + 1);
-    }
-    const dayEnd = new Date(lastDay);
-    dayEnd.setHours(23, 59, 59, 999);
-    getHighBonusEntries(platform).forEach(e => {
-      if (!inOpenWeek(e)) return;
-      const d = new Date(e.date);
-      if (d > dayEnd) return;
-      const v = highBonusRollover(e);
-      if (v) events.push({ t: d.getTime(), p: 1, v });
-    });
+    // Bônus da semana aberta, cada um no seu horário (40: mesma função que
+    // o fechamento usa pra gravar bonusEvents).
+    openWeekBonusEvents(platform, refDate, ctx, inOpenWeek).forEach(e => events.push(e));
   }
 
   events.sort((a, b) => (a.t - b.t) || (a.p - b.p));
@@ -817,6 +873,13 @@ export function closeWeek(platform, bonus, refDate = new Date(), ctx = {}, opts 
   const diffScale = normalizeRolloverScale(opts.diffScale);
   const diffRollover = positiveDiffRollover(bonusDiff, diffScale, opts.diffParts);
   const bonusRollover = r2(computeAutoAccruedRolloverForWeek(platform, refDate, ctx) + otherBonusRolloverThisWeek + diffRollover);
+  // (40) horário de cada bônus da semana (o resto entra no fim da semana).
+  // Muitos eventos (caso extremo) = sem horários: volta ao lote antigo.
+  const evs = openWeekBonusEvents(platform, refDate, ctx)
+    .map(e => ({ t: Math.round(e.t), p: e.p === 1 ? 1 : 0, v: r2(e.v) }))
+    .filter(e => Number.isFinite(e.t) && e.v !== 0)
+    .sort((a, b) => (a.t - b.t) || (a.p - b.p));
+  const bonusEvents = evs.length <= BONUS_EVENTS_MAX ? evs : null;
 
   const entry = {
     weekStart: toLocalDateString(live.weekStart),
@@ -828,6 +891,7 @@ export function closeWeek(platform, bonus, refDate = new Date(), ctx = {}, opts 
     betCount: live.betCount,
     bonus: bonusNum,
     bonusRollover,
+    ...(bonusEvents ? { bonusEvents } : {}),
     // (Sub-entrega G) diferença informada no fechamento: bônus real −
     // (fórmula + avulso efetivo). Só informativo (Gráficos contam como
     // Avulso); Saldo/Rollover já incorporam essa diferença acima.
@@ -1325,6 +1389,7 @@ export function rolloverIncreasesByDay(platform, loKey = null, hiKey = null) {
     const k = toLocalDateString(d);
     if (loKey && k < loKey) return;
     if (hiKey && k > hiKey) return;
+    if (e.statsIgnored === true) return; // (41)
     out[k] = roundMoney((out[k] || 0) + (Number(e.value) || 0));
   });
   return out;
@@ -1340,6 +1405,7 @@ function sumDatedList(list, loKey, hiKey, keyFilter) {
     if (loKey && k < loKey) return;
     if (hiKey && k > hiKey) return;
     if (keyFilter && !keyFilter(k)) return;
+    if (e.statsIgnored === true) return; // (41) 🙈 fora das estatísticas
     total += Number(e.value) || 0;
   });
   return roundMoney(total);

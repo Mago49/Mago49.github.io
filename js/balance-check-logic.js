@@ -565,6 +565,66 @@ export function addRolloverIncrease(platform, value, { at = null, now = new Date
   return entry;
 }
 
+// === (Sub-entrega 41) 🧹 REVISAR AJUSTES DE ROLLOVER ===
+// Lista os ⬆️ aumentos e ⬇️ abatimentos de um período e marca/desmarca
+// statsIgnored (🙈 fora das estatísticas — o Rollover continua contando)
+// ou exclui. Puro: quem grava é a tela (savePlatform, com allowShrink só
+// quando exclui).
+export const ROLLOVER_SOURCE_LABELS = Object.freeze({
+  check: 'conferência de saldo',
+  session: 'conferência da sessão',
+  batch: 'conferência em lote',
+  manual: 'lançado à mão'
+});
+
+/** [{ kind:'aumento'|'abatido', entry, dayKey, value, ignored }] mais novo primeiro. */
+export function listRolloverEntries(platform, loKey = null, hiKey = null) {
+  const out = [];
+  const add = (list, kind) => (Array.isArray(list) ? list : []).forEach(e => {
+    if (!e || !e.date) return;
+    const d = new Date(e.date);
+    if (isNaN(d.getTime())) return;
+    const k = toLocalDateString(d);
+    if (loKey && k < loKey) return;
+    if (hiKey && k > hiKey) return;
+    out.push({ kind, entry: e, dayKey: k, value: r2(e.value), ignored: e.statsIgnored === true, t: d.getTime() });
+  });
+  add(platform && platform.rolloverIncreases, 'aumento');
+  add(platform && platform.rolloverAdjustments, 'abatido');
+  return out.sort((a, b) => b.t - a.t);
+}
+
+/** Marca (ignored=true) ou desmarca os itens. Devolve quantos mudaram. */
+export function setRolloverEntriesIgnored(items, ignored, now = new Date()) {
+  let n = 0;
+  (items || []).forEach(it => {
+    const e = it && it.entry;
+    if (!e) return;
+    if (ignored) {
+      if (e.statsIgnored === true) return;
+      e.statsIgnored = true;
+      e.statsIgnoredAt = now.toISOString();
+      n++;
+    } else if (e.statsIgnored === true) {
+      delete e.statsIgnored;
+      delete e.statsIgnoredAt;
+      n++;
+    }
+  });
+  return n;
+}
+
+/** Exclui os itens. Devolve a lista de campos que encolheram (allowShrink). */
+export function removeRolloverEntries(platform, items) {
+  const shrink = new Set();
+  (items || []).forEach(it => {
+    if (!it || !it.entry) return;
+    if (it.kind === 'aumento' && removeRolloverIncrease(platform, it.entry)) shrink.add('rolloverIncreases');
+    if (it.kind === 'abatido' && removeRolloverAdjustment(platform, it.entry)) shrink.add('rolloverAdjustments');
+  });
+  return [...shrink];
+}
+
 /** (37) Remove um aumento. true se removeu. */
 export function removeRolloverIncrease(platform, entry) {
   const list = Array.isArray(platform.rolloverIncreases) ? platform.rolloverIncreases : [];
