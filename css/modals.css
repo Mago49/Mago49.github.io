@@ -2153,3 +2153,56 @@
   color: #166534;
   font-size: 0.8rem;
 }
+
+/* (Sub-entrega 41) 🧹 Revisar ajustes de rollover + saldo/rollover ao vivo no Bônus da semana */
+.bm-live {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+.bm-live-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+  min-width: 0;
+}
+.bm-live-k { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: #64748b; }
+.bm-live-v { font-size: 1rem; font-weight: 800; color: #15803d; overflow-wrap: anywhere; }
+.bm-tool-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+.bm-tool-row > .bet-manage-btn { flex: 0 1 auto; margin: 0; }
+.rr-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin: 0.6rem 0; }
+.rr-date { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+.rr-date .bc-input { width: 100%; box-sizing: border-box; }
+.rr-list { display: flex; flex-direction: column; gap: 0.4rem; max-height: 46vh; overflow-y: auto; }
+.rr-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.6rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 12px;
+  background: #f8fafc;
+  border-left: 4px solid #94a3b8;
+  cursor: pointer;
+}
+.rr-row.rr-aumento { border-left-color: #16a34a; background: #f0fdf4; }
+.rr-row.rr-abatido { border-left-color: #d97706; background: #fffbeb; }
+.rr-row.rr-ignored { opacity: 0.7; }
+.rr-row input[type="checkbox"] { width: 1.15rem; height: 1.15rem; flex: 0 0 auto; }
+.rr-info { display: flex; flex-direction: column; flex: 1 1 9rem; min-width: 0; }
+.rr-when { font-weight: 700; font-size: 0.86rem; }
+.rr-src { font-size: 0.76rem; color: #64748b; }
+.rr-val { font-weight: 800; white-space: nowrap; }
+.rr-aumento .rr-val { color: #15803d; }
+.rr-abatido .rr-val { color: #b45309; }
+.rr-tag { margin-left: 0; }
+.rr-tools { display: flex; justify-content: flex-start; margin: 0.4rem 0; }
