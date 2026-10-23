@@ -1,0 +1,213 @@
+// === GUARDA DE AUTENTICAÇÃO (compartilhado pelas 4 páginas) ===
+// Antes, cada página teria que copiar seu próprio bloco de onAuthStateChanged
+// (o guia do projeto já previa isso). Em vez de duplicar ~40 linhas em 4
+// arquivos, esse módulo concentra a parte que é IGUAL em toda página:
+// login/logout, carregar state.platforms do Firestore, e mostrar/esconder
+// a tela de login. Cada página só diz o que fazer DEPOIS de logar (onLogin).
+//
+// Resolve três problemas:
+// 1) Sessão que desloga ao fechar o navegador -> ver setPersistence em
+//    firebase-init.js; este arquivo só espera authReady antes de tudo.
+// 2) "Flash" da tela de login antes de confirmar que o usuário já está
+//    logado -> existe um 3º estado (#authLoading) mostrado até a primeira
+//    resposta do onAuthStateChanged, evitando piscar a tela de login à toa.
+// 3) Leitura vazia anômala do Firestore sendo confundida com "conta nova"
+//    -> loadPlatformsFromFirestore (platforms-store.js) agora lança um
+//    erro com code 'EMPTY_READ_ANOMALY' nesse caso, em vez de sobrescrever
+//    os dados. Aqui esse erro é tratado à parte: mostra um aviso
+//    específico e NÃO deixa a página seguir com state.platforms vazio —
+//    evita tanto a falsa impressão de "os dados sumiram" quanto o risco
+//    de qualquer ação subsequente salvar esse vazio por cima de dados reais.
+//
+// (6.3b) TEMPLATES DO BÔNUS VIP — "AVISA E TENTA DE NOVO": se a leitura
+// dos templates falhar e alguma plataforma depende deles, o app continua
+// NÃO abrindo (abrir com tabela padrão em silêncio deixaria Saldo/Rollover
+// errados), mas agora o aviso pergunta se quer TENTAR DE NOVO e repete a
+// leitura na hora, sem precisar recarregar a página. Se a pessoa recusar,
+// fica na tela de carregamento como antes. Nada é gravado em nenhum
+// momento desse fluxo.
+//
+// (Sub-entrega A) TEMPLATE CITADO MAS NÃO ENCONTRADO: antes disparava um
+// aviso vermelho FORÇADO a cada login — e como a verificação olha todo o
+// levelHistory (passado incluído), o aviso nunca mais sumia, nem trocando a
+// plataforma pra "Padrão". Agora a leitura que DEU CERTO só registra o
+// problema em state.vipTemplateIssues, separando:
+//   - missing: documento não existe no banco -> a aba VIP → Templates
+//     oferece "Restaurar" (recria com a tabela padrão, que é exatamente o
+//     que o cálculo já usa hoje pra esse id — nenhum valor muda);
+//   - invalid: documento existe mas está inválido -> só é mostrado, nunca
+//     sobrescrito automaticamente.
+// Nenhum aviso aparece no login. O cálculo continua igual: id ausente cai
+// na tabela padrão (getVipConfigAt, cycle-logic.js). A falha de LEITURA
+// continua bloqueando o app exatamente como antes (6.3b).
+
+import {
+  auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged, authReady
+} from './firebase-init.js';
+import { state } from './state.js';
+import { showAppAlert, showAppConfirm } from './utils.js';
+import { loadPlatformsFromFirestore } from './platforms-store.js';
+import { loadVipBonusTemplates } from './vip-bonus-template-store.js';
+import { collectReferencedTemplateIds } from './vip-bonus-template-logic.js';
+
+function emptyTemplateIssues() {
+  return { missing: [], invalid: [] };
+}
+
+/**
+ * @param {Object} options
+ * @param {(user: import('firebase/auth').User) => void} options.onLogin
+ *        Chamado depois que o login é confirmado E state.platforms já foi
+ *        carregado do Firestore com segurança. Aqui cada página renderiza
+ *        sua própria UI.
+ * @param {() => void} [options.onLogout]
+ *        Chamado quando o usuário desloga (ou nunca esteve logado).
+ */
+export function initAuth({ onLogin, onLogout }) {
+  const authScreenEl = document.getElementById('authScreen');
+  const authLoadingEl = document.getElementById('authLoading');
+  const appMainEl = document.getElementById('appMain');
+  const appFooterEl = document.getElementById('appFooter'); // só existe em calendario.html
+  const googleLoginBtn = document.getElementById('googleLoginBtn');
+  const authErrorEl = document.getElementById('authError');
+  const userLabelEl = document.getElementById('userLabel');
+
+  function showLoading() {
+    if (authLoadingEl) authLoadingEl.classList.remove('app-hidden');
+    if (authScreenEl) authScreenEl.classList.add('app-hidden');
+    if (appMainEl) appMainEl.classList.add('app-hidden');
+    if (appFooterEl) appFooterEl.classList.add('app-hidden');
+  }
+
+  function showLoginScreen() {
+    if (authLoadingEl) authLoadingEl.classList.add('app-hidden');
+    if (authScreenEl) authScreenEl.classList.remove('app-hidden');
+    if (appMainEl) appMainEl.classList.add('app-hidden');
+    if (appFooterEl) appFooterEl.classList.add('app-hidden');
+  }
+
+  function showApp() {
+    if (authLoadingEl) authLoadingEl.classList.add('app-hidden');
+    if (authScreenEl) authScreenEl.classList.add('app-hidden');
+    if (appMainEl) appMainEl.classList.remove('app-hidden');
+    if (appFooterEl) appFooterEl.classList.remove('app-hidden');
+  }
+
+  if (googleLoginBtn) {
+    googleLoginBtn.addEventListener('click', async () => {
+      if (authErrorEl) authErrorEl.textContent = '';
+      googleLoginBtn.disabled = true;
+      try {
+        await signInWithPopup(auth, googleProvider);
+      } catch (err) {
+        console.error('Erro no login:', err);
+        if (authErrorEl) authErrorEl.textContent = 'Não foi possível entrar. Tente novamente.';
+      } finally {
+        googleLoginBtn.disabled = false;
+      }
+    });
+  }
+
+
+  showLoading();
+
+  // Só liga o listener de auth depois que a persistência local foi
+  // configurada (authReady) — evita qualquer corrida entre setPersistence
+  // e a primeira leitura do estado de login.
+  authReady.then(() => {
+    onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        state.currentUid = user.uid;
+        state.vipTemplateIssues = emptyTemplateIssues();
+        if (userLabelEl) {
+          userLabelEl.textContent = user.displayName ? `Olá, ${user.displayName.split(' ')[0]}` : (user.email || '');
+        }
+
+        try {
+          state.platforms = await loadPlatformsFromFirestore(state.currentUid);
+        } catch (err) {
+          if (err && err.code === 'EMPTY_READ_ANOMALY') {
+            // Ver platforms-store.js: a conta já tinha plataformas antes,
+            // mas a leitura veio vazia agora — NADA foi escrito no
+            // Firestore. Em vez de deixar a página seguir com
+            // state.platforms vazio (o que passaria a falsa impressão de
+            // que os dados sumiram, e arriscaria alguma ação salvar esse
+            // vazio por cima de dados reais), mantemos a pessoa na tela
+            // de carregamento e pedimos pra recarregar manualmente.
+            console.error('Leitura vazia anômala ao carregar plataformas — nenhum dado foi apagado:', err);
+            await showAppAlert('Não foi possível confirmar seus dados com segurança agora (a leitura voltou vazia, o que não é esperado pra essa conta). Nada foi apagado. Verifique sua internet e recarregue a página antes de continuar.');
+            showLoading();
+            return;
+          }
+
+          console.error('Erro ao carregar dados do Firebase:', err);
+          // Qualquer outro erro de leitura: NUNCA abrir o app com lista
+          // vazia (risco de ação salvar vazio por cima de dados reais).
+          // Mesmo tratamento da anomalia: fica no carregamento.
+          await showAppAlert('Não foi possível carregar seus dados. Verifique sua internet e recarregue a página antes de continuar.');
+          showLoading();
+          return;
+        }
+
+        // Templates do Bônus VIP — carregados UMA vez, antes do app abrir,
+        // porque cycle-logic.js lê state.vipBonusTemplates de forma
+        // síncrona em todo cálculo de bônus (aba VIP, Saldo/Rollover,
+        // Histórico, Gráficos). Se a leitura falhar e alguma plataforma
+        // depende de template, NÃO abrimos o app: todo bônus voltaria pra
+        // tabela padrão em silêncio e o Saldo/Rollover ficariam errados.
+        // (6.3b) Em vez de só barrar, o aviso pergunta se quer tentar de
+        // novo e repete a leitura. Sem nenhuma plataforma usando template,
+        // uma falha aqui não impede o uso (só é logada).
+        const referencedTemplateIds = collectReferencedTemplateIds(state.platforms);
+        let templatesResolved = false;
+        while (!templatesResolved) {
+          try {
+            const { templates, invalidIds } = await loadVipBonusTemplates(state.currentUid);
+            state.vipBonusTemplates = templates;
+
+            // (Sub-entrega A) Só registra — sem aviso no login. A aba
+            // VIP → Templates mostra o problema e oferece a correção.
+            const loadedIds = new Set(templates.map(t => t.id));
+            const invalidSet = new Set(Array.isArray(invalidIds) ? invalidIds : []);
+            const notLoaded = [...referencedTemplateIds].filter(id => !loadedIds.has(id));
+            state.vipTemplateIssues = {
+              missing: notLoaded.filter(id => !invalidSet.has(id)),
+              invalid: notLoaded.filter(id => invalidSet.has(id))
+            };
+            if (notLoaded.length > 0) {
+              console.warn('Templates VIP citados por plataformas e não carregados (usando tabela padrão):', state.vipTemplateIssues);
+            }
+            templatesResolved = true;
+          } catch (err) {
+            state.vipBonusTemplates = [];
+            state.vipTemplateIssues = emptyTemplateIssues();
+            if (referencedTemplateIds.size === 0) {
+              console.error('Templates do Bônus VIP indisponíveis (nenhuma plataforma depende deles, seguindo sem):', err);
+              templatesResolved = true;
+              break;
+            }
+            console.error('Erro ao carregar templates do Bônus VIP:', err);
+            const retry = await showAppConfirm('Não foi possível carregar os templates de Bônus VIP (algumas plataformas dependem deles). Nada foi apagado. Verifique sua internet. Deseja tentar de novo?');
+            // Se a conta mudou/saiu enquanto o aviso estava aberto, para aqui.
+            if (state.currentUid !== user.uid) return;
+            if (!retry) {
+              showLoading();
+              return;
+            }
+          }
+        }
+
+        showApp();
+        if (typeof onLogin === 'function') onLogin(user);
+      } else {
+        state.currentUid = null;
+        state.platforms = [];
+        state.vipBonusTemplates = [];
+        state.vipTemplateIssues = emptyTemplateIssues();
+        if (userLabelEl) userLabelEl.textContent = '';
+        showLoginScreen();
+        if (typeof onLogout === 'function') onLogout();
+      }
+    });
+  });
+}

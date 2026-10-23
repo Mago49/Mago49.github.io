@@ -1,0 +1,259 @@
+/* === PERSONALIZAÇÃO DE CARDS (Página 2 — Calendário) — Bloco L ===
+   Arquivo autocontido: o Calendário não carrega manage-panel.css (essa
+   folha é exclusiva da futura Página 4/Edição), então as classes usadas
+   aqui NÃO reaproveitam nomes de lá (.manage-section-label,
+   .platform-manage-chevron etc.) — são todas próprias, com o prefixo
+   card-custom-, exceto os poucos tokens já garantidamente globais neste
+   Calendário: .card-shell / .section-heading (layout.css), .app-hidden
+   (base.css), .btn-confirm / .btn-cancel-modal / .reset-modal-buttons
+   (modals.css). Também define .pcard-marker, usado por
+   ui-platform-cards.js pra desenhar o emoji no canto do card — mantido
+   aqui (e não em platform-cards.css) pra não alterar um arquivo que já
+   está estável e recém-corrigido (Etapa 2). */
+
+.card-custom-section {
+  margin-top: 1.1rem;
+  padding-bottom: 0.2rem;
+}
+
+.card-custom-header {
+  cursor: pointer;
+  align-items: center;
+  padding-bottom: 1.1rem;
+}
+
+.card-custom-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.card-custom-chevron {
+  color: #64748b;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.card-custom-chevron.open {
+  transform: rotate(180deg);
+}
+
+.card-custom-body {
+  padding: 0 1.2rem 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.card-custom-divider {
+  border: none;
+  border-top: 1px dashed rgba(15, 23, 42, 0.1);
+  margin: 0.2rem 0;
+  width: 100%;
+}
+
+.card-custom-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.card-custom-block h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text-dark);
+}
+
+.card-custom-section-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  margin-top: 0.2rem;
+}
+
+/* Lista de atribuição (todas as ~40 plataformas) — scroll interno, não
+   estoura o layout da página. */
+.card-custom-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 0.3rem;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.6);
+}
+
+.card-custom-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 8px;
+}
+
+.card-custom-row:hover {
+  background: rgba(15, 23, 42, 0.04);
+}
+
+.card-custom-row-name {
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--text-dark);
+}
+
+/* Swatch (botão de cor) — usado tanto na lista de atribuição quanto na
+   de Selecionados. position:relative ancora o dropdown de paleta. */
+.card-custom-swatch-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.card-custom-swatch-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 2px solid rgba(15, 23, 42, 0.12);
+  cursor: pointer;
+  padding: 0;
+}
+
+.card-custom-palette-dropdown {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  z-index: 45;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0.35rem;
+  padding: 0.6rem;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.16);
+  width: 216px;
+}
+
+.card-custom-palette-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.card-custom-palette-swatch.active {
+  border-color: var(--primary);
+}
+
+/* Campo de emoji — largura curta, tamanho de fonte maior pra facilitar
+   ver o emoji digitado. */
+.card-custom-marker-input {
+  width: 56px;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 10px;
+  font-size: 1.1rem;
+  text-align: center;
+  outline: none;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.card-custom-marker-input:focus {
+  border-color: rgba(37, 99, 235, 0.45);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+}
+
+.card-custom-selected-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.card-custom-selected-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  flex-wrap: wrap;
+}
+
+.card-custom-selected-row .card-custom-row-name {
+  flex: 1 1 90px;
+  min-width: 70px;
+}
+
+.card-custom-motivo-input {
+  flex: 1 1 140px;
+  min-width: 100px;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  outline: none;
+  background: #fff;
+}
+
+.card-custom-motivo-input:focus {
+  border-color: rgba(37, 99, 235, 0.45);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+}
+
+.card-custom-remove-btn {
+  border: none;
+  background: transparent;
+  color: #ef4444;
+  font-weight: 800;
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  flex-shrink: 0;
+}
+
+.card-custom-empty {
+  text-align: center;
+  color: #64748b;
+  font-size: 0.85rem;
+  padding: 0.6rem;
+}
+
+.card-custom-actions {
+  margin-top: 0.2rem;
+}
+
+/* === Marcador no canto do card (grid de plataformas, Página 2) ===
+   Aplicado por ui-platform-cards.js quando a plataforma tem emoji salvo.
+   O próprio ui-platform-cards.js define position:relative no .pcard via
+   JS (não precisa editar platform-cards.css pra isso). */
+.pcard-marker {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 1rem;
+  line-height: 1;
+  pointer-events: none;
+}
+
+@media (max-width: 640px) {
+  .card-custom-palette-dropdown {
+    width: 192px;
+    grid-template-columns: repeat(5, 1fr);
+  }
+
+  .card-custom-selected-row {
+    align-items: stretch;
+  }
+
+  .card-custom-motivo-input {
+    flex-basis: 100%;
+  }
+}

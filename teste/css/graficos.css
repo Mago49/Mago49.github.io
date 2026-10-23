@@ -1,0 +1,2959 @@
+/* === PÁGINA 6 (GRÁFICOS) — Etapa 8 ===
+   Reaproveita .summary-card (hero.css, já global) pros KPIs — só o grid
+   em volta é próprio daqui, com mais colunas que o Hero (mais itens). */
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.85rem;
+}
+
+.graficos-section {
+  padding: 1.1rem;
+}
+
+.chart-wrap {
+  position: relative;
+  height: 320px;
+  padding: 0 1.1rem 1.1rem;
+}
+
+.graficos-note {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin: 0.4rem 1.1rem 0;
+}
+
+@media (max-width: 640px) {
+  .chart-wrap {
+    height: 260px;
+  }
+}
+
+/* === HEATMAP GERAL (canvas nativo, sem biblioteca — Sub-entrega 3) === */
+.heatmap-scroll {
+  overflow: auto;
+  max-height: 480px;
+  margin: 0 1.1rem 1.1rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  position: relative;
+}
+
+.heatmap-tooltip {
+  position: fixed;
+  pointer-events: none;
+  background: #0f172a;
+  color: #fff;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.35rem 0.6rem;
+  border-radius: 8px;
+  z-index: 60;
+  display: none;
+  white-space: nowrap;
+}
+
+/* =====================================================================
+   (Análises — Sub-entrega 1) ABAS + ABA "ANÁLISES"
+   Só acréscimos — nenhuma regra acima foi alterada. O visual das abas
+   vem de .vip-tabs/.vip-tab-btn (vip.css, global); aqui só o espaçamento
+   próprio desta página.
+   ===================================================================== */
+
+.graficos-tabs {
+  margin: 0 0 1.1rem;
+}
+
+/* Filtro de período */
+.graficos-period-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0 1.1rem;
+}
+
+.graficos-period-custom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.1rem 0;
+}
+
+.graficos-period-custom input[type="date"] {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 12px;
+  outline: none;
+}
+
+.graficos-period-badge {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 0.4rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.graficos-note-warn {
+  color: #b45309;
+  font-weight: 600;
+}
+
+/* Cards de resumo das análises (reaproveitam .summary-card) */
+.analise-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+  padding: 0 1.1rem 0.9rem;
+}
+
+.analise-pos {
+  color: #15803d;
+}
+
+.analise-neg {
+  color: #dc2626;
+}
+
+.analise-muted {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+/* Tabelas (Rollover / Bônus previsto) — rolagem horizontal no celular */
+.analise-table-wrap {
+  overflow-x: auto;
+  margin: 0.6rem 1.1rem 0.2rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+}
+
+.analise-table {
+  width: 100%;
+  min-width: 420px;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.analise-table th,
+.analise-table td {
+  padding: 0.55rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  white-space: nowrap;
+}
+
+.analise-table th {
+  background: #f8fafc;
+  color: #475569;
+  font-weight: 700;
+  position: sticky;
+  top: 0;
+}
+
+.analise-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.analise-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+@media (max-width: 640px) {
+  .graficos-period-bar,
+  .graficos-period-custom {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+  }
+  .analise-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 0 0.6rem 0.9rem;
+  }
+  .analise-table-wrap {
+    margin-left: 0.6rem;
+    margin-right: 0.6rem;
+  }
+}
+
+/* =====================================================================
+   (Total Apostado — Sub-entrega 2) ACORDEÃO POR PLATAFORMA
+   Só acréscimos — nenhuma regra acima foi alterada.
+   ===================================================================== */
+
+.wager-search-wrap {
+  padding: 0 1.1rem 0.9rem;
+}
+
+.wager-search-wrap input[type="search"] {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 12px;
+  outline: none;
+}
+
+.wager-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0 1.1rem 0.4rem;
+}
+
+.wager-row {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.wager-row.open {
+  border-color: rgba(37, 99, 235, 0.35);
+}
+
+.wager-row-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 0.85rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+.wager-row-left,
+.wager-row-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.wager-row-left {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+}
+
+.wager-row-name {
+  font-weight: 700;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.wager-row-sub {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.wager-row-sub-warn {
+  color: #b45309;
+  font-weight: 600;
+}
+
+.wager-row-total {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.wager-row-chevron {
+  color: #94a3b8;
+  transition: transform 0.15s ease;
+}
+
+.wager-row.open .wager-row-chevron {
+  transform: rotate(180deg);
+}
+
+.wager-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  padding: 0.2rem 0.85rem 0.9rem;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+/* Composição: Referência + Apostas depois = Total */
+.wager-composition {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding-top: 0.7rem;
+  font-size: 0.88rem;
+}
+
+.wager-comp-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.wager-comp-line .num {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.wager-comp-total {
+  margin-top: 0.2rem;
+  padding-top: 0.35rem;
+  border-top: 1px dashed rgba(15, 23, 42, 0.15);
+  font-weight: 700;
+}
+
+.wager-note {
+  margin: 0.2rem 0 0;
+}
+
+/* Formulário de nova referência */
+.wager-form {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.5rem 0.6rem;
+  padding: 0.75rem;
+  background: #f8fafc;
+  border-radius: 10px;
+}
+
+.wager-form label {
+  font-size: 0.82rem;
+  color: #475569;
+  font-weight: 600;
+}
+
+.wager-form input {
+  min-width: 0;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 10px;
+  outline: none;
+  background: #fff;
+}
+
+.wager-form .btn-confirm {
+  grid-column: 1 / -1;
+  justify-self: end;
+}
+
+/* Histórico de referências */
+.wager-history-title {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+  color: #334155;
+}
+
+.wager-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.wager-history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 10px;
+  font-size: 0.85rem;
+}
+
+.wager-history-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.6rem;
+}
+
+.wager-history-date {
+  color: #475569;
+}
+
+.wager-history-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.wager-badge {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #15803d;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.wager-del-btn {
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .wager-search-wrap,
+  .wager-list {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+  }
+  .wager-form {
+    grid-template-columns: 1fr;
+  }
+  .wager-form .btn-confirm {
+    justify-self: stretch;
+  }
+}
+
+/* =====================================================================
+   (Total Apostado — Sub-entrega 4) PROGRESSÃO VIP + TABELAS
+   Só acréscimos — nenhuma regra acima foi alterada.
+   ===================================================================== */
+
+.wager-level-badge {
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.wager-level-badge-up {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.wager-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.wager-level-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.88rem;
+  color: #334155;
+}
+
+.wager-level-arrow {
+  color: #94a3b8;
+}
+
+.wager-level-strong {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.wager-progress-track {
+  height: 10px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.wager-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #2563eb, #15803d);
+  transition: width 0.3s ease;
+}
+
+.wager-promo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.3rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #fcd34d;
+  border-radius: 10px;
+  background: #fffbeb;
+}
+
+.wager-promo-text {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #92400e;
+}
+
+/* Editor das tabelas */
+.wager-tables {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0 1.1rem 0.4rem;
+}
+
+.wager-table-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.75rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.wager-table-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.6rem;
+}
+
+.wager-table-name {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.wager-table-tag {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.wager-table-tag-own {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.wager-table-count {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.wager-table-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.wager-table-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.wager-table-level {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #475569;
+}
+
+.wager-table-cell input {
+  min-width: 0;
+  padding: 0.5rem 0.55rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 10px;
+  outline: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.wager-table-cell input:disabled {
+  background: #f8fafc;
+  color: #94a3b8;
+}
+
+.wager-table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+@media (max-width: 640px) {
+  .wager-tables {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+  }
+  .wager-table-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* =====================================================================
+   (Planejador — Sub-entrega 5) MODULADOR DE APOSTAS + ABAS NO CELULAR
+   Só acréscimos — nenhuma regra acima foi alterada. Pensado primeiro pro
+   celular: uma coluna; a partir de 960px, controles | prévia lado a lado.
+   ===================================================================== */
+
+/* Abas: no celular viram faixa com rolagem lateral (4 abas não cabem). */
+@media (max-width: 640px) {
+  .graficos-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 0.2rem;
+  }
+  .graficos-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .graficos-tabs .vip-tab-btn {
+    flex: 0 0 auto;
+    min-width: 0;
+    padding: 0.6rem 0.9rem;
+    font-size: 0.84rem;
+  }
+}
+
+.plan-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.1rem;
+}
+
+@media (min-width: 960px) {
+  .plan-grid {
+    grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+    align-items: start;
+  }
+  .plan-preview {
+    position: sticky;
+    top: 0.8rem;
+  }
+}
+
+.plan-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0 1.1rem 1rem;
+}
+
+.plan-field label,
+.plan-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #334155;
+}
+
+.plan-field small {
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.plan-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  min-height: 42px;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid #e6e9ee;
+  border-radius: 12px;
+  outline: none;
+  background: #fff;
+  font-size: 0.95rem;
+}
+
+.plan-input:focus {
+  border-color: #2563eb;
+}
+
+.plan-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.plan-row .plan-input {
+  flex: 1 1 0;
+}
+
+.plan-sep {
+  color: #94a3b8;
+  font-size: 0.82rem;
+  flex-shrink: 0;
+}
+
+.plan-btn-inline {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.plan-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.plan-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.plan-chip {
+  min-height: 36px;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 999px;
+  background: #fff;
+  color: #475569;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.plan-chip.active {
+  background: #1e3a8a;
+  border-color: #1e3a8a;
+  color: #fff;
+}
+
+.plan-chip-money {
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-chip-ghost {
+  border-style: dashed;
+  color: #64748b;
+}
+
+.plan-range {
+  width: 100%;
+  accent-color: #1e3a8a;
+  min-height: 28px;
+}
+
+.plan-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 36px;
+  cursor: pointer;
+}
+
+.plan-toggle input {
+  width: 20px;
+  height: 20px;
+}
+
+.plan-palette {
+  margin-top: 0.3rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px dashed rgba(15, 23, 42, 0.15);
+  border-radius: 12px;
+}
+
+.plan-palette summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #2563eb;
+}
+
+.plan-palette[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.plan-palette .btn-confirm {
+  align-self: flex-end;
+}
+
+/* Prévia */
+.plan-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.6rem;
+  padding: 0 1.1rem 0.8rem;
+}
+
+.plan-kpi .summary-value {
+  font-size: 1.05rem;
+}
+
+.plan-kpi-main {
+  border-color: #1e3a8a;
+}
+
+.plan-kpi-vip {
+  background: #fffbeb;
+  border-color: #fcd34d;
+}
+
+.plan-kpi-bonus {
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+
+.plan-chart {
+  height: 300px;
+}
+
+.plan-days {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0 1.1rem 0.6rem;
+}
+
+.plan-day {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-left: 4px solid #93c5fd;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.plan-day-medio {
+  border-left-color: #3b82f6;
+}
+
+.plan-day-alto {
+  border-left-color: #1e3a8a;
+}
+
+.plan-day-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+}
+
+.plan-day-date {
+  font-weight: 700;
+  color: #0f172a;
+  font-size: 0.88rem;
+}
+
+.plan-day-amount {
+  margin-left: auto;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-tier {
+  padding: 0.08rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.plan-tier-baixo {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.plan-tier-medio {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.plan-tier-alto {
+  background: #1e3a8a;
+  color: #fff;
+}
+
+.plan-tier-vip {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.plan-day-lines {
+  margin-top: 0.25rem;
+  font-size: 0.8rem;
+  color: #475569;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.plan-more {
+  align-self: center;
+  margin-top: 0.3rem;
+}
+
+.plan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.4rem 1.1rem 0.2rem;
+}
+
+@media (max-width: 640px) {
+  .plan-field,
+  .plan-kpis,
+  .plan-days,
+  .plan-actions {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+  }
+  .plan-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .plan-chart {
+    height: 240px;
+  }
+  .plan-actions > button {
+    flex: 1 1 100%;
+  }
+  .plan-row {
+    flex-wrap: wrap;
+  }
+  .plan-row input[type="date"] {
+    flex: 1 1 40%;
+  }
+}
+
+/* =====================================================================
+   (Sub-entregas 5b e 6) RADAR DO PLANEJADOR + ABA ROTINAS
+   Só acréscimos — nenhuma regra acima foi alterada.
+   ===================================================================== */
+
+.plan-radar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0 1.1rem 0.8rem;
+}
+
+.plan-radar:empty {
+  display: none;
+}
+
+.plan-radar-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.plan-radar-caution {
+  background: #fff7ed;
+  border-color: #fdba74;
+}
+
+.plan-radar-goal-ok {
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+
+.plan-radar-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.3rem 0.6rem;
+  font-size: 0.9rem;
+}
+
+.plan-radar-value {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-radar-row {
+  flex-wrap: wrap;
+}
+
+.plan-radar-limit {
+  flex: 1 1 110px;
+  max-width: 160px;
+}
+
+/* Rotinas */
+.rt-views {
+  padding: 0 1.1rem 0.9rem;
+}
+
+.rt-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0 1.1rem 0.4rem;
+}
+
+.rt-kpis {
+  padding: 0;
+}
+
+.rt-kpi-bad {
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
+.rt-cta {
+  align-self: flex-start;
+}
+
+.rt-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-left: 5px solid #2563eb;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.rt-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.rt-emoji {
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.rt-name {
+  font-weight: 800;
+  color: #0f172a;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rt-count {
+  margin-left: auto;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: #f1f5f9;
+  font-size: 0.78rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.rt-count-ok {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.rt-count-bad {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.rt-notes {
+  font-style: italic;
+}
+
+.rt-items {
+  list-style: none;
+  margin: 0.2rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.rt-item {
+  display: grid;
+  grid-template-columns: 1.6rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 36px;
+  padding: 0.3rem 0.5rem;
+  border-radius: 10px;
+  background: #f8fafc;
+  font-size: 0.86rem;
+}
+
+.rt-item-name {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rt-item-detail {
+  color: #64748b;
+  font-size: 0.76rem;
+  text-align: right;
+}
+
+.rt-item-broken,
+.rt-item-missed {
+  background: #fef2f2;
+}
+
+.rt-item-done,
+.rt-item-ok {
+  background: #f0fdf4;
+}
+
+.rt-item-click {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.rt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.rt-not-today summary {
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #475569;
+}
+
+/* Editor */
+.rt-editor-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.rt-field {
+  padding: 0;
+}
+
+.rt-emoji-input {
+  max-width: 90px;
+  font-size: 1.2rem;
+  text-align: center;
+}
+
+.rt-swatch {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.15);
+  cursor: pointer;
+}
+
+.rt-swatch.active {
+  box-shadow: 0 0 0 3px #0f172a;
+}
+
+.rt-color-input {
+  width: 40px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.rt-notes-input {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.rt-date-chips {
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.rt-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.rt-picker-list {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.rt-pick {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 42px;
+  padding: 0.3rem 0.65rem;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.05);
+  cursor: pointer;
+}
+
+.rt-pick:last-child {
+  border-bottom: none;
+}
+
+.rt-pick.on {
+  background: #eff6ff;
+}
+
+.rt-pick input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.rt-pick-name {
+  flex: 1 1 auto;
+  font-weight: 700;
+  min-width: 0;
+}
+
+.rt-pick-own {
+  flex: 0 0 110px;
+  min-height: 34px;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.82rem;
+}
+
+/* Histórico */
+.rt-strip {
+  display: grid;
+  grid-template-columns: repeat(14, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.rt-cell {
+  aspect-ratio: 1;
+  border-radius: 4px;
+  background: #f1f5f9;
+}
+
+.rt-cell-full { background: #22c55e; }
+.rt-cell-part { background: #fbbf24; }
+.rt-cell-fail { background: #ef4444; }
+.rt-cell-none { background: #f1f5f9; }
+.rt-cell-unknown { background: repeating-linear-gradient(45deg, #f1f5f9, #f1f5f9 3px, #e2e8f0 3px, #e2e8f0 6px); }
+
+.rt-cell-today {
+  outline: 2px solid #0f172a;
+  outline-offset: 1px;
+}
+
+@media (max-width: 640px) {
+  .plan-radar,
+  .rt-views,
+  .rt-body {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+  }
+  .rt-item {
+    grid-template-columns: 1.4rem minmax(0, 1fr);
+  }
+  .rt-item-detail {
+    grid-column: 2;
+    text-align: left;
+  }
+  .rt-pick-own {
+    flex-basis: 96px;
+  }
+}
+
+/* =====================================================================
+   (Sub-entrega 7b) ABA MISTERIOSO + AGENDA DO DIA (Rotinas)
+   Só acréscimos — nenhuma regra acima foi alterada.
+   ===================================================================== */
+
+.ms-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0 1.1rem 0.8rem;
+}
+
+.ms-body:empty {
+  display: none;
+}
+
+.ms-kpis {
+  padding: 0;
+}
+
+.ms-kpi-bad {
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
+.ms-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.ms-track {
+  height: 10px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.ms-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #7c3aed, #2563eb);
+  transition: width 0.3s ease;
+}
+
+.ms-track-warn .ms-fill {
+  background: #f59e0b;
+}
+
+.ms-track-bad .ms-fill {
+  background: #dc2626;
+}
+
+.ms-today {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #c4b5fd;
+  border-radius: 12px;
+  background: #f5f3ff;
+  color: #4c1d95;
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+
+.ms-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-left: 4px solid #c4b5fd;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.ms-pick-plan,
+.ms-pick-best {
+  border-left-color: #7c3aed;
+}
+
+.ms-pick-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem 0.5rem;
+}
+
+.ms-pick-name {
+  font-weight: 800;
+  color: #0f172a;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ms-pick-amount {
+  margin-left: auto;
+  font-weight: 800;
+  color: #15803d;
+  font-variant-numeric: tabular-nums;
+}
+
+.ms-pick-line {
+  margin: 0;
+  font-size: 0.84rem;
+  color: #334155;
+  font-variant-numeric: tabular-nums;
+}
+
+.ms-tag {
+  padding: 0.08rem 0.45rem;
+  border-radius: 999px;
+  background: #ede9fe;
+  color: #5b21b6;
+  font-size: 0.7rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.ms-rank {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.ms-rank-sum {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.ms-rank-sum::-webkit-details-marker {
+  display: none;
+}
+
+.ms-rank-pos {
+  flex: 0 0 auto;
+  width: 2rem;
+  font-weight: 800;
+  color: #7c3aed;
+}
+
+.ms-rank-eff {
+  margin-left: auto;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #15803d;
+}
+
+.ms-rank[open] .ms-rank-sum {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.ms-rank-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.6rem 0.75rem 0.75rem;
+}
+
+.ms-details summary {
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #2563eb;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+}
+
+.ms-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.05);
+  font-size: 0.86rem;
+}
+
+.ms-line-name {
+  font-weight: 700;
+  color: #0f172a;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ms-line-value {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ms-chart {
+  height: 280px;
+  margin: 0 1.1rem 0.8rem;
+}
+
+.ms-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.9rem;
+  font-size: 0.82rem;
+  color: #334155;
+}
+
+.ms-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.ms-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: 0 0 auto;
+}
+
+/* Agenda do dia (Rotinas → Hoje) */
+.rt-agenda {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #c7d2fe;
+  border-radius: 14px;
+  background: #eef2ff;
+}
+
+.rt-agenda-title {
+  font-weight: 800;
+  color: #1e1b4b;
+  font-size: 0.92rem;
+}
+
+.rt-agenda-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.rt-agenda-item {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  padding: 0.5rem 0.6rem;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.rt-agenda-done {
+  opacity: 0.75;
+}
+
+.rt-agenda-warn {
+  background: #fff7ed;
+}
+
+.rt-agenda-icon {
+  flex: 0 0 1.4rem;
+  text-align: center;
+}
+
+.rt-agenda-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.rt-agenda-main {
+  font-weight: 700;
+  font-size: 0.86rem;
+  color: #0f172a;
+  overflow-wrap: anywhere;
+}
+
+.rt-agenda-detail {
+  font-size: 0.78rem;
+  color: #475569;
+  overflow-wrap: anywhere;
+}
+
+.rt-agenda-empty {
+  font-size: 0.82rem;
+  color: #64748b;
+}
+
+@media (max-width: 640px) {
+  .ms-body {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+  }
+  .ms-chart {
+    height: 240px;
+    margin-left: 0.6rem;
+    margin-right: 0.6rem;
+  }
+}
+
+/* =====================================================================
+   (Sub-entrega 8b) ABA CALENDÁRIO (Analytics) + ADERÊNCIA NO PLANEJADOR
+   Só acréscimos — nenhuma regra acima foi alterada.
+   ===================================================================== */
+
+.cal-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 1.1rem 0.7rem;
+}
+
+.cal-title {
+  flex: 1;
+  text-align: center;
+  font-size: 1.05rem;
+  color: #0f172a;
+}
+
+.cal-nav {
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 12px;
+  background: #fff;
+  font-size: 1.3rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.cal-today {
+  flex: 0 0 auto;
+}
+
+.cal-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0 1.1rem 0.8rem;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  padding: 0 1.1rem 0.6rem;
+}
+
+.cal-head {
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #64748b;
+  text-transform: uppercase;
+  padding-bottom: 2px;
+}
+
+.cal-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-width: 0;
+  min-height: 66px;
+  padding: 4px 4px 6px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 10px;
+  background: #fff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cal-cell::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: transparent;
+}
+
+.cal-out {
+  background: transparent;
+  border-color: transparent;
+  cursor: default;
+}
+
+.cal-out .cal-num {
+  color: #cbd5e1;
+}
+
+.cal-is-today {
+  border-color: #0f172a;
+  border-width: 2px;
+}
+
+.cal-selected {
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.35);
+}
+
+.cal-num {
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.cal-plan,
+.cal-pct,
+.cal-icons,
+.cal-rt {
+  max-width: 100%;
+  font-size: 0.66rem;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-plan {
+  font-weight: 800;
+}
+
+.cal-pct {
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 1.1;
+  color: #334155;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-rt {
+  color: #475569;
+  font-weight: 700;
+}
+
+.cal-rt-bad {
+  color: #b91c1c;
+}
+
+.cal-st-done::after { background: #22c55e; }
+.cal-st-partial::after { background: #f59e0b; }
+.cal-st-miss::after { background: #ef4444; }
+.cal-st-today::after { background: #60a5fa; }
+.cal-st-future::after { background: #cbd5e1; }
+
+.cal-st-done { background: #f0fdf4; }
+.cal-st-partial { background: #fffbeb; }
+.cal-st-miss { background: #fef2f2; }
+
+.cal-legend {
+  padding: 0 1.1rem 0.4rem;
+}
+
+.cal-chart {
+  height: 260px;
+  margin: 0 1.1rem 0.8rem;
+}
+
+.cal-kpi-bad {
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
+.cal-period {
+  align-items: center;
+  padding: 0 1.1rem 0.8rem;
+}
+
+.cal-period-label {
+  margin-left: auto;
+}
+
+.cal-settings {
+  padding: 0 1.1rem;
+}
+
+.cal-settings summary {
+  cursor: pointer;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+  color: #2563eb;
+}
+
+.cal-settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 0.4rem 0 0.6rem;
+}
+
+.cal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.cal-field .plan-input {
+  max-width: 120px;
+}
+
+/* Detalhe do dia (mini-contêiner centralizado) */
+.cal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(1rem, env(safe-area-inset-top)) 1rem max(1rem, env(safe-area-inset-bottom));
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  overscroll-behavior: contain;
+}
+
+.cal-box {
+  width: min(100%, 420px);
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1rem;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.22);
+}
+
+.cal-box-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cal-box-title {
+  flex: 1;
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.cal-box-close {
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 12px;
+  background: #f1f5f9;
+  cursor: pointer;
+}
+
+.cal-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.cal-sec-title {
+  font-weight: 800;
+  font-size: 0.86rem;
+  color: #0f172a;
+}
+
+.cal-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-size: 0.84rem;
+}
+
+.cal-line-l {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cal-line-r {
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-line-muted { color: #64748b; }
+.cal-line-bad { color: #b91c1c; }
+
+.cal-text {
+  margin: 0;
+  font-size: 0.84rem;
+  color: #334155;
+  overflow-wrap: anywhere;
+}
+
+.plan-adherence-strip {
+  letter-spacing: 1px;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .cal-toolbar,
+  .cal-filters,
+  .cal-legend,
+  .cal-period,
+  .cal-settings {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+  }
+  .cal-grid {
+    gap: 3px;
+    padding-left: 0.4rem;
+    padding-right: 0.4rem;
+  }
+  .cal-chart {
+    height: 220px;
+    margin-left: 0.6rem;
+    margin-right: 0.6rem;
+  }
+  .cal-cell {
+    min-height: 60px;
+    padding: 3px 3px 6px;
+  }
+}
+
+/* ============================================================
+   (Sub-entrega 9) Calendário — "Por jogo / Por provedor" (Resultado real)
+   ============================================================ */
+.cal-games {
+  padding: 0.2rem 1.1rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cal-games-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.cal-games-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.cal-game-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  min-width: 0;
+}
+
+.cal-game-row.bad {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.cal-game-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.cal-game-name {
+  font-weight: 700;
+  color: #0f172a;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.cal-game-prov {
+  font-weight: 500;
+  color: #64748b;
+}
+
+.cal-game-rb {
+  font-weight: 800;
+  color: #15803d;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.cal-game-rb.bad { color: #b91c1c; }
+
+.cal-game-meta {
+  font-size: 0.78rem;
+  color: #475569;
+  line-height: 1.35;
+}
+
+/* ============================================================
+   (Sub-entrega 9) Aba "Jogos" — Biblioteca (.gc-*)
+   ============================================================ */
+.gc-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr) auto;
+  gap: 0.5rem;
+  padding: 0 1.1rem 0.8rem;
+}
+
+.gc-toolbar .btn-confirm {
+  min-height: 42px;
+  white-space: nowrap;
+}
+
+.gc-editor {
+  margin: 0 1.1rem 0.9rem;
+  padding: 0.9rem;
+  border-radius: 16px;
+  border: 1.5px solid #93c5fd;
+  background: #f8fbff;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.gc-editor-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.gc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.gc-field textarea.plan-input {
+  resize: vertical;
+  min-height: 60px;
+  font-family: inherit;
+}
+
+.gc-prov {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.gc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0 1.1rem 0.8rem;
+}
+
+.gc-group {
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.gc-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+}
+
+.gc-row-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.gc-row-name {
+  font-weight: 700;
+  color: #0f172a;
+  overflow-wrap: anywhere;
+}
+
+.gc-row-meta {
+  font-size: 0.78rem;
+  color: #64748b;
+  overflow-wrap: anywhere;
+}
+
+.gc-row .bet-manage-btn {
+  flex-shrink: 0;
+}
+
+.gc-details {
+  margin: 0 1.1rem 0.6rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.gc-details summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+  color: #2563eb;
+}
+
+.gc-details-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding-bottom: 0.6rem;
+}
+
+.gc-suggest-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.3rem 0.6rem;
+}
+
+.gc-suggest {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 36px;
+  font-size: 0.88rem;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.gc-suggest input {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .cal-games,
+  .gc-toolbar,
+  .gc-list {
+    padding-left: 0.6rem;
+    padding-right: 0.6rem;
+  }
+  .gc-editor,
+  .gc-details {
+    margin-left: 0.6rem;
+    margin-right: 0.6rem;
+  }
+  .gc-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .gc-toolbar #gcSearch {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ============================================================
+   (Sub-entrega 11a) Planejador — velocidade; Jogos — características;
+   Misterioso — etiqueta de peso
+   ============================================================ */
+.plan-speed-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.gc-traits {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.ms-tag-speed {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+/* ============================================================
+   (Sub-entrega 11b) 💼 Caixa do período (Planejador) + aviso nas Rotinas
+   ============================================================ */
+.plan-cash { grid-column: 1 / -1; }
+
+.cash-periods { padding: 0 1.1rem 0.7rem; }
+
+.cash-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0 1.1rem;
+}
+
+.cash-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  min-width: 0;
+}
+
+.cash-row-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.cash-row-label { font-weight: 700; color: #0f172a; min-width: 0; }
+.cash-row-value { font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cash-row-note { font-size: 0.76rem; color: #64748b; line-height: 1.35; }
+
+.cash-details summary {
+  cursor: pointer;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #2563eb;
+}
+
+.cash-sub {
+  display: block;
+  font-size: 0.76rem;
+  color: #475569;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.cash-warn { color: #b45309; font-weight: 700; }
+
+.cash-np { display: flex; flex-direction: column; gap: 0.35rem; }
+.cash-np-btn { align-self: flex-start; }
+
+.cash-bet-edit .plan-input { max-width: 180px; }
+
+.cash-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin: 0.7rem 1.1rem 0;
+  padding: 0.75rem 0.85rem;
+  border-radius: 14px;
+  background: #1e3a8a;
+  color: #fff;
+  font-weight: 700;
+}
+
+.cash-total strong { font-size: 1.15rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.rt-weekly-warn {
+  margin: 0.6rem 0;
+  padding: 0.5rem 0.7rem;
+  border-radius: 12px;
+  border: 1px solid #fdba74;
+  background: #fff7ed;
+}
+
+.rt-weekly-warn summary {
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #9a3412;
+}
+
+@media (max-width: 640px) {
+  .cash-periods, .cash-list { padding-left: 0.6rem; padding-right: 0.6rem; }
+  .cash-total { margin-left: 0.6rem; margin-right: 0.6rem; }
+}
+
+/* (Sub-entrega 11c) Planejador — "Não depositar agora" */
+.cycle-row-ended { background: #fff7ed; border-color: #fdba74; }
+.cycle-row-unstable { background: #fffbeb; border-color: #fde68a; }
+.cycle-actions { padding: 0.6rem 1.1rem 0; }
+@media (max-width: 640px) { .cycle-actions { padding-left: 0.6rem; padding-right: 0.6rem; } }
+
+/* ============================================================
+   (Sub-entrega 19) Planejador — Intercalar e plano de GRUPO;
+   Rotinas — 👥 Membros, participação, 🏆; aba 🏆 Grupos (.gr-*)
+   Só acréscimos — nenhuma regra acima foi alterada.
+   ============================================================ */
+.plan-weekmode { margin-top: 0.35rem; }
+
+.plan-group-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0 1.1rem 0.6rem;
+}
+
+.plan-group-row {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.plan-group-row-err { background: #fef2f2; border-color: #fecaca; }
+
+.plan-group-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.6rem;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.plan-group-name { font-weight: 800; color: #0f172a; min-width: 0; overflow-wrap: anywhere; flex: 1 1 140px; }
+.plan-group-meta { font-size: 0.78rem; color: #64748b; }
+.plan-group-err { color: #b91c1c; font-weight: 700; flex: 1 1 100%; }
+.plan-group-total { margin-left: auto; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.plan-group-days {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0 0.6rem 0.6rem;
+}
+
+/* Rotinas — 👥 Membros / participação */
+.rt-comp { font-weight: 700; color: #0f172a; }
+
+.rt-members {
+  padding: 0.5rem 0.7rem;
+  border: 1px dashed rgba(15, 23, 42, 0.18);
+  border-radius: 12px;
+}
+
+.rt-members summary {
+  cursor: pointer;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+  color: #2563eb;
+}
+
+.rt-members[open] { display: flex; flex-direction: column; gap: 0.45rem; }
+
+.rt-member-row,
+.rt-mc-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  min-width: 0;
+}
+
+.rt-member-name { font-weight: 700; color: #0f172a; flex: 1 1 120px; min-width: 0; overflow-wrap: anywhere; }
+
+.rt-member-dates {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.rt-member-dates .plan-input { flex: 1 1 0; min-width: 0; min-height: 38px; padding: 0.35rem 0.5rem; }
+.rt-member-del { flex: 0 0 auto; }
+
+.rt-mc-box { width: min(100%, 520px); }
+.rt-mc-list summary { cursor: pointer; min-height: 36px; display: flex; align-items: center; font-weight: 700; color: #2563eb; }
+.rt-mc-row .plan-chips { flex: 1 1 100%; }
+
+/* Aba 🏆 Grupos */
+.gr-ranking {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.6rem 1.1rem 0.4rem;
+}
+
+.gr-row {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-left: 5px solid #2563eb;
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.gr-row-archived { background: #f8fafc; }
+
+.gr-row-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 52px;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.gr-pos { flex: 0 0 2rem; font-size: 1.15rem; font-weight: 800; text-align: center; color: #475569; }
+.gr-name-box { display: flex; flex-direction: column; gap: 0.1rem; flex: 1 1 auto; min-width: 0; }
+.gr-name { font-weight: 800; color: #0f172a; overflow-wrap: anywhere; }
+.gr-sub { font-size: 0.76rem; color: #64748b; }
+.gr-value { flex: 0 0 auto; font-weight: 800; font-size: 1rem; font-variant-numeric: tabular-nums; white-space: nowrap; color: #15803d; }
+.gr-neg { color: #b91c1c !important; }
+.gr-pos-v { color: #15803d; }
+
+.gr-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0 0.75rem 0.75rem;
+  border-top: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.gr-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.4rem;
+  padding-top: 0.6rem;
+}
+
+.gr-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 10px;
+  background: #f8fafc;
+  min-width: 0;
+}
+
+.gr-stat-label { font-size: 0.72rem; color: #64748b; font-weight: 700; }
+.gr-stat-value { font-weight: 800; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
+.gr-members summary { cursor: pointer; min-height: 36px; display: flex; align-items: center; font-weight: 700; color: #2563eb; font-size: 0.84rem; }
+.gr-member { display: flex; justify-content: space-between; gap: 0.6rem; padding: 0.3rem 0; border-bottom: 1px solid rgba(15, 23, 42, 0.05); font-size: 0.84rem; }
+.gr-member-name { font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
+.gr-member-val { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.gr-archived {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 12px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+}
+
+.gr-chart { height: 300px; }
+
+@media (max-width: 640px) {
+  .plan-group-list,
+  .gr-ranking { padding-left: 0.6rem; padding-right: 0.6rem; }
+  .gr-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gr-chart { height: 250px; }
+  .rt-member-dates { flex-basis: 100%; }
+}
+.gr-toggle { padding: 0 1.1rem 0.2rem; }
+@media (max-width: 640px) { .gr-toggle { padding-left: 0.6rem; padding-right: 0.6rem; } }
+
+/* (Sub-entrega 20) 🔒 Guardar rollover */
+.plan-kpi-reserve { background: #fffbeb; border-color: #fcd34d; }
+.plan-group-reserve {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0 0.6rem 0.6rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 10px;
+  background: #fffbeb;
+  border: 1px dashed #fcd34d;
+}
+
+/* ============================================================
+   (Sub-entrega 24) PLANEJADOR — topo fixo, abas, aviso, 🔄 Atualizar
+   ============================================================ */
+.plan-top { grid-column: 1 / -1; padding-bottom: 0.4rem; }
+.plan-top-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.6rem;
+  padding: 0 1.1rem 0.6rem;
+  min-width: 0;
+}
+.plan-top-row .plan-field { flex: 1 1 auto; min-width: 0; padding: 0; }
+.plan-update-btn { flex-shrink: 0; min-height: 42px; white-space: nowrap; }
+.plan-top-info { display: flex; flex-direction: column; gap: 0.2rem; padding: 0 1.1rem 0.6rem; }
+.plan-top-info .plan-hint:empty { display: none; }
+
+.plan-alert {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.5rem;
+  margin: 0 1.1rem 0.6rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 12px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  color: #9a3412;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+.plan-alert.plan-alert-min {
+  display: inline-flex;
+  padding: 0.2rem;
+  margin-right: auto;
+  width: max-content;
+}
+.plan-alert-icon {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 10px;
+  background: #ffedd5;
+  font-size: 1.05rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.plan-alert-text { min-width: 0; overflow-wrap: anywhere; }
+.plan-alert-go {
+  min-height: 36px;
+  padding: 0.3rem 0.8rem;
+  border: 1px solid #ea580c;
+  border-radius: 999px;
+  background: #ea580c;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.plan-tabs {
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.3rem 1.1rem 0.6rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.plan-tabs::-webkit-scrollbar { display: none; }
+.plan-tab {
+  flex: 1 1 0;
+  min-width: max-content;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  min-height: 42px;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 12px;
+  background: #fff;
+  color: #334155;
+  font-weight: 700;
+  font-size: 0.86rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.plan-tab.active { background: #1e3a8a; border-color: #1e3a8a; color: #fff; }
+.plan-tab-count { font-weight: 600; opacity: 0.8; }
+.plan-tab-dot { color: #f59e0b; font-size: 0.8rem; }
+.plan-tab.active .plan-tab-dot { color: #fcd34d; }
+.plan-tab-err { font-size: 0.7rem; }
+.plan-tab-off { display: none !important; }
+.plan-tab-heading { padding: 0 0 0.9rem; }
+
+/* 🔄 Atualizar planos (contêiner) */
+.pu-box { width: min(100%, 560px); }
+.pu-tools { display: flex; flex-direction: column; gap: 0.45rem; }
+.pu-deduct { font-size: 0.86rem; font-weight: 600; color: #334155; }
+.pu-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.pu-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+.pu-row-sig { border-color: #fdba74; background: #fffbf5; }
+.pu-row-on { border-color: #2563eb; box-shadow: 0 0 0 1px #2563eb inset; }
+.pu-row-err { opacity: 0.8; }
+.pu-check {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+  min-height: 32px;
+  cursor: pointer;
+}
+.pu-check input { width: 20px; height: 20px; flex-shrink: 0; }
+.pu-name { font-weight: 800; font-size: 0.92rem; color: #0f172a; min-width: 0; overflow-wrap: anywhere; }
+.pu-tag {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.pu-tag-manual { background: #ede9fe; color: #5b21b6; }
+.pu-nums { display: flex; flex-direction: column; gap: 0.15rem; }
+.pu-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-size: 0.82rem;
+}
+.pu-l { color: #475569; min-width: 0; overflow-wrap: anywhere; }
+.pu-r { font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.pu-up .pu-r { color: #15803d; }
+.pu-down .pu-r { color: #b91c1c; }
+.pu-err { margin: 0; font-size: 0.8rem; color: #b91c1c; font-weight: 600; }
+.pu-choice .plan-chip { font-size: 0.8rem; }
+.pu-members-toggle {
+  align-self: flex-start;
+  min-height: 32px;
+  padding: 0.2rem 0.5rem;
+  border: none;
+  border-radius: 8px;
+  background: #e2e8f0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.pu-members .pu-line { flex-wrap: wrap; }
+.pu-members .pu-l { flex: 0 0 auto; max-width: 100%; }
+.pu-members .pu-r { flex: 1 1 8rem; min-width: 0; overflow-wrap: anywhere; }
+.pu-members { display: flex; flex-direction: column; gap: 0.15rem; padding: 0.3rem 0.4rem; border-radius: 10px; background: #fff; }
+.pu-foot {
+  position: sticky;
+  bottom: -1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0 -1rem -1rem;
+  padding: 0.6rem 1rem 1rem;
+  background: #fff;
+  border-top: 1px solid #e2e8f0;
+}
+.pu-actions { display: flex; flex-direction: row; flex-wrap: nowrap; gap: 0.5rem; padding: 0; }
+.pu-actions > button { flex: 1 1 0; min-width: 0; min-height: 44px; margin: 0; }
+.pu-actions .btn-confirm:disabled { opacity: 0.45; cursor: not-allowed; }
+.pu-sum { font-weight: 700; color: #0f172a; }
+
+@media (max-width: 640px) {
+  .plan-top-row { flex-wrap: wrap; padding-left: 0.6rem; padding-right: 0.6rem; }
+  .plan-top-row .plan-field { flex-basis: 100%; }
+  .plan-update-btn { flex: 1 1 100%; }
+  .plan-top-info, .plan-tabs { padding-left: 0.6rem; padding-right: 0.6rem; }
+  .plan-alert { margin-left: 0.6rem; margin-right: 0.6rem; }
+  /* 360: rótulo em cima, contagem/● embaixo — as 3 abas cabem sem rolar */
+  .plan-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-content: center;
+    gap: 0 0.25rem;
+    padding: 0.35rem 0.3rem;
+    font-size: 0.78rem;
+    line-height: 1.2;
+  }
+  .plan-tab-label { flex-basis: 100%; text-align: center; }
+  .plan-tab-count { font-size: 0.72rem; }
+}
+
+/* ============================================================
+   (Sub-entrega 23) CALENDÁRIO — contêiner do dia por plataforma
+   ============================================================ */
+.cal-box-day { width: min(100%, 480px); }
+.cal-day-sum { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.cal-day-chip {
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: #f1f5f9;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+.cal-day-chip-bad { background: #fee2e2; color: #b91c1c; }
+.cal-group-title { margin-top: 0.3rem; }
+.cal-group-attn { color: #c2410c; }
+.cal-pf {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 14px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+.cal-pf-attn { border-color: #fdba74; background: #fffbf5; }
+.cal-pf-noplan { border-style: dashed; }
+.cal-pf-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem;
+}
+.cal-pf-name { font-weight: 800; font-size: 0.9rem; color: #0f172a; min-width: 0; overflow-wrap: anywhere; }
+.cal-pf-value { font-weight: 700; font-size: 0.86rem; text-align: right; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.cal-badges { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.cal-badge {
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 0.74rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.cal-badge-bet { background: #dbeafe; color: #1e3a8a; }
+.cal-badge-bet.cal-badge-done { background: #dcfce7; color: #166534; }
+.cal-badge-bet.cal-badge-missed { background: #fee2e2; color: #b91c1c; }
+.cal-badge-em { background: #f3e8ff; color: #6b21a8; }
+.cal-badge-rest { background: #ecfdf5; color: #047857; }
+.cal-badge-forb { background: #f1f5f9; color: #475569; }
+.cal-badge-bad { background: #fee2e2; color: #b91c1c; }
+.cal-badge-over { background: #fef3c7; color: #92400e; }
+.cal-pf-tip { margin: 0; font-size: 0.84rem; color: #334155; overflow-wrap: anywhere; }
+.cal-pf-tip-now {
+  padding: 0.35rem 0.55rem;
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-weight: 700;
+}
+.cal-pf-tip-ok { color: #15803d; font-weight: 700; }
+.cal-pf-noplan-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; }
+.cal-pf-warn { flex: 1 1 200px; min-width: 0; font-size: 0.82rem; font-weight: 700; color: #c2410c; }
+.cal-pf-open { min-height: 36px; padding: 0.3rem 0.8rem; font-size: 0.82rem; }
+.cal-pf-line { margin: 0; font-size: 0.82rem; color: #334155; overflow-wrap: anywhere; }
+.cal-pf-rt { display: flex; justify-content: space-between; gap: 0.6rem; }
+
+/* 🔎 De onde vem o planejado (Real × plano) */
+.cal-pvr-detail:empty { display: none; }
+.cal-pvr-detail { padding: 0 1.1rem 0.6rem; }
+.cal-pvr { padding: 0; }
+.cal-pvr summary { font-weight: 700; font-size: 0.88rem; cursor: pointer; min-height: 36px; display: flex; align-items: center; }
+.cal-pvr-body { display: flex; flex-direction: column; gap: 0.5rem; padding-top: 0.4rem; }
+.cal-pvr-day { display: flex; flex-direction: column; gap: 0.15rem; padding: 0.45rem 0.6rem; border-radius: 12px; background: #f8fafc; }
+.cal-pvr-head { display: flex; justify-content: space-between; gap: 0.6rem; font-size: 0.86rem; font-weight: 800; }
+.cal-pvr-row { padding-left: 0.6rem; }
+.cal-pvr-total { display: flex; justify-content: space-between; gap: 0.6rem; font-size: 0.88rem; padding: 0.3rem 0.6rem; }
+
+@media (max-width: 640px) {
+  .cal-pvr-detail { padding-left: 0.6rem; padding-right: 0.6rem; }
+}
+
+/* (Sub-entrega 25) 🙈 Ignorar · 📟 Encerrados */
+.cal-pf-ignored { opacity: 0.7; border-style: dashed; background: #f8fafc; }
+.cal-badge-ignored { background: #e2e8f0; color: #475569; }
+.cal-pf-actions { display: flex; justify-content: flex-end; }
+.cal-pf-ignore,
+.cal-pvr-ignore {
+  min-height: 32px;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #fff;
+  color: #475569;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.cal-pvr-row { align-items: center; }
+.cal-pvr-ignore { min-width: 36px; padding: 0.1rem 0.4rem; flex-shrink: 0; }
+
+/* Escolha com dois botões iguais (troca de tipo de plano) */
+.plan-choice-box { width: min(100%, 440px); }
+.plan-choice-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.plan-choice-btn {
+  flex: 1 1 160px;
+  min-height: 46px;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  background: #fff;
+  color: #0f172a;
+  font-weight: 700;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+.plan-choice-btn:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+
+/* (Sub-entrega 27) Prévia não salva · Hoje no plano salvo · depósito pausado */
+.plan-unsaved {
+  margin: 0 0 0.5rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 10px;
+  background: #fff7ed;
+  border: 1px solid #fdba74;
+  color: #9a3412;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+.plan-saved-today {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  margin: 0 0 0.6rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 10px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+.plan-saved-today-head { margin: 0; font-size: 0.84rem; font-weight: 800; color: #1e3a8a; }
+.plan-saved-today-row { display: flex; justify-content: space-between; gap: 0.6rem; font-size: 0.8rem; color: #334155; }
+.plan-saved-today-name { font-weight: 700; flex-shrink: 0; }
+.plan-saved-today-val { text-align: right; min-width: 0; overflow-wrap: anywhere; }
+.cal-pf-actions { flex-wrap: wrap; gap: 0.4rem; }
+.rt-item-acts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0.35rem; justify-content: flex-end; }
+.rt-mini-btn {
+  min-height: 32px;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #fff;
+  color: #334155;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.rt-item-paused, .rt-item-deferred { opacity: 0.85; }
+
+/* (Sub-entrega 29) 🔎 Por que mudou · 🏁 Encerrar o dia · 📥 tabela de ciclos */
+.pu-why { font-size: 0.8rem; }
+.pu-why summary { cursor: pointer; font-weight: 700; color: #1e3a8a; min-height: 32px; display: flex; align-items: center; }
+.pu-why-line { margin: 0.15rem 0 0; color: #334155; overflow-wrap: anywhere; }
+.cal-pf-rb { font-weight: 700; }
+.cal-pf-rb-up { color: #15803d; }
+.cal-pf-tip-stop {
+  padding: 0.35rem 0.55rem;
+  border-radius: 10px;
+  background: #fef3c7;
+  color: #92400e;
+  font-weight: 700;
+}
+.cal-pf-stop-hot { border-color: #f59e0b; background: #fffbeb; color: #92400e; }
+.cy-example {
+  margin: 0;
+  padding: 0.5rem 0.6rem;
+  border-radius: 10px;
+  background: #f1f5f9;
+  font-size: 0.74rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.cy-textarea { min-height: 150px; resize: vertical; font-family: inherit; }
+.cy-import-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+.cy-import-bad { border-color: #fca5a5; background: #fef2f2; }
+.cy-import-top { display: flex; align-items: center; gap: 0.5rem; }
+.cy-import-line { flex-shrink: 0; font-size: 0.74rem; color: #64748b; font-weight: 700; }
+.cy-import-select { min-height: 38px; padding: 0.3rem 0.5rem; }
+.cy-cand-off { opacity: 0.6; }
+.cy-type-btn {
+  min-height: 30px;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #fff;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.cy-warn { color: #b91c1c; }
+
+/* (Sub-entrega 29b) data com aviso na tabela de ciclos */
+.cy-cand-warn span { color: #f0b429; }
+.cy-type-btn { white-space: nowrap; flex-shrink: 0; }
+
+/* (Sub-entrega 31) motivos do 🏁: + Motivo, edição */
+.cal-stop-reasons { flex-wrap: wrap; }
+.cal-stop-add { font-weight: 700; }
+.cal-stop-manage, .cal-stop-form { flex-basis: 100%; width: 100%; display: flex; flex-direction: column; gap: 6px; margin-top: 6px; padding: 8px; border: 1px dashed #cbd5e1; border-radius: 10px; box-sizing: border-box; }
+.cal-stop-mrow { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.cal-stop-mname { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.cal-stop-frow { display: flex; gap: 6px; min-width: 0; }
+.cal-stop-emoji { width: 56px; flex: 0 0 56px; text-align: center; font-size: 1.2em; }
+.cal-stop-name { flex: 1; min-width: 0; }
+.cal-stop-emo { min-width: 40px; justify-content: center; }
+.cal-stop-fields { display: flex; flex-direction: column; gap: 6px; }
+.cal-stop-kform { border-style: dotted; background: rgba(148, 163, 184, .08); }
+
+/* (Sub-entrega 32) 🏁 no próprio lugar: distribuição + Encerrar várias */
+.cal-stop-spread { margin: 4px 0 8px; font-size: .9em; overflow-wrap: anywhere; }
+.cal-stop-many-bar { margin: 4px 0 8px; }
+.cal-stop-many { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
+.cal-stop-many-row { display: flex; gap: 8px; align-items: flex-start; padding: 8px; border: 1px solid #e2e8f0; border-radius: 10px; cursor: pointer; min-width: 0; }
+.cal-stop-many-row input { margin-top: 3px; flex-shrink: 0; }
+.cal-stop-many-on { border-color: #2563eb; background: rgba(37, 99, 235, .06); }
+.cal-stop-many-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cal-stop-many-name { font-weight: 700; overflow-wrap: anywhere; }
+.cal-stop-many-note { font-size: .85em; opacity: .8; overflow-wrap: anywhere; }
+.cal-stop-many-sum { font-weight: 600; }
+
+/* (Sub-entrega 33) saldo ao vivo ao lado do nome (contêiner do dia, hoje) */
+.cal-pf-balance { margin-left: 6px; padding: 0.12rem 0.45rem; font-size: 0.72rem; vertical-align: middle; white-space: nowrap; }
+
+/* (Sub-entrega 35) 🅁 Rollover do dia + 📊 painel do topo */
+.plan-r-btn { margin-left: 6px; min-width: 26px; height: 24px; padding: 0 7px; border-radius: 999px; border: 1px solid #cbd5e1; background: #fff; color: #1d4ed8; font-weight: 800; font-size: .75rem; cursor: pointer; flex-shrink: 0; }
+.plan-r-btn.active { background: #1d4ed8; color: #fff; border-color: #1d4ed8; }
+.plan-r-box { margin-top: 6px; padding: 8px 10px; border-radius: 10px; background: rgba(29, 78, 216, .05); border: 1px dashed #bfdbfe; }
+.plan-ov { grid-column: 1 / -1; padding: 0.6rem 1.1rem 0.8rem; }
+.plan-ov-head { width: 100%; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 10px; background: none; border: 0; padding: 4px 0; cursor: pointer; text-align: left; color: inherit; font: inherit; }
+.plan-ov-title { font-weight: 800; }
+.plan-ov-sum { font-size: .85rem; opacity: .85; overflow-wrap: anywhere; }
+.plan-ov-filter, .plan-ov-bet { margin: 6px 0; }
+.plan-ov-pick { max-height: 220px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 4px 10px; padding: 6px; border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 6px; }
+.plan-ov-pick-row { font-size: .85rem; min-width: 0; overflow-wrap: anywhere; cursor: pointer; }
+.plan-ov-toggle { display: block; margin: 6px 0; }
+.plan-ov-date { display: flex; align-items: center; gap: 8px; margin: 6px 0 2px; }
+.plan-ov-date-in { max-width: 170px; }
+.plan-ov-kpis { margin-top: 8px; }
+.plan-ov-list { margin-top: 8px; }
+.plan-ov-list summary { cursor: pointer; font-weight: 700; padding: 4px 0; }
+.plan-ov-row { display: flex; justify-content: space-between; gap: 8px; padding: 5px 0; border-bottom: 1px solid #f1f5f9; font-size: .85rem; min-width: 0; }
+.plan-ov-name { font-weight: 700; flex-shrink: 0; }
+.plan-ov-val { text-align: right; overflow-wrap: anywhere; min-width: 0; }
+.plan-ov-row-bad .plan-ov-val { color: #b91c1c; }
+
+/* (Sub-entrega 36) 📅 para onde vai o resto do 🏁 */
+.cal-dist { margin: 6px 0 8px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.cal-dist-modes { flex-wrap: wrap; }
+.cal-dist-manual { display: flex; flex-direction: column; gap: 6px; }
+.cal-dist-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.cal-dist-day { flex: 1; min-width: 0; font-size: .85rem; overflow-wrap: anywhere; }
+.cal-dist-plus { font-size: .8rem; opacity: .75; flex-shrink: 0; }
+.cal-dist-in { width: 84px; flex: 0 0 84px; text-align: right; }
+.cal-dist-in-bad { border-color: #dc2626 !important; }
+.cal-dist-count { font-weight: 700; font-size: .85rem; margin: 2px 0; }
+.cal-stop-many-item { border: 1px solid #e2e8f0; border-radius: 10px; padding: 4px 6px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cal-stop-many-item .cal-stop-many-row { border: 0; padding: 4px 2px; }
+.cal-stop-many-item.cal-stop-many-on { border-color: #2563eb; background: rgba(37, 99, 235, .06); }
+.cal-dist-toggle { align-self: flex-start; font-size: .8rem; }
+.cal-dist-toggle-bad { border-color: #dc2626 !important; color: #b91c1c; }
