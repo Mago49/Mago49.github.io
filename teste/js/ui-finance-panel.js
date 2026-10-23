@@ -1,0 +1,3335 @@
+// === VIEW FINANCEIRO — acordeão por plataforma + Painel Geral (Etapa 7) ===
+// Primeira migração deste arquivo pra SPA — baseado 1:1 no
+// comportamento de ui-finance-panel.js (Sistema 1), com as mudanças da
+// Etapa 7 abaixo. Cada linha mostra: a semana atual ao vivo (registrar
+// saque, registrar aposta, "Últimas apostas" — Bloco P — e, só aos
+// domingos, Bônus pra fechar a semana); o "Total da plataforma"; "Fases
+// do Saldo"; e o Histórico de semanas.
+//
+// === PAINEL GERAL — 3 MODOS NO MESMO BOTÃO (revisão pós-Etapa 8) ===
+// Um único botão (#financeOverviewModeBtn) cicla entre 3 modos, cada um
+// somando os fluxos (Depósito/Saque/Apostado/R.B./Bônus) de um jeito
+// diferente. Saldo e Rollover NUNCA mudam entre os modos — são sempre o
+// valor ao vivo da fase (ou da fase filtrada), como sempre foi:
+//   ⚡ Ao Vivo (padrão)   -> computeOverallCurrentWeekOnly: SÓ a semana
+//                            atual em andamento, de todas as plataformas.
+//   📦 Total Fechado      -> computeOverallTotals: só semanas já fechadas.
+//   📈 Total Geral        -> computeOverallTotalsLive: fechadas + a
+//                            semana atual, somadas juntas.
+// Os 3 modos continuam respeitando filtro de data, nome e fase — nenhuma
+// mudança nessa interseção, só na fonte dos fluxos somados.
+//
+// === O QUE MUDOU NA SUB-ENTREGA 2 (Bloco P + fases só em segunda) ===
+//
+// 1) BLOCO P — "Últimas apostas": botão azul ao lado de "Registrar
+//    aposta", abre um modal (mesmo padrão visual do Histórico de
+//    Depósitos da Edição) listando só as apostas da SEMANA EM ABERTO —
+//    editar (3 campos: Apostado, N° de apostas, R.B.) ou excluir. Apostas
+//    de semanas já fechadas não aparecem aqui — correção nelas continua
+//    pelo modal de edição já existente em cada card de semana fechada
+//    (buildWeekCardEditing).
+//
+// 2) "INICIAR NOVA FASE" — mudança de contrato de startNewPhase()
+//    (finance-logic.js, sub-entrega 1): agora SÓ aceita datas que caem
+//    numa segunda-feira (recusa com { ok:false, reason:'not-monday' } —
+//    ver nota extensa em finance-logic.js sobre o porquê: elimina por
+//    construção o bug de fronteira de fase que já causou duplicação de
+//    R.B./Bônus em produção) e PASSA A EXIGIR também um Rollover Inicial
+//    (obrigatório, mesmo tratamento do Saldo Inicial — sem isso o
+//    Rollover da fase nova nasceria incorreto).
+//
+// === (Sub-entrega G) ===
+// a) "Inserir bônus hoje": o valor digitado é o TOTAL do dia. A entrada
+//    gravada em otherBonusLog passa a guardar também `claimedTotal` (esse
+//    total) e `formulaAtLog` (a fórmula no instante do lançamento) — é o
+//    que permite ao sistema nunca contar 2x o VIP diário liberado DEPOIS
+//    do lançamento (ver "AVULSO EFETIVO" em bonus-ledger-logic.js). A
+//    liberação automática pelo mínimo de aposta continua funcionando: sem
+//    lançamento no dia ela soma normalmente; com lançamento, só soma o que
+//    passar do total já informado. Uma linha abaixo do campo mostra o
+//    resumo do dia (fórmula + avulso = total) e avisa quando a fórmula
+//    subiu depois do lançamento.
+// b) Centavos: valores digitados são arredondados em centavos antes de
+//    gravar, e os campos de edição de semana/aposta/saque mostram o valor
+//    arredondado (antes podiam aparecer ~11 casas decimais no R.B.).
+//
+// === RECONCILIAÇÃO DE DOM (mesmo padrão já usado em Edição/Calendário/VIP) ===
+// Um Map (rowElements) guarda o elemento de cada linha já presente na
+// tela, indexado por platform.id — refreshRow() troca só uma linha,
+// reconcileList() sincroniza o conjunto/ordem sem nunca esvaziar o
+// container (evita o salto de scroll já documentado nas outras views).
+//
+// === COLAPSO DE SEMANAS/FASES (revisão de UX) ===
+// Histórico e Fases nascem com SÓ o item mais recente expandido (última
+// semana fechada / fase atual) — os demais ficam recolhidos, com um
+// botão +/− por item. weekExpandedOverrides/phaseExpandedOverrides
+// guardam só as exceções manuais do usuário (chave
+// "`${platformId}::${chave-do-item}`"); sem entrada ali, o padrão é
+// "só o mais recente aberto". Os overrides são limpos (voltam ao padrão)
+// toda vez que a seção "Histórico"/"Fases" é recolhida e reaberta — nunca
+// carregam estado de uma sessão de visualização anterior. Ao abrir
+// "Histórico", a página rola pra centralizar a última semana fechada
+// (scrollLatestWeekIntoView) — resolve o problema de abrir sempre
+// mostrando a semana mais ANTIGA no topo da viewport.
+//
+// === (Sub-entrega 7a) TIPO DO DEPÓSITO ===
+// "Registrar depósito" abre o mini-contêiner centralizado de
+// deposit-kinds.js (🗓️ Ativação Semanal / 🎁 Ativação Mensal / 🎲 Depósito
+// de Aposta) antes de gravar; cancelar não grava nada. A entrada nasce com
+// `kind` em depositLog e — com o ciclo ativo — também em deposits (mesmo
+// `date`, mesma regra de sempre). Nenhuma soma do Financeiro muda: Saldo,
+// Rollover, semanas e Painel Geral ignoram `kind`. Reclassificar é feito no
+// Histórico de Depósitos da Edição.
+//
+// === (Sub-entrega 8a) SALDO REAL ===
+// a) Linha "Saldo real [ ] Atualizar" ACIMA de "Registrar aposta": confere
+//    o saldo da plataforma com o esperado (ui-balance-check.js). Diferença
+//    positiva vira Bônus Avulso (Rollover 1:1 ou escala R); negativa abre a
+//    escolha dos bônus esperados que não entraram. Botão "🧾 Bônus" abre o
+//    gerenciador da semana (Não recebi / Desfazer / Excluir avulso).
+// b) "Registrar aposta" exige UMA conferência no dia. Sem ela, abre o
+//    mini-contêiner fixo com o aviso e o campo do saldo (o formulário da
+//    aposta continua preenchido). Conferência + aposta vão no MESMO
+//    savePlatform. 2ª aposta do dia segue direto.
+//
+// === (Sub-entrega 9) JOGO NA APOSTA ===
+// Na tela fica só "🎯 Registrar aposta" (+ "🎲 Últimas apostas"). Os campos
+// moram no mini-contêiner de ui-bet-entry.js: Jogo (opcional, biblioteca
+// com busca — nome novo entra sozinho no gameCatalog) · Dia e hora (semana
+// aberta) · Valor apostado · Nº de apostas · R.B. Sem conferência no dia,
+// abre a do 8a em seguida; cancelar a conferência REABRE a aposta com tudo
+// preenchido. O lançamento continua UM só em betEntries, agora com cópia do
+// jogo (gameId/gameName/gameProvider) — Saldo, Rollover e bônus ignoram o
+// jogo. "Últimas apostas" ganha o seletor do jogo na edição.
+//
+// === (Sub-entrega 13) 💎 BÔNUS ALTO + SALDO NEGATIVO ===
+// "Registrar depósito" usa pickDepositKindAndBonus: 💎 Coletar Bônus Alto
+// pede o valor do bônus (2ª página) e grava depósito + highBonusLog no
+// mesmo savePlatform. O bônus alto entra no esperado do dia (fórmula) —
+// "Inserir bônus hoje" e "Bônus Acumulado" já o incluem.
+//
+// === (Sub-entrega 14) R "SEM ROLLOVER" + NOVA ORDEM ===
+// Ordem da semana atual: Depósito → Saque → Inserir bônus hoje → Saldo
+// real → Registrar aposta / Últimas apostas → Fechar semana. O botão R
+// (buildScaleToggle) vai de 0 ("sem rollover") a 100 e aparece também no
+// fechamento de domingo e no "Bônus real da semana passada" (diferença
+// positiva × R; negativa sai 1:1 — finance-logic.js).
+//
+// === (Sub-entrega 18) BARRA DE AÇÕES ===
+// A semana atual mostra uma fileira de botões no lugar dos formulários:
+// 💰 Depósito · ↩️ Saque · 🎁 Bônus hoje (janelinhas com os MESMOS
+// formulários de antes) · 🔎 Saldo real (abre a conferência com saldo +
+// rollover opcional) · 🎯 Registrar aposta · 🎲 Últimas apostas · 🧾 Bônus.
+// Toda gravação passa por refreshRow, que fecha a janelinha aberta.
+//
+// === (Sub-entrega 17) ROLLOVER REAL NA CONFERÊNCIA DA SESSÃO ===
+// A conferência pedida no "Registrar aposta" recebe a aposta pendente
+// (pendingBet) pra comparar o rollover que a plataforma mostra com o do
+// sistema já descontando esta sessão (ui-balance-check.js).
+//
+// === (Sub-entrega 16) ➗ DIVIDIR ===
+// "Inserir bônus hoje", fechamento de domingo, "Bônus real da semana
+// passada" e o 💎 do "Registrar depósito": o valor pode ser dividido em
+// partes com R diferente (ui-bonus-split.js). Cada parte vira um lançamento
+// próprio (mesmo savePlatform); no fechamento, a diferença positiva entra
+// no Rollover parte a parte (finance-logic.js — diffParts).
+//
+// === (Sub-entrega 15) VIP DIÁRIO "COM APOSTA" — PERGUNTA DA COLETA ===
+// "Registrar aposta": se o VIP diário de hoje (grupo 'com') já foi liberado
+// por aposta anterior e ainda não foi marcado como coletado, abre antes do
+// formulário a pergunta de ui-vip-collect.js. SIM grava a aposta com
+// vipCollectedBefore:true (o bônus entra no Rollover 1 s antes dela —
+// finance-logic.js); NÃO deixa o bônus no fim do dia. Mesmo savePlatform.
+//
+// === (Sub-entrega 22) 📋 APOSTAS EM LOTE — dentro do 🎯 Registrar aposta ===
+// Sem botão novo: a escolha "Uma aposta / 📋 Colar em lote" fica no topo
+// do próprio contêiner (ui-bet-entry.js + ui-bet-batch.js). O lote passa
+// pelo MESMO caminho do registro avulso (registerBetBatch):
+//   1) VIP diário "com aposta": a pergunta de antes do contêiner (se houve)
+//      vale pro lote; se não houve, o lote é SIMULADO numa cópia da
+//      plataforma com a mesma getVipCollectPrompt — se ele libera o VIP,
+//      pergunta. SIM = vipCollectedBefore na 1ª aposta de hoje do lote.
+//   2) Conferência de saldo (se ainda não houve hoje) com o lote somado
+//      como pendingBet — cancelar volta pra prévia sem perder nada.
+//   3) Lançamentos no MESMO formato ({ date, wagered, betCount,
+//      resultBetting } + jogo) + batchKey/noTime (bet-batch-logic.js),
+//      UM savePlatform. Rollover, saldo, VIP, fechamento, códigos, Total
+//      Apostado e Planejador leem esses lançamentos como qualquer outro.
+//
+// === CUIDADO SPA (Adendo K12) ===
+// `financeListEl`/`financeSearchEl` NÃO são resolvidos no topo do
+// módulo (isso quebraria, já que o router injeta o HTML da view DEPOIS
+// do módulo ser importado) — viram variáveis `let`, resolvidas dentro de
+// initFinanceControls(), chamada pelo mount() da view.
+//
+// === CUIDADO SPA (Adendo K1) ===
+// initFinanceControls() retorna o cleanup de initSortMenu() — quem
+// chama (view-financeiro.js) guarda e executa essa função no próprio
+// unmount(), senão o listener global de document.click do dropdown
+// "Ordenar" se acumularia a cada visita à rota.
+
+//
+// (Sub-entrega 20) ⬇️ Abatimento ao vivo: badge na linha (semana), caixas
+// "semana" e "total" na Semana atual, card no Painel Geral (segue o modo),
+// nas fases, no total da plataforma e em cada semana fechada.
+import { state } from './state.js';
+import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
+import { colorForLevel } from './cycle-logic.js';
+import {
+  getWeekStart, getWeekEnd, toLocalDateString, toLocalDateTimeString,
+  computeCurrentWeekLive, closeWeek, isCurrentWeekClosed, canCloseCurrentWeek,
+  updateClosedWeek, deleteClosedWeek, addHistoricalWeek, setClosedWeekRealBonus,
+  computePlatformTotals, computeOverallTotalsPeriod, computeLiveBalance, computeRolloverLive,
+  computePhaseHistory, startNewPhase, removePhaseByNumber, roundMoney,
+  sumRolloverAdjustments, sumRolloverIncreases
+} from './finance-logic.js';
+import {
+  getExpectedBonusToday, computeBonusDiffToday, getEffectiveOtherBonusForDay,
+  getAccumulatedBonusThisWeek, computeAutoAccruedBonusForWeek, buildHighBonusEntry,
+  getVipCollectPrompt
+} from './bonus-ledger-logic.js';
+import { getCachedPreferences, saveManualOrder, saveBadgeVisibility } from './user-preferences-store.js';
+import { savePlatform } from './platforms-store.js';
+import {
+  parseFinanceSpreadsheet, formatImportedFieldName, formatImportedNumber
+} from './finance-spreadsheet-import.js';
+import { filterAndSortForManage } from './platform-sort.js';
+import { initSortMenu } from './ui-sort.js';
+import { scheduleDailySnapshot } from './daily-snapshot-store.js';
+import { pickDepositKindAndBonus } from './deposit-kinds.js';
+import { askVipCollect, vipCollectQuestion } from './ui-vip-collect.js'; // (Sub-entrega 15)
+import { createBonusSplit } from './ui-bonus-split.js'; // (Sub-entrega 16)
+import { openBalanceCheck } from './ui-balance-check.js';
+import { openBetEntry } from './ui-bet-entry.js';
+import { planBatch, matchGame, batchVipQuestion } from './bet-batch-logic.js'; // (Sub-entrega 22)
+import { gameStamp, setEntryGame, searchGames } from './game-catalog-logic.js';
+import { loadGameCatalog, isGameCatalogLoaded, getGames } from './game-catalog-store.js';
+import { openBonusManager } from './ui-bonus-manager.js';
+import { hasBalanceCheckToday, getLastBalanceCheck, parseRealBalance } from './balance-check-logic.js';
+
+const r2 = roundMoney;
+
+// --- Referências de DOM do painel principal (busca + lista) ---
+// Resolvidas por initFinanceControls(), chamada pelo mount() da view
+// DEPOIS que o HTML do painel já foi escrito no container (K12).
+let financeListEl = null;
+let financeSearchEl = null;
+
+// --- Referências de DOM do modal "Últimas apostas" (Bloco P) ---
+// Resolvidas por initBetHistoryModalListeners(), chamada pelo mount() da
+// view DEPOIS que o modal já foi criado e anexado ao document.body
+// (mesmo padrão "Opção A" já usado pelos modais de Edição).
+let betHistoryModal = null;
+let betHistoryTitle = null;
+let betHistoryList = null;
+let betHistoryCloseBtn = null;
+
+let currentSearch = '';
+// Ponto 5.1: um dos FINANCE_SORT_MENU_OPTIONS.value, ou null (Padrão).
+let currentMode = null;
+// Painel Geral — ciclo de um único botão (#financeOverviewModeBtn):
+// 'live' (padrão, só a semana atual) | 'closed' (só fechadas) | 'total'
+// (fechadas + atual). Resetado em resetFinanceListCache (SPA).
+let overviewMode = 'live';
+let openRowId = null;
+// Semana do histórico atualmente em edição (no máximo uma por vez):
+// { platformId, weekStart } | null
+// Semanas/fases cujo estado foi alterado manualmente pelo usuário —
+// chave "`${platformId}::${weekStart}`" / "`${platformId}::${phaseNumber}`".
+// Sem entrada aqui, o padrão é: só o item mais recente nasce expandido.
+let weekExpandedOverrides = new Map();
+let phaseExpandedOverrides = new Map();
+
+function isWeekExpanded(key, isFirst) {
+  return weekExpandedOverrides.has(key) ? weekExpandedOverrides.get(key) : isFirst;
+}
+function isPhaseExpanded(key, isCurrent) {
+  return phaseExpandedOverrides.has(key) ? phaseExpandedOverrides.get(key) : isCurrent;
+}
+function clearOverridesForPlatform(map, platformId) {
+  const prefix = `${platformId}::`;
+  [...map.keys()].forEach(key => { if (key.startsWith(prefix)) map.delete(key); });
+}
+function scrollLatestWeekIntoView(platformId) {
+  requestAnimationFrame(() => {
+    const el = document.querySelector(`.platform-manage-row[data-id="${platformId}"] [data-latest-week="true"]`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+}
+let editingWeek = null;
+// Data digitada na busca do histórico (dentro da linha aberta) — string
+// 'AAAA-MM-DD' ou null. Reseta toda vez que uma linha é aberta/fechada.
+let historyDateFilter = null;
+// Id da plataforma mostrando o formulário "Iniciar nova fase" — só uma
+// por vez. Reseta junto com o resto ao abrir/fechar uma linha.
+let startingPhaseId = null;
+// Id da plataforma mostrando a seção "Adicionar semana antiga" — só uma
+// por vez. Reseta junto com o resto ao abrir/fechar uma linha.
+let addingHistoricalWeekId = null;
+// Quais das 3 seções colapsáveis ('total' | 'phases' | 'history') estão
+// expandidas na linha aberta agora — todas começam recolhidas, reseta
+// junto com o resto ao abrir/fechar uma linha.
+let expandedSections = new Set();
+
+// Bloco P — plataforma atualmente associada ao modal "Últimas apostas"
+// aberto, e qual aposta (por referência de objeto) está em edição.
+let currentBetHistoryPlatform = null;
+let editingBetEntry = null;
+
+// Saques — modal "Editar saques" (só semana em aberto, mesmo padrão do
+// modal "Últimas apostas"). Edita só o VALOR; a data/hora nunca muda.
+let withdrawalsModal = null;
+let withdrawalsTitle = null;
+let withdrawalsList = null;
+let withdrawalsCloseBtn = null;
+let currentWithdrawalsPlatform = null;
+let editingWithdrawal = null;
+
+// Etapa 7, sub-entrega 3: resolve o ctx (Obrigado/Misterioso) de CADA
+// plataforma — setado uma vez pela view (view-financeiro.js), depois de
+// carregar os dois do Firestore. Sem chamar setBonusContextResolver
+// (ex: antes da view terminar de montar), devolve {} — VIP diário/
+// semanal/mensal continuam funcionando normalmente mesmo assim (não
+// dependem de ctx), só Obrigado/Misterioso ficam de fora até o
+// resolvedor real ser definido.
+let resolveCtxForPlatform = () => ({});
+
+export function setBonusContextResolver(fn) {
+  resolveCtxForPlatform = typeof fn === 'function' ? fn : () => ({});
+}
+
+// Item 22 — true enquanto o botão ⚙️ "Reordenar" está ativo — só tem
+// efeito quando currentMode === null (Padrão), mesmo comportamento já
+// validado em ui-platform-manage.js (Edição). manualOrder é o MESMO
+// documento (users/{uid}/meta/preferences) — reordenar aqui também
+// reordena a Edição, e vice-versa (Bloco B: "mesma ordem em Edição e
+// Financeiro").
+let reorderModeActive = false;
+
+// Lista visível da última renderização — usada pelas setas ▲▼ pra saber
+// qual é o vizinho VISÍVEL de uma plataforma (mesmo padrão da Edição).
+let lastVisibleList = [];
+
+// id da plataforma -> elemento <div class="platform-manage-row..."> já
+// presente no DOM.
+const rowElements = new Map();
+
+const FINANCE_SORT_MENU_OPTIONS = [
+  { value: 'saldo-desc', label: 'Maior Saldo' },
+  { value: 'saldo-asc', label: 'Menor Saldo' },
+  { value: 'az', label: 'A - Z' },
+  { value: 'za', label: 'Z - A' },
+  { value: '1-9', label: '1 – 9' },
+  { value: '9-1', label: '9 – 1' },
+  { value: 'com', label: 'Com Aposta' },
+  { value: 'sem', label: 'Sem Aposta' },
+  { value: 'ativas', label: 'Ativas' },
+  { value: 'inativas', label: 'Inativas' }
+];
+
+// Painel Geral — os 3 modos possíveis do botão único, na ordem em que o
+// clique cicla entre eles. ⚡ Ao Vivo é sempre o primeiro (padrão de
+// abertura da view — ver resetFinanceListCache).
+const OVERVIEW_MODES = [
+  { key: 'live', label: '⚡ Ao Vivo' },
+  { key: 'closed', label: '📦 Total Fechado' },
+  { key: 'total', label: '📈 Total Geral' }
+];
+
+function applyOverviewModeButtonLabel() {
+  const btn = document.getElementById('financeOverviewModeBtn');
+  if (!btn) return;
+  const current = OVERVIEW_MODES.find(m => m.key === overviewMode) || OVERVIEW_MODES[0];
+  btn.textContent = current.label;
+}
+
+function formatDatePt(isoDateStr) {
+  if (!isoDateStr) return '';
+  const cleanStr = isoDateStr.split('T')[0];
+  const [y, m, d] = cleanStr.split('-');
+  return `${d}/${m}`;
+}
+
+function formatDateTimePt(isoStr) {
+  return new Date(isoStr).toLocaleString('pt-BR', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
+}
+
+// Item 22 — aplica a ordem manual salva (compartilhada com a Edição) só
+// quando "Padrão" está selecionado. Plataformas ausentes de manualOrder
+// vão pro fim, preservando a ordem relativa entre elas.
+function applyManualOrder(list) {
+  const order = getCachedPreferences().manualOrder || [];
+  if (order.length === 0) return list;
+  const indexMap = new Map(order.map((id, i) => [id, i]));
+  return [...list].sort((a, b) => {
+    const ia = indexMap.has(a.id) ? indexMap.get(a.id) : Infinity;
+    const ib = indexMap.has(b.id) ? indexMap.get(b.id) : Infinity;
+    return ia - ib;
+  });
+}
+
+// Todas as plataformas, na ordem manual efetiva (salva + as que ainda
+// não entraram nela, no fim) — base usada por moveManualOrder pra
+// sempre gravar a lista COMPLETA, nunca só o subconjunto filtrado pela
+// busca (senão salvar com uma busca ativa perderia a posição de quem
+// estava escondido).
+function getEffectiveOrderIds() {
+  const order = getCachedPreferences().manualOrder || [];
+  const allIds = new Set(state.platforms.map(p => p.id));
+  const known = order.filter(id => allIds.has(id));
+  const missing = state.platforms.map(p => p.id).filter(id => !known.includes(id));
+  return [...known, ...missing];
+}
+
+// Troca a posição de `platformId` com seu vizinho VISÍVEL (direction -1
+// = sobe, +1 = desce) — mesma lógica já validada em
+// ui-platform-manage.js.
+function moveManualOrder(platformId, direction) {
+  const visibleIds = lastVisibleList.map(p => p.id);
+  const idx = visibleIds.indexOf(platformId);
+  const neighborIdx = idx + direction;
+  if (idx === -1 || neighborIdx < 0 || neighborIdx >= visibleIds.length) return;
+  const neighborId = visibleIds[neighborIdx];
+
+  const ids = getEffectiveOrderIds();
+  const posA = ids.indexOf(platformId);
+  const posB = ids.indexOf(neighborId);
+  if (posA === -1 || posB === -1) return;
+
+  [ids[posA], ids[posB]] = [ids[posB], ids[posA]];
+  saveManualOrder(state.currentUid, ids);
+  renderFinanceList();
+  // Corrige o disabled das setas ▲▼ de TODAS as linhas visíveis — mesmo
+  // motivo já documentado na Edição (sem isso, uma linha que nasceu no
+  // topo/fim ficaria com a seta desabilitada errada pra sempre).
+  refreshAllRows();
+}
+
+function getOverviewPlatformQuery() {
+  const el = document.getElementById('financeOverviewPlatformFilter');
+  return el ? el.value.trim().toLowerCase() : '';
+}
+
+function getVisibleList() {
+  const q = currentSearch.trim().toLowerCase();
+  const overviewQ = getOverviewPlatformQuery();
+  let list = state.platforms.filter(p => {
+    const n = p.name.toLowerCase();
+    return n.includes(q) && n.includes(overviewQ);
+  });
+
+  if (currentMode === 'saldo-desc') {
+    return [...list].sort((a, b) => computeLiveBalance(b, new Date(), resolveCtxForPlatform(b)) - computeLiveBalance(a, new Date(), resolveCtxForPlatform(a)));
+  }
+  if (currentMode === 'saldo-asc') {
+    return [...list].sort((a, b) => computeLiveBalance(a, new Date(), resolveCtxForPlatform(a)) - computeLiveBalance(b, new Date(), resolveCtxForPlatform(b)));
+  }
+
+  if (currentMode) {
+    list = filterAndSortForManage(list, currentMode);
+  } else {
+    list = applyManualOrder(list);
+  }
+  return list;
+}
+
+function statBox(label, value, cls = '') {
+  return `
+    <div class="finance-stat">
+      <span class="finance-stat-label">${label}</span>
+      <span class="finance-stat-value ${cls}">${value}</span>
+    </div>`;
+}
+
+function statsGridHtml(totals, opts = {}) {
+  const safeBalance = Math.max(0, Number(totals.balance) || 0);
+  const balanceLabel = opts.balanceLabel || 'Saldo (Balance)';
+  const initialBalanceBox = opts.showInitialBalance
+    ? statBox('Saldo Inicial', formatCurrency(Math.max(0, Number(totals.initialBalance) || 0)))
+    : '';
+  // Etapa 7, sub-entrega 4 (Bloco P) — Rollover é opcional de propósito:
+  // nem todo "totals" que passa por aqui tem um Rollover fazendo sentido
+  // (ex: uma semana fechada individual tem só o RETRATO do fechamento,
+  // rolloverAtClose — nunca o "totals.rollover" ao vivo). Quem chama
+  // decide via opts.rolloverValue; undefined/null = não mostra a caixa.
+  const initialRolloverBox = opts.showInitialRollover
+    ? statBox('Rollover Inicial', formatCurrency(Math.max(0, Number(totals.initialRollover) || 0)))
+    : '';
+  const rolloverBox = (opts.rolloverValue !== undefined && opts.rolloverValue !== null)
+    ? statBox(opts.rolloverLabel || 'Rollover', formatCurrency(Math.max(0, Number(opts.rolloverValue) || 0)), 'positive')
+    : '';
+  // (Sub-entrega 20) ⬇️ Abatimento — opcional, como o Rollover.
+  const abatBox = (opts.abatimentoValue !== undefined && opts.abatimentoValue !== null)
+    ? statBox(opts.abatimentoLabel || '⬇️ Abatimento', formatCurrency(Math.max(0, Number(opts.abatimentoValue) || 0)), 'finance-abat')
+    : '';
+  // (Sub-entrega 38) ⬆️ Aumento — opcional, ao lado do Abatimento.
+  const aumBox = (opts.aumentoValue !== undefined && opts.aumentoValue !== null)
+    ? statBox(opts.aumentoLabel || '⬆️ Aumento', formatCurrency(Math.max(0, Number(opts.aumentoValue) || 0)), 'finance-aum')
+    : '';
+  return `
+    ${initialBalanceBox}
+    ${initialRolloverBox}
+    ${statBox('Depósito', formatCurrency(totals.deposit))}
+    ${statBox('Saque', formatCurrency(totals.withdrawal))}
+    ${statBox('Diferença', formatCurrency(totals.difference), totals.difference >= 0 ? 'positive' : 'negative')}
+    ${statBox('Apostado', formatCurrency(totals.wagered))}
+    ${statBox('N° Apostas', String(Math.round(Number(totals.betCount) || 0)))}
+    ${statBox('Bônus', formatCurrency(totals.bonus))}
+    ${statBox('R.B.', formatCurrency(totals.resultBetting), totals.resultBetting >= 0 ? 'positive' : 'negative')}
+    ${statBox('R.B. + Bônus', formatCurrency(totals.rbPlusBonus), totals.rbPlusBonus >= 0 ? 'positive' : 'negative')}
+    ${statBox(balanceLabel, formatCurrency(safeBalance), 'positive')}
+    ${rolloverBox}
+    ${abatBox}
+    ${aumBox}
+  `;
+}
+
+// Reconstrói as opções do seletor de fase a partir do estado atual —
+// chamada sempre que uma fase é aberta ou removida (individualmente ou
+// em massa), pra nunca deixar o dropdown desatualizado até a próxima
+// visita à rota. Preserva a seleção atual se ela ainda existir depois da
+// mudança; senão volta pra "Todas as fases".
+function rebuildPhaseSelectOptions() {
+  const phaseSelect = document.getElementById('financeOverviewPhaseSelect');
+  if (!phaseSelect) return;
+  const previousValue = phaseSelect.value;
+  const maxPhase = state.platforms.reduce((max, p) => Math.max(max, (p.balancePhases || []).length + 1), 1);
+  phaseSelect.innerHTML = '<option value="">Todas as fases</option>' +
+    Array.from({ length: maxPhase }, (_, i) => i + 1)
+      .map(n => `<option value="${n}">Fase ${n}</option>`)
+      .join('');
+  if (previousValue && Number(previousValue) <= maxPhase) {
+    phaseSelect.value = previousValue;
+  }
+}
+
+// ---------- PAINEL GERAL (topo da página — todas as plataformas) ----------
+
+export function initFinanceOverview() {
+  const fromEl = document.getElementById('financeOverviewFrom');
+  const toEl = document.getElementById('financeOverviewTo');
+  const clearBtn = document.getElementById('financeOverviewClearBtn');
+  const platformFilterEl = document.getElementById('financeOverviewPlatformFilter');
+
+  if (fromEl) fromEl.addEventListener('change', renderFinanceOverview);
+  if (toEl) toEl.addEventListener('change', renderFinanceOverview);
+  if (platformFilterEl) {
+    // Item 20 (metade "Plataforma") — restringe o Painel Geral E a lista
+    // de plataformas abaixo a quem bate com o nome digitado (ver
+    // getVisibleList). Adiado pro próximo frame, pra não brigar com o
+    // teclado virtual.
+    let filterFrame = null;
+    platformFilterEl.addEventListener('input', () => {
+      if (filterFrame) cancelAnimationFrame(filterFrame);
+      filterFrame = requestAnimationFrame(() => {
+        filterFrame = null;
+        renderFinanceList();
+      });
+    });
+  }
+
+  const phaseToggleBtn = document.getElementById('financeOverviewPhaseToggleBtn');
+  const phaseWrap = document.getElementById('financeOverviewPhaseWrap');
+  const phaseSelect = document.getElementById('financeOverviewPhaseSelect');
+
+  if (phaseToggleBtn && phaseWrap && phaseSelect) {
+    rebuildPhaseSelectOptions();
+    phaseToggleBtn.addEventListener('click', () => {
+      phaseWrap.classList.toggle('app-hidden');
+    });
+    phaseSelect.addEventListener('change', renderFinanceOverview);
+  }
+
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      if (fromEl) fromEl.value = '';
+      if (toEl) toEl.value = '';
+      if (platformFilterEl) platformFilterEl.value = '';
+      const phaseSelectEl = document.getElementById('financeOverviewPhaseSelect');
+      if (phaseSelectEl) phaseSelectEl.value = '';
+      renderFinanceList();
+    });
+  }
+
+  // Painel Geral — botão único de 3 modos (ver OVERVIEW_MODES). Cada
+  // clique avança pro próximo modo do array, em ciclo (o último volta
+  // pro primeiro).
+  const modeBtn = document.getElementById('financeOverviewModeBtn');
+  if (modeBtn) {
+    applyOverviewModeButtonLabel();
+    modeBtn.addEventListener('click', () => {
+      const idx = OVERVIEW_MODES.findIndex(m => m.key === overviewMode);
+      overviewMode = OVERVIEW_MODES[(idx + 1) % OVERVIEW_MODES.length].key;
+      applyOverviewModeButtonLabel();
+      renderFinanceOverview();
+    });
+  }
+}
+
+// Avisos do Painel Geral (estimado / backfill fora da soma / semanas
+// passadas sem fechamento). Elemento criado aqui, logo depois da nota —
+// textContent (nome de plataforma é texto do usuário, nunca innerHTML).
+function renderOverviewWarnings(noteEl, result) {
+  if (!noteEl) return;
+  let warnEl = document.getElementById('financeOverviewWarn');
+  if (!warnEl) {
+    warnEl = document.createElement('p');
+    warnEl.id = 'financeOverviewWarn';
+    warnEl.className = 'finance-close-week-note';
+    noteEl.insertAdjacentElement('afterend', warnEl);
+  }
+
+  const fmt = (item) => `${item.platformName} ${formatDatePt(item.weekStart)}`;
+  const list = (items) => {
+    const shown = items.slice(0, 6).map(fmt).join(', ');
+    return items.length > 6 ? `${shown} (+${items.length - 6})` : shown;
+  };
+
+  const lines = [];
+  if (result.estimatedWeeks.length > 0) {
+    lines.push(`⚠ ESTIMADO: ${result.estimatedWeeks.length} semana(s) fechada(s) foram cortadas pelo período e somadas dia a dia — o bônus delas é fórmula + avulso, não o valor real digitado no fechamento (${list(result.estimatedWeeks)}).`);
+  }
+  if (result.excludedBackfill.length > 0) {
+    lines.push(`⚠ FORA DA SOMA: ${result.excludedBackfill.length} semana(s) antiga(s) adicionada(s) à mão foram cortadas pelo período e só têm o total da semana, sem detalhe por dia (${list(result.excludedBackfill)}).`);
+  }
+  if (result.unclosedPastWeeks > 0) {
+    lines.push(`ℹ ${result.unclosedPastWeeks} semana(s) passada(s) sem fechamento foram somadas dia a dia.`);
+  }
+
+  warnEl.textContent = lines.join('  ');
+  warnEl.style.display = lines.length ? '' : 'none';
+}
+
+export function renderFinanceOverview() {
+  const statsEl = document.getElementById('financeOverviewStats');
+  if (!statsEl) return;
+
+  const fromEl = document.getElementById('financeOverviewFrom');
+  const toEl = document.getElementById('financeOverviewTo');
+  const platformFilterEl = document.getElementById('financeOverviewPlatformFilter');
+  const from = fromEl && fromEl.value ? fromEl.value : null;
+  const to = toEl && toEl.value ? toEl.value : null;
+
+  // Item 20 (metade "Plataforma") — some junto com Data (interseção),
+  // já que os dois filtros são aplicados em cima do MESMO conjunto antes
+  // de somar.
+  const platformQuery = (platformFilterEl?.value || '').trim().toLowerCase();
+  const platformsForOverview = platformQuery
+    ? state.platforms.filter(p => p.name.toLowerCase().includes(platformQuery))
+    : state.platforms;
+
+  const phaseSelectEl = document.getElementById('financeOverviewPhaseSelect');
+  const phaseFilter = phaseSelectEl && phaseSelectEl.value ? Number(phaseSelectEl.value) : null;
+
+  // Painel Geral — 3 modos possíveis (ver OVERVIEW_MODES/nota no topo do
+  // arquivo). Saldo/Rollover NUNCA mudam entre eles — são sempre o valor
+  // ao vivo da fase (ou da fase filtrada), calculado dentro de cada uma
+  // das 3 funções da mesma forma.
+  // Sub-entrega 2 (item 16): UMA função de período pros 3 modos — qualquer
+  // "De"/"Até" funciona (ver computeOverallTotalsPeriod em finance-logic.js).
+  const result = computeOverallTotalsPeriod(platformsForOverview, from, to, resolveCtxForPlatform, new Date(), phaseFilter, overviewMode);
+  const totals = result.totals;
+
+  let noteText;
+  if (overviewMode === 'live') {
+    noteText = '⚡ AO VIVO: só os dias da semana atual (segunda até hoje) que caem no período escolhido, de todas as plataformas. Com filtro de fase, só entra quem tem aquela fase como a atual. Saldo e Rollover são sempre o valor atual da fase e não são afetados pelo período.';
+  } else if (overviewMode === 'closed') {
+    noteText = '📦 TOTAL FECHADO: só semanas já fechadas. Semana inteira dentro do período usa os valores fechados; semana cortada pelo período é somada dia a dia. Saldo e Rollover continuam sendo o valor atual da fase.';
+  } else {
+    noteText = '📈 TOTAL GERAL: semanas fechadas + dias ainda não fechados até hoje, qualquer período. Semana fechada inteira dentro do período usa os valores fechados; cortada pelo período é somada dia a dia. Saldo e Rollover são sempre o valor atual da fase.';
+  }
+
+  const noteEl = document.getElementById('financeOverviewNote');
+  if (noteEl) noteEl.textContent = noteText;
+  renderOverviewWarnings(noteEl, result);
+
+  const rolloverLabel = phaseFilter
+    ? `Rollover (Fase ${phaseFilter}, todas as plataformas)`
+    : 'Rollover (todas as plataformas)';
+  const abatLabel = overviewMode === 'live' ? '⬇️ Abatimento (semana atual)' : (overviewMode === 'closed' ? '⬇️ Abatimento (semanas fechadas)' : '⬇️ Abatimento (total)');
+  const aumLabel = overviewMode === 'live' ? '⬆️ Aumento (semana atual)' : (overviewMode === 'closed' ? '⬆️ Aumento (semanas fechadas)' : '⬆️ Aumento (total)');
+  statsEl.innerHTML = statsGridHtml(totals, { rolloverValue: totals.rollover, rolloverLabel, abatimentoValue: totals.abatimento, abatimentoLabel: abatLabel, aumentoValue: totals.aumento, aumentoLabel: aumLabel });
+}
+
+// ---------- RECONCILIAÇÃO DE DOM ----------
+
+function refreshRow(platformId) {
+  closeActionModal(); // (18) a janelinha mostrava a linha antiga
+  const platform = state.platforms.find(pp => pp.id === platformId);
+  if (!platform) return;
+  const oldEl = rowElements.get(platformId);
+  if (!oldEl) return;
+  const newEl = buildRow(platform);
+  oldEl.replaceWith(newEl);
+  rowElements.set(platformId, newEl);
+}
+
+function reconcileList(list) {
+  const existingEmpty = financeListEl.querySelector('.finance-empty');
+  if (existingEmpty) existingEmpty.remove();
+
+  if (list.length === 0) {
+    rowElements.forEach(el => el.remove());
+    rowElements.clear();
+    const empty = document.createElement('div');
+    empty.className = 'finance-empty';
+    empty.textContent = 'Nenhuma plataforma encontrada.';
+    financeListEl.appendChild(empty);
+    return;
+  }
+
+  const visibleIds = new Set(list.map(p => p.id));
+
+  rowElements.forEach((el, id) => {
+    if (!visibleIds.has(id)) {
+      el.remove();
+      rowElements.delete(id);
+    }
+  });
+
+  list.forEach(p => {
+    let el = rowElements.get(p.id);
+    if (!el) {
+      el = buildRow(p);
+      rowElements.set(p.id, el);
+    }
+    financeListEl.appendChild(el);
+  });
+}
+
+export function refreshAllRows() {
+  rowElements.forEach((oldEl, platformId) => {
+    const platform = state.platforms.find(p => p.id === platformId);
+    if (!platform) return;
+    const newEl = buildRow(platform);
+    oldEl.replaceWith(newEl);
+    rowElements.set(platformId, newEl);
+  });
+}
+
+// Zera o estado em memória — DEVE ser chamado no início de cada mount()
+// da view (ver view-financeiro.js), antes de initFinanceControls()/
+// renderFinanceList(). Mesmo motivo já documentado em
+// ui-platform-manage.js: o router já substitui o container inteiro a
+// cada troca de rota, então só o cache em memória precisa ser zerado.
+export function resetFinanceListCache() {
+  rowElements.clear();
+  openRowId = null;
+  editingWeek = null;
+  historyDateFilter = null;
+  startingPhaseId = null;
+  addingHistoricalWeekId = null;
+  expandedSections = new Set();
+  currentBetHistoryPlatform = null;
+  editingBetEntry = null;
+  currentWithdrawalsPlatform = null;
+  editingWithdrawal = null;
+  reorderModeActive = false;
+  lastVisibleList = [];
+  weekExpandedOverrides.clear();
+  phaseExpandedOverrides.clear();
+  overviewMode = 'live';
+}
+
+// ---------- LISTA DE PLATAFORMAS ----------
+
+export function renderFinanceList() {
+  renderFinanceOverview();
+  if (!financeListEl) return;
+  const list = getVisibleList();
+  lastVisibleList = list;
+  reconcileList(list);
+  scheduleDailySnapshot(state.currentUid, state.platforms, resolveCtxForPlatform);
+}
+
+function dividerEl() {
+  const hr = document.createElement('hr');
+  hr.className = 'manage-section-divider';
+  return hr;
+}
+
+// ---------- SEÇÕES COLAPSÁVEIS ----------
+
+function buildCollapsibleSection(p, sectionKey, label, buildContentFn) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'manage-data-section';
+
+  const isExpanded = expandedSections.has(sectionKey);
+
+  const header = document.createElement('div');
+  header.className = 'manage-section-label manage-section-label-collapsible';
+  const labelText = document.createElement('span');
+  labelText.textContent = label;
+  const chevron = document.createElement('span');
+  chevron.className = 'platform-manage-chevron' + (isExpanded ? ' open' : '');
+  chevron.textContent = '▾';
+  header.appendChild(labelText);
+  header.appendChild(chevron);
+  header.addEventListener('click', () => {
+    if (isExpanded) {
+      expandedSections.delete(sectionKey);
+      if (sectionKey === 'phases') {
+        startingPhaseId = null;
+        clearOverridesForPlatform(phaseExpandedOverrides, p.id);
+      }
+      if (sectionKey === 'history') {
+        editingWeek = null;
+        historyDateFilter = null;
+        addingHistoricalWeekId = null;
+        clearOverridesForPlatform(weekExpandedOverrides, p.id);
+      }
+    } else {
+      expandedSections.add(sectionKey);
+    }
+    refreshRow(p.id);
+    if (!isExpanded && sectionKey === 'history') scrollLatestWeekIntoView(p.id);
+  });
+  wrapper.appendChild(header);
+
+  if (!isExpanded) return wrapper;
+
+  wrapper.appendChild(buildContentFn());
+  return wrapper;
+}
+
+function buildRow(p) {
+  const row = document.createElement('div');
+  row.className = 'platform-manage-row' + (p.id === openRowId ? ' open' : '');
+  row.dataset.id = p.id;
+
+  const live = computeCurrentWeekLive(p);
+  const closed = isCurrentWeekClosed(p);
+  const ctx = resolveCtxForPlatform(p);
+  const liveBalance = computeLiveBalance(p, new Date(), ctx);
+  const rolloverLive = computeRolloverLive(p, new Date(), ctx);
+
+  const header = document.createElement('div');
+  header.className = 'platform-manage-row-header';
+
+  const title = document.createElement('div');
+  title.className = 'platform-manage-row-title';
+  title.textContent = p.name;
+
+  const badges = document.createElement('div');
+  badges.className = 'platform-manage-row-badges';
+
+  // Item 25b: visibilidade de cada badge agora é uma preferência salva
+  // (users/{uid}/meta/preferences) — default (true/true) reproduz o
+  // comportamento de sempre pra quem nunca mexeu no botão 👁.
+  const badgeVisibility = getCachedPreferences().badgeVisibility;
+
+  if (badgeVisibility.financeBalanceBadge) {
+    const balanceBadge = document.createElement('span');
+    balanceBadge.className = 'platform-total-badge';
+    balanceBadge.style.background = colorForLevel(liveBalance);
+    balanceBadge.textContent = `Saldo ${formatCurrency(liveBalance)}`;
+    balanceBadge.title = 'Saldo Inicial da fase atual (se houver) + depósitos - saques + resultado das apostas (R.B.) + bônus (fórmula + avulso), desde o início da fase atual (mínimo R$ 0,00)';
+    badges.appendChild(balanceBadge);
+  }
+
+  if (badgeVisibility.financeRolloverBadge) {
+    const rolloverBadge = document.createElement('span');
+    rolloverBadge.className = 'platform-total-badge';
+    rolloverBadge.style.background = '#dbeafe';
+    rolloverBadge.style.color = '#1d4ed8';
+    rolloverBadge.textContent = `Rollover ${formatCurrency(rolloverLive)}`;
+    rolloverBadge.title = 'Quanto ainda falta apostar pra quitar o que entrou como depósito/bônus, desde o início da fase atual (mínimo R$ 0,00)';
+    badges.appendChild(rolloverBadge);
+  }
+
+  // (Sub-entrega 20) ⬇️ Abatimento da semana — só aparece quando houve.
+  const abatWeekBadge = sumRolloverAdjustments(p, toLocalDateString(live.weekStart), toLocalDateString(new Date()));
+  if (abatWeekBadge > 0) {
+    const abBadge = document.createElement('span');
+    abBadge.className = 'platform-total-badge';
+    abBadge.style.background = '#fef3c7';
+    abBadge.style.color = '#92400e';
+    abBadge.textContent = `⬇️ Abatido ${formatCurrency(abatWeekBadge)}`;
+    abBadge.title = 'Rollover abatido nesta semana (lançado à mão, conferência de saldo ou em lote).';
+    badges.appendChild(abBadge);
+  }
+
+  // (Sub-entrega 38) ⬆️ Aumento da semana — só aparece quando houve.
+  const aumWeekBadge = sumRolloverIncreases(p, toLocalDateString(live.weekStart), toLocalDateString(new Date()));
+  if (aumWeekBadge > 0) {
+    const auBadge = document.createElement('span');
+    auBadge.className = 'platform-total-badge';
+    auBadge.style.background = '#dcfce7';
+    auBadge.style.color = '#166534';
+    auBadge.textContent = `⬆️ Aumentado ${formatCurrency(aumWeekBadge)}`;
+    auBadge.title = 'Rollover aumentado pela plataforma nesta semana (conferência de saldo ou em lote).';
+    badges.appendChild(auBadge);
+  }
+
+  if (closed) {
+    const doneBadge = document.createElement('span');
+    doneBadge.className = 'finance-closed-badge';
+    doneBadge.textContent = '✓ semana fechada';
+    badges.appendChild(doneBadge);
+  }
+
+  // Sub-entrega 3: semana fechada automaticamente aguardando o bônus real.
+  if ((p.financeWeeks || []).some(w => w.bonusPending === true)) {
+    const pendingBadge = document.createElement('span');
+    pendingBadge.className = 'vip-unset-badge';
+    pendingBadge.textContent = '⏳ bônus real pendente';
+    badges.appendChild(pendingBadge);
+  }
+
+  // Item 22 — setas ▲▼: só existem quando o modo "Reordenar" está ativo
+  // E "Padrão" está selecionado (currentMode null) — mesma regra já
+  // validada na Edição.
+  let reorderControls = null;
+  if (reorderModeActive && currentMode === null) {
+    reorderControls = document.createElement('div');
+    reorderControls.className = 'platform-manage-row-badges';
+    reorderControls.style.gap = '0.25rem';
+
+    const visibleIds = lastVisibleList.map(pp => pp.id);
+    const idx = visibleIds.indexOf(p.id);
+
+    const upBtn = document.createElement('button');
+    upBtn.type = 'button';
+    upBtn.className = 'bet-manage-btn';
+    upBtn.textContent = '▲';
+    upBtn.disabled = idx <= 0;
+    upBtn.setAttribute('aria-label', `Mover ${p.name} pra cima`);
+    upBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      moveManualOrder(p.id, -1);
+    });
+
+    const downBtn = document.createElement('button');
+    downBtn.type = 'button';
+    downBtn.className = 'bet-manage-btn';
+    downBtn.textContent = '▼';
+    downBtn.disabled = idx === -1 || idx >= visibleIds.length - 1;
+    downBtn.setAttribute('aria-label', `Mover ${p.name} pra baixo`);
+    downBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      moveManualOrder(p.id, 1);
+    });
+
+    reorderControls.appendChild(upBtn);
+    reorderControls.appendChild(downBtn);
+  }
+
+  const chevron = document.createElement('span');
+  chevron.className = 'platform-manage-chevron';
+  chevron.textContent = '▾';
+
+  header.appendChild(title);
+  header.appendChild(badges);
+  if (reorderControls) header.appendChild(reorderControls);
+  header.appendChild(chevron);
+  header.addEventListener('click', () => {
+    const previousOpenRowId = openRowId;
+    const wasOpen = previousOpenRowId === p.id;
+    openRowId = wasOpen ? null : p.id;
+    editingWeek = null;
+    historyDateFilter = null;
+    startingPhaseId = null;
+    addingHistoricalWeekId = null;
+    expandedSections = new Set();
+    if (!wasOpen && previousOpenRowId) {
+      refreshRow(previousOpenRowId);
+    }
+    refreshRow(p.id);
+  });
+
+  const body = document.createElement('div');
+  body.className = 'platform-manage-row-body';
+  body.appendChild(buildCurrentWeekSection(p, live, closed, liveBalance, ctx));
+  body.appendChild(dividerEl());
+  body.appendChild(buildCollapsibleSection(p, 'total', 'Total da plataforma', () => buildPlatformTotalContent(p)));
+  body.appendChild(dividerEl());
+  body.appendChild(buildCollapsibleSection(p, 'phases', 'Fases do Saldo', () => buildPhaseContent(p)));
+  body.appendChild(dividerEl());
+  body.appendChild(buildCollapsibleSection(p, 'history', 'Histórico (semanas fechadas)', () => buildHistoryContent(p)));
+
+  row.appendChild(header);
+  row.appendChild(body);
+  return row;
+}
+
+// ---------- SUB-ENTREGA 3: "BÔNUS REAL DA SEMANA PASSADA" ----------
+// Uma semana fechada automaticamente com bônus > 0 fica com
+// bonusPending:true até o usuário confirmar. O painel NÃO some com o
+// passar dos dias — só ao confirmar (ou ao editar o bônus da semana pelo
+// "Editar"). Campo em branco + Confirmar = manter o bônus contabilizado.
+// Semana automática SEM bônus nunca tem painel (usa "Editar" se precisar).
+function buildPendingBonusPanels(p) {
+  const pending = (p.financeWeeks || [])
+    .filter(w => w.bonusPending === true)
+    .sort((a, b) => a.weekStart.localeCompare(b.weekStart));
+  if (pending.length === 0) return null;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'finance-close-week';
+
+  const label = document.createElement('div');
+  label.className = 'manage-section-label';
+  label.textContent = 'Bônus real da semana passada';
+  wrap.appendChild(label);
+
+  pending.forEach(w => {
+    const range = `${formatDatePt(w.weekStart)} – ${formatDatePt(w.weekEnd)}`;
+
+    const note = document.createElement('p');
+    note.className = 'finance-close-week-note';
+    note.textContent = `Semana ${range} fechada automaticamente. Informe o valor REAL de bônus recebido nela — ou deixe em branco e confirme pra manter o que o sistema já contabilizou (fórmula + bônus alto + avulso). A diferença entra no Saldo e no Rollover — na escala do R (ou ➗ dividida).`;
+    wrap.appendChild(note);
+
+    const stat = document.createElement('div');
+    stat.className = 'finance-stats-grid';
+    stat.innerHTML = statBox('Bônus Acumulado (fórmula + bônus alto + avulso)', formatCurrency(w.bonus), 'positive');
+    wrap.appendChild(stat);
+
+    const form = document.createElement('div');
+    form.className = 'finance-entry-form';
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '0';
+    input.step = '0.01';
+    input.placeholder = `Bônus real da semana ${range} (opcional)`;
+    input.setAttribute('aria-label', `Bônus real da semana ${range}`);
+    form.appendChild(input);
+    // (Sub-entrega 14) R da diferença (real − contado), 0 = sem rollover.
+    const pendScale = buildScaleToggle(`Escala do Rollover da diferença do bônus da semana ${range}`);
+    form.appendChild(pendScale.button);
+    form.appendChild(pendScale.input);
+    wrap.appendChild(form);
+    // (Sub-entrega 16) ➗ Dividir a diferença (real − contado).
+    const pendSplit = attachSplit(pendScale, () => {
+      const v = parseFloat(input.value);
+      return isNaN(v) ? NaN : r2(r2(v) - (Number(w.bonus) || 0));
+    });
+    input.addEventListener('input', () => pendSplit.refresh());
+    wrap.appendChild(pendSplit.el);
+
+    const actions = document.createElement('div');
+    actions.className = 'reset-modal-buttons';
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = 'btn-confirm';
+    confirmBtn.textContent = '✓ Confirmar bônus da semana';
+    confirmBtn.addEventListener('click', async () => {
+      const raw = input.value.trim();
+      let realBonus = null;
+      if (raw !== '') {
+        realBonus = parseFloat(raw);
+        if (isNaN(realBonus) || realBonus < 0) {
+          await showAppAlert('Digite um valor válido (maior ou igual a zero) ou deixe em branco.');
+          return;
+        }
+        realBonus = r2(realBonus);
+      }
+      // (16) partes do ➗ Dividir — só quando a diferença é positiva.
+      let pendParts = null;
+      if (pendSplit.isActive() && realBonus !== null && realBonus > w.bonus + 0.004) {
+        const res = pendSplit.getParts();
+        if (!res.ok) { await showAppAlert(res.error); return; }
+        pendParts = res.parts;
+      }
+      const ok = await showAppConfirm(realBonus === null
+        ? `Manter o bônus contabilizado de ${formatCurrency(w.bonus)} na semana ${range}?`
+        : `Gravar ${formatCurrency(realBonus)} como bônus real da semana ${range}? (contabilizado pelo sistema: ${formatCurrency(w.bonus)})` +
+          (realBonus > w.bonus + 0.004 ? ` A diferença entra no Rollover (${pendParts ? describeParts(pendParts) : describeScale(pendScale.get())}).` : ''));
+      if (!ok) return;
+
+      const updated = setClosedWeekRealBonus(p, w.weekStart, realBonus, { diffScale: pendScale.get(), diffParts: pendParts });
+      if (!updated) {
+        await showAppAlert('Não foi possível confirmar essa semana.');
+        return;
+      }
+      savePlatform(state.currentUid, p);
+      openRowId = p.id;
+      refreshRow(p.id);
+      renderFinanceList();
+    });
+    actions.appendChild(confirmBtn);
+    wrap.appendChild(actions);
+  });
+
+  return wrap;
+}
+
+// ---------- SEÇÃO "SEMANA ATUAL" ----------
+
+function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
+  const section = document.createElement('div');
+  section.className = 'manage-actions-section';
+
+  const label = document.createElement('div');
+  label.className = 'manage-section-label';
+  label.textContent = 'Semana atual';
+  section.appendChild(label);
+
+  const weekLabel = document.createElement('div');
+  weekLabel.className = 'finance-week-label';
+  weekLabel.textContent = `${live.weekStart.toLocaleDateString('pt-BR')} – ${live.weekEnd.toLocaleDateString('pt-BR')}`;
+  section.appendChild(weekLabel);
+
+  const rolloverLive = computeRolloverLive(p, new Date(), ctx);
+  // Bônus já emitido na semana em aberto: fórmula (VIP/Obrigado/Misterioso,
+  // dia a dia até hoje) + avulso EFETIVO lançado (Sub-entrega G). Só
+  // exibição — o cálculo é o mesmo que o Saldo/Rollover ao vivo já usam.
+  const weekBonusSoFar = closed
+    ? 0
+    : r2(computeAutoAccruedBonusForWeek(p, new Date(), ctx) + getAccumulatedBonusThisWeek(p, new Date(), ctx));
+  // (Sub-entrega 20) ⬇️ Abatimento ao vivo: semana atual e total.
+  const abatWeek = sumRolloverAdjustments(p, toLocalDateString(live.weekStart), toLocalDateString(new Date()));
+  const abatTotal = sumRolloverAdjustments(p);
+  // (Sub-entrega 38) ⬆️ Aumento ao vivo: semana atual e total.
+  const aumWeek = sumRolloverIncreases(p, toLocalDateString(live.weekStart), toLocalDateString(new Date()));
+  const aumTotal = sumRolloverIncreases(p);
+  const statsWrap = document.createElement('div');
+  statsWrap.className = 'finance-week-current';
+  statsWrap.innerHTML = `
+    <div class="finance-stats-grid">
+      ${statBox('Depósito', formatCurrency(live.deposit))}
+      ${statBox('Saque', formatCurrency(live.withdrawal))}
+      ${statBox('Diferença', formatCurrency(live.difference), live.difference >= 0 ? 'positive' : 'negative')}
+      ${statBox('Apostado', formatCurrency(live.wagered))}
+      ${statBox('N° Apostas', String(Math.round(Number(live.betCount) || 0)))}
+      ${statBox('R.B.', formatCurrency(live.resultBetting), live.resultBetting >= 0 ? 'positive' : 'negative')}
+      ${statBox('Bônus', formatCurrency(weekBonusSoFar), 'positive')}
+      ${statBox('Saldo (Balance)', formatCurrency(liveBalance), 'positive')}
+      ${statBox('Rollover', formatCurrency(rolloverLive), 'positive')}
+      ${statBox('⬇️ Abatimento (semana)', formatCurrency(abatWeek), 'finance-abat')}
+      ${statBox('⬇️ Abatimento (total)', formatCurrency(abatTotal), 'finance-abat')}
+      ${statBox('⬆️ Aumento (semana)', formatCurrency(aumWeek), 'finance-aum')}
+      ${statBox('⬆️ Aumento (total)', formatCurrency(aumTotal), 'finance-aum')}
+    </div>`;
+  section.appendChild(statsWrap);
+
+  const pendingBonusPanel = buildPendingBonusPanels(p);
+  if (pendingBonusPanel) section.appendChild(pendingBonusPanel);
+
+  if (closed) {
+    const doneNote = document.createElement('p');
+    doneNote.className = 'finance-close-week-note';
+    doneNote.textContent = 'Semana já fechada. Os valores acima continuam sendo somados pra próxima semana.';
+    section.appendChild(doneNote);
+    return section;
+  }
+
+  // --- Item 15a: depósito rápido (grava sempre em depositLog; só entra
+  // no ciclo/calendário via `deposits` se o ciclo não estiver encerrado —
+  // mesmo gate já usado no botão de depósito da Edição) ---
+  const depositForm = document.createElement('div');
+  depositForm.className = 'finance-entry-form';
+  const depositInput = document.createElement('input');
+  depositInput.type = 'number';
+  depositInput.min = '0';
+  depositInput.step = '0.01';
+  depositInput.placeholder = 'Valor do depósito';
+  const depositBtn = document.createElement('button');
+  depositBtn.className = 'bet-manage-btn';
+  depositBtn.type = 'button';
+  depositBtn.textContent = 'Registrar depósito';
+  depositBtn.addEventListener('click', async () => {
+    const value = r2(parseFloat(depositInput.value));
+    if (isNaN(parseFloat(depositInput.value)) || value <= 0) {
+      await showAppAlert('Digite um valor válido');
+      return;
+    }
+    // (7a) Tipo do depósito — mesmo mini-contêiner centralizado da Edição.
+    // Cancelar não grava nada (o valor continua no campo). Botão travado
+    // enquanto o seletor está aberto, contra toque duplo.
+    depositBtn.disabled = true;
+    let picked = null;
+    try {
+      // (Sub-entrega 13) 💎 abre a 2ª página (valor do bônus alto).
+      picked = await pickDepositKindAndBonus({ subtitle: `${p.name} · ${formatCurrency(value)}` });
+    } finally {
+      depositBtn.disabled = false;
+    }
+    if (!picked) return;
+    const kind = picked.kind;
+    // A semana pode ter sido fechada enquanto o seletor estava aberto
+    // (ex.: outra aba) — mesmo gate de quando o formulário é montado.
+    if (isCurrentWeekClosed(p)) {
+      await showAppAlert('A semana atual já foi fechada — o depósito não foi registrado.');
+      refreshRow(p.id);
+      return;
+    }
+    const entry = { date: new Date().toISOString(), value, kind };
+    if (!p.depositLog) p.depositLog = [];
+    p.depositLog.push({ ...entry });
+    // (Auditoria) "🚫 Sem ciclo do Misterioso" segue a mesma regra da
+    // Edição: o depósito entra no ciclo mesmo com o ciclo encerrado.
+    if (!p.cycleEnded || p.misteriosoCycle === 'no') {
+      if (!p.deposits) p.deposits = [];
+      p.deposits.push({ ...entry });
+    }
+    // (Sub-entrega 13) bônus alto — mesmo savePlatform do depósito.
+    if (picked.highBonus) {
+      if (!Array.isArray(p.highBonusLog)) p.highBonusLog = [];
+      // (16) ➗ Dividir: uma entrada por parte, cada uma com o seu R.
+      (picked.highBonus.parts || [{ value: picked.highBonus.value, scale: picked.highBonus.scale }]).forEach(pt => {
+        p.highBonusLog.push(buildHighBonusEntry({ depositDate: entry.date, value: pt.value, scale: pt.scale }));
+      });
+    }
+    savePlatform(state.currentUid, p);
+    openRowId = p.id;
+    refreshRow(p.id);
+    renderFinanceList();
+  });
+  depositForm.appendChild(depositInput);
+  depositForm.appendChild(depositBtn);
+  // (18) vai pra janelinha do botão "💰 Depósito" (barra de ações abaixo).
+
+  // --- registrar saque ---
+  const withdrawForm = document.createElement('div');
+  withdrawForm.className = 'finance-entry-form';
+  const withdrawInput = document.createElement('input');
+  withdrawInput.type = 'number';
+  withdrawInput.min = '0';
+  withdrawInput.step = '0.01';
+  withdrawInput.placeholder = 'Valor do saque';
+  const withdrawBtn = document.createElement('button');
+  withdrawBtn.className = 'bet-manage-btn';
+  withdrawBtn.type = 'button';
+  withdrawBtn.textContent = 'Registrar saque';
+  withdrawBtn.addEventListener('click', async () => {
+    const value = r2(parseFloat(withdrawInput.value));
+    if (isNaN(parseFloat(withdrawInput.value)) || value <= 0) {
+      await showAppAlert('Digite um valor válido');
+      return;
+    }
+    if (!p.withdrawals) p.withdrawals = [];
+    p.withdrawals.push({ date: new Date().toISOString(), value });
+    savePlatform(state.currentUid, p);
+    openRowId = p.id;
+    refreshRow(p.id);
+    renderFinanceList();
+  });
+  withdrawForm.appendChild(withdrawInput);
+  withdrawForm.appendChild(withdrawBtn);
+
+  // Botão curto na MESMA linha do saque (cabe em tela pequena).
+  const withdrawEditBtn = document.createElement('button');
+  withdrawEditBtn.className = 'bet-manage-btn';
+  withdrawEditBtn.type = 'button';
+  withdrawEditBtn.textContent = '✏️ Editar';
+  withdrawEditBtn.style.flex = '0 0 auto';
+  withdrawEditBtn.setAttribute('aria-label', 'Editar saques da semana');
+  withdrawEditBtn.addEventListener('click', () => showWithdrawalsModal(p));
+  withdrawForm.appendChild(withdrawEditBtn);
+  // (18) vai pra janelinha do botão "↩️ Saque".
+
+  // --- registrar aposta + Últimas apostas (Bloco P) ---
+  // (Sub-entrega 9) Só o botão fica na tela: os campos (Jogo, dia e hora,
+  // valor apostado, nº de apostas, R.B.) moram no mini-contêiner
+  // ui-bet-entry.js. Cancelar a conferência de saldo reabre o contêiner com
+  // tudo que já tinha sido digitado.
+  const betForm = document.createElement('div');
+  betForm.className = 'finance-entry-form';
+  const betBtn = document.createElement('button');
+  betBtn.className = 'bet-manage-btn';
+  betBtn.type = 'button';
+  betBtn.textContent = '🎯 Registrar aposta';
+  betBtn.addEventListener('click', async () => {
+    betBtn.disabled = true;
+    try {
+      // (Sub-entrega 15) VIP diário "com aposta" já liberado e ainda não
+      // coletado: pergunta ANTES do formulário. Cancelar = nada acontece.
+      let vipCollected = false;
+      const prompt = getVipCollectPrompt(p, new Date(), ctx);
+      if (prompt) {
+        const answer = await askVipCollect({
+          title: 'Bônus VIP diário coletado?',
+          subtitle: `${p.name} · VIP diário ${formatCurrency(prompt.value)}`,
+          note: vipCollectQuestion(prompt.betNumber)
+        });
+        if (!answer) return;
+        vipCollected = answer === 'yes';
+      }
+      let initial = null;
+      for (;;) {
+        const entry = await openBetEntry({ platform: p, initial });
+        if (!entry) return;
+        // (22) Lote: mesmo caminho (VIP → saldo → savePlatform). Cancelar
+        // qualquer passo volta pra prévia do lote sem perder nada.
+        if (entry.status === 'batch') {
+          const res = await registerBetBatch(p, ctx, entry.batch, { vipAsked: !!prompt, vipCollected });
+          if (res && res.reopen) {
+            initial = { mode: 'batch', batch: entry.batch };
+            continue;
+          }
+          return;
+        }
+        if (entry.status !== 'done') return;
+        const v = entry.values;
+        // (8a) Sem conferência de saldo hoje: pede antes de gravar.
+        if (!hasBalanceCheckToday(p)) {
+          // (17) pendingBet: a aposta desta sessão entra na prévia do
+          // rollover (campo opcional "Rollover que a plataforma mostra").
+          const result = await openBalanceCheck({ platform: p, ctx, pendingRB: v.resultBetting, mode: 'bet', bonusBefore: v.date, pendingBet: { date: v.date, wagered: v.wagered, resultBetting: v.resultBetting } });
+          if (!result || result.status !== 'done') {
+            initial = v; // volta pro contêiner sem perder nada
+            continue;
+          }
+        }
+        if (!p.betEntries) p.betEntries = [];
+        const bet = {
+          date: v.date,
+          wagered: v.wagered,
+          betCount: v.betCount,
+          resultBetting: v.resultBetting,
+          ...gameStamp(v.game)
+        };
+        // (15) SIM: o VIP diário entra no Rollover 1 s antes desta aposta.
+        // Só vale pra aposta do próprio dia da pergunta.
+        if (vipCollected && toLocalDateString(new Date(v.date)) === toLocalDateString(new Date())) {
+          bet.vipCollectedBefore = true;
+        }
+        p.betEntries.push(bet);
+        savePlatform(state.currentUid, p);
+        openRowId = p.id;
+        refreshRow(p.id);
+        renderFinanceList();
+        return;
+      }
+    } finally {
+      betBtn.disabled = false;
+    }
+  });
+
+  // Bloco P — botão azul, mesmo padrão visual de betBtn, ao lado dele.
+  const betHistoryBtn = document.createElement('button');
+  betHistoryBtn.className = 'bet-manage-btn';
+  betHistoryBtn.type = 'button';
+  betHistoryBtn.textContent = '🎲 Últimas apostas';
+  betHistoryBtn.addEventListener('click', () => showBetHistoryModal(p));
+
+  // --- (Sub-entrega 18) BARRA DE AÇÕES ---
+  // Os formulários (Depósito, Saque, Inserir bônus hoje) moram em
+  // janelinhas abertas pelos botões; Saldo real abre direto a conferência
+  // (com o campo opcional do rollover); Aposta, Últimas apostas e 🧾 Bônus
+  // são os mesmos botões de sempre. Campos, regras e gravações não mudam.
+  section.appendChild(buildActionBar(p, ctx, {
+    depositForm,
+    depositInput,
+    withdrawForm,
+    withdrawInput,
+    betBtn,
+    betHistoryBtn
+  }));
+
+  if (canCloseCurrentWeek()) {
+    const closeSection = document.createElement('div');
+    closeSection.className = 'finance-close-week';
+
+    const closeLabel = document.createElement('div');
+    closeLabel.className = 'manage-section-label';
+    closeLabel.textContent = 'Fechar semana (domingo)';
+    closeSection.appendChild(closeLabel);
+
+    const closeNote = document.createElement('p');
+    closeNote.className = 'finance-close-week-note';
+    closeNote.textContent = `R.B. da semana já somado automaticamente: ${formatCurrency(live.resultBetting)}. Saldo atual (antes do Bônus final desta semana): ${formatCurrency(liveBalance)}. Informe o valor REAL total de bônus recebido na semana — o Saldo final é recalculado sozinho ao fechar, e a diferença pro que o sistema já contabilizou entra no Rollover na escala do R (ou ➗ dividida).`;
+    closeSection.appendChild(closeNote);
+
+    // Bloco F Item 16.7 — só-leitura: soma do que a fórmula (Bônus 1) já
+    // vinha creditando sozinha essa semana + o avulso EFETIVO lançado via
+    // "Inserir bônus hoje" (Bônus 2, sem escala aqui — é o valor real
+    // recebido). Ajuda o usuário a conferir ANTES de digitar o total
+    // final abaixo — nunca substitui o campo manual.
+    const accumulatedAuto = computeAutoAccruedBonusForWeek(p, new Date(), ctx);
+    const accumulatedManual = getAccumulatedBonusThisWeek(p, new Date(), ctx);
+    const accumulatedStat = document.createElement('div');
+    accumulatedStat.className = 'finance-stats-grid';
+    accumulatedStat.innerHTML = statBox('Bônus Acumulado (fórmula + bônus alto + avulso)', formatCurrency(r2(accumulatedAuto + accumulatedManual)), 'positive');
+    closeSection.appendChild(accumulatedStat);
+
+    const closeForm = document.createElement('div');
+    closeForm.className = 'finance-entry-form';
+    const bonusInput = document.createElement('input');
+    bonusInput.type = 'number';
+    bonusInput.step = '0.01';
+    bonusInput.placeholder = 'Bônus recebido na semana (valor real)';
+    closeForm.appendChild(bonusInput);
+    // (Sub-entrega 14) R da diferença (real − contado), 0 = sem rollover.
+    const closeScale = buildScaleToggle('Escala do Rollover da diferença do bônus');
+    closeForm.appendChild(closeScale.button);
+    closeForm.appendChild(closeScale.input);
+    closeSection.appendChild(closeForm);
+    // (Sub-entrega 16) ➗ Dividir a diferença (real − contado).
+    const closeSplit = attachSplit(closeScale, () => {
+      const v = parseFloat(bonusInput.value);
+      if (isNaN(v)) return NaN;
+      const cnt = r2(computeAutoAccruedBonusForWeek(p, new Date(), ctx) + getAccumulatedBonusThisWeek(p, new Date(), ctx));
+      return r2(r2(v) - cnt);
+    });
+    bonusInput.addEventListener('input', () => closeSplit.refresh());
+    closeSection.appendChild(closeSplit.el);
+
+    const closeActions = document.createElement('div');
+    closeActions.className = 'reset-modal-buttons';
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'btn-confirm';
+    closeBtn.type = 'button';
+    closeBtn.textContent = '🔒 Fechar semana';
+    closeBtn.addEventListener('click', async () => {
+      const bonusRaw = parseFloat(bonusInput.value);
+      if (isNaN(bonusRaw)) {
+        await showAppAlert('Preencha o Bônus pra fechar a semana.');
+        return;
+      }
+      const bonus = r2(bonusRaw);
+      const sc = closeScale.get();
+      const counted = r2(computeAutoAccruedBonusForWeek(p, new Date(), ctx) + getAccumulatedBonusThisWeek(p, new Date(), ctx));
+      // (16) partes do ➗ Dividir — só quando a diferença é positiva.
+      let closeParts = null;
+      if (closeSplit.isActive() && bonus > counted + 0.004) {
+        const res = closeSplit.getParts();
+        if (!res.ok) { await showAppAlert(res.error); return; }
+        closeParts = res.parts;
+      }
+      const diffNote = bonus > counted + 0.004
+        ? ` A diferença de ${formatCurrency(r2(bonus - counted))} entra no Saldo e no Rollover (${closeParts ? describeParts(closeParts) : describeScale(sc)}).`
+        : '';
+      const ok = await showAppConfirm(`Fechar a semana de ${p.name}?${diffNote} Depois de fechada, os valores não mudam mais sozinhos.`);
+      if (!ok) return;
+      closeWeek(p, bonus, new Date(), ctx, { diffScale: sc, diffParts: closeParts });
+      savePlatform(state.currentUid, p);
+      openRowId = p.id;
+      refreshRow(p.id);
+      renderFinanceList();
+    });
+    closeActions.appendChild(closeBtn);
+    closeSection.appendChild(closeActions);
+    section.appendChild(closeSection);
+  }
+
+  return section;
+}
+
+// ---------- (Sub-entrega 14) BOTÃO R (escala do Rollover) ----------
+// Botão "R: 1x" + campo numérico escondido (0 a 100). 0 = "sem rollover":
+// o bônus soma no Saldo, mas o Rollover não muda. Usado em "Inserir bônus
+// hoje", no fechamento de domingo e no "Bônus real da semana passada".
+function buildScaleToggle(ariaLabel) {
+  let current = 1;
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.step = '1';
+  input.min = '0';
+  input.max = '100';
+  input.value = '1';
+  input.className = 'history-value-input app-hidden';
+  input.setAttribute('aria-label', `${ariaLabel} (0 = sem rollover)`);
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'bet-manage-btn';
+  button.title = 'Escala do Rollover — padrão 1:1; 0 = sem rollover (soma no Saldo, não no Rollover)';
+  const paint = () => { button.textContent = current === 0 ? 'R: sem rollover' : `R: ${current}x`; };
+  paint();
+  button.addEventListener('click', () => { input.classList.toggle('app-hidden'); });
+  const sync = () => {
+    const v = parseInt(input.value, 10);
+    current = (!isNaN(v) && v >= 0) ? Math.min(100, v) : 1;
+    paint();
+  };
+  input.addEventListener('change', () => { sync(); input.value = String(current); });
+  input.addEventListener('input', sync);
+
+  return {
+    button,
+    input,
+    get: () => current,
+    reset: () => { current = 1; input.value = '1'; input.classList.add('app-hidden'); paint(); }
+  };
+}
+
+function describeScale(scale) {
+  return scale === 0 ? 'sem rollover' : `escala ${scale}x`;
+}
+
+// (Sub-entrega 16) "➗ Dividir" ligado a um R (buildScaleToggle): aberto,
+// esconde o R único. getTotal = valor que está sendo dividido.
+function attachSplit(scaleCtl, getTotal) {
+  return createBonusSplit({
+    getTotal,
+    onToggle: on => {
+      scaleCtl.button.style.display = on ? 'none' : '';
+      if (on) scaleCtl.input.classList.add('app-hidden');
+    }
+  });
+}
+
+function describeParts(parts) {
+  return parts.map(pt => `${formatCurrency(pt.value)} ${pt.scale === 0 ? 'sem rollover' : `${pt.scale}:1`}`).join(' + ');
+}
+
+// ---------- (Sub-entrega 8a) SALDO REAL ----------
+
+function describeLastCheck(p) {
+  const c = getLastBalanceCheck(p);
+  if (!c) return 'Nenhuma conferência ainda — ela é pedida na primeira aposta do dia.';
+  const when = new Date(c.date);
+  const today = new Date().toDateString() === when.toDateString();
+  const hhmm = when.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const label = today ? `hoje ${hhmm}` : when.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ` ${hhmm}`;
+  const res = {
+    match: '✓ conferido',
+    bonus: `bônus avulso de ${formatCurrency(c.bonusValue || c.diff)} lançado`,
+    excluded: `${formatCurrency(c.excludedTotal || 0)} marcado como não recebido`,
+    divergent: `⚠ divergência de ${formatCurrency(Math.abs(c.diff))}`
+  }[c.resolution] || '';
+  return `Última conferência: ${label} — ${formatCurrency(c.real)} · ${res}`;
+}
+
+// ---------- (Sub-entrega 18) BARRA DE AÇÕES + JANELINHAS ----------
+
+let activeActionClose = null;
+
+// Fecha a janelinha aberta (chamado por refreshRow depois de cada gravação).
+function closeActionModal() {
+  if (activeActionClose) activeActionClose();
+}
+
+// Janelinha fixa e centralizada (mesmo visual da conferência de saldo).
+// Esc / toque fora / troca de tela fecham; nada é gravado ao fechar.
+function openActionModal(title, subtitle, content, focusEl = null) {
+  closeActionModal();
+  const previousOverflow = document.body.style.overflow;
+  document.body.style.overflow = 'hidden';
+  const overlay = document.createElement('div');
+  overlay.className = 'bc-overlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  const box = document.createElement('div');
+  box.className = 'bc-box';
+  overlay.appendChild(box);
+  const h = document.createElement('h3');
+  h.className = 'bc-title';
+  h.textContent = title;
+  box.appendChild(h);
+  if (subtitle) {
+    const sub = document.createElement('p');
+    sub.className = 'bc-sub';
+    sub.textContent = subtitle;
+    box.appendChild(sub);
+  }
+  box.appendChild(content);
+  const foot = document.createElement('div');
+  foot.className = 'bc-footer';
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'bc-cancel';
+  closeBtn.textContent = 'Fechar';
+  foot.appendChild(closeBtn);
+  box.appendChild(foot);
+
+  function close() {
+    if (!overlay.isConnected) return;
+    activeActionClose = null;
+    document.removeEventListener('keydown', onKey, true);
+    window.removeEventListener('hashchange', close);
+    window.removeEventListener('popstate', close);
+    overlay.remove();
+    document.body.style.overflow = previousOverflow;
+  }
+  function onKey(e) {
+    // Outra janela por cima (tipo do depósito, confirmação)? Ela trata o Esc.
+    if (e.key !== 'Escape' || document.body.lastElementChild !== overlay) return;
+    e.preventDefault();
+    close();
+  }
+  closeBtn.addEventListener('click', close);
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  document.addEventListener('keydown', onKey, true);
+  window.addEventListener('hashchange', close);
+  window.addEventListener('popstate', close);
+  activeActionClose = close;
+  document.body.appendChild(overlay);
+  // Campo principal ocupa a linha inteira (os botões vão pra linha de baixo).
+  if (focusEl) {
+    focusEl.style.flex = '1 1 100%';
+    focusEl.style.minWidth = '0';
+    setTimeout(() => { try { focusEl.focus({ preventScroll: true }); } catch (_) { focusEl.focus(); } }, 30);
+  }
+}
+
+// (Sub-entrega 22) Grava o lote colado. { reopen:true } = voltar pra prévia.
+async function registerBetBatch(p, ctx, batch, { vipAsked = false, vipCollected = false } = {}) {
+  const now = new Date();
+  const plan = planBatch(p, batch.rows, { now, whenTime: batch.whenTime, weekStartKey: toLocalDateString(getWeekStart(now)) });
+  if (plan.errorCount > 0 || plan.entries.length === 0) {
+    await showAppAlert(plan.errorCount > 0
+      ? 'Há linhas com erro no lote — corrija ou tire antes de registrar.'
+      : 'Nada novo pra registrar: esses jogos já estão registrados com esses valores.');
+    return { reopen: true };
+  }
+
+  // 1) VIP diário "com aposta" — só se a pergunta não foi feita antes.
+  let collected = vipCollected;
+  if (!vipAsked && plan.todayEntries.length) {
+    const sim = getVipCollectPrompt({ ...p, betEntries: [...(p.betEntries || []), ...plan.todayEntries] }, now, ctx);
+    if (sim) {
+      const answer = await askVipCollect({
+        title: 'Bônus VIP diário coletado?',
+        subtitle: `${p.name} · VIP diário ${formatCurrency(sim.value)}`,
+        note: batchVipQuestion()
+      });
+      if (!answer) return { reopen: true };
+      collected = answer === 'yes';
+    }
+  }
+
+  // 2) Conferência de saldo (8a) com o lote somado — igual ao registro avulso.
+  if (!hasBalanceCheckToday(p)) {
+    const dates = plan.entries.map(e => e.date).sort();
+    const result = await openBalanceCheck({
+      platform: p, ctx, pendingRB: plan.totals.rb, mode: 'bet', bonusBefore: dates[0],
+      pendingBet: { date: dates[dates.length - 1], wagered: plan.totals.wagered, resultBetting: plan.totals.rb }
+    });
+    if (!result || result.status !== 'done') return { reopen: true };
+  }
+
+  // 3) Jogo de cada linha (a biblioteca já recebeu os novos na prévia).
+  const games = getGames();
+  plan.items.forEach(it => {
+    if (!it.entry) return;
+    Object.assign(it.entry, gameStamp(matchGame(games, it.row.game, it.row.provider)));
+  });
+  // (15) SIM: o VIP entra no Rollover 1 s antes da 1ª aposta de hoje do lote.
+  if (collected && plan.todayEntries.length) {
+    const first = plan.todayEntries.slice().sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+    first.vipCollectedBefore = true;
+  }
+  if (!p.betEntries) p.betEntries = [];
+  p.betEntries.push(...plan.entries);
+  savePlatform(state.currentUid, p);
+  openRowId = p.id;
+  refreshRow(p.id);
+  renderFinanceList();
+  return { done: true };
+}
+
+function buildActionBar(p, ctx, parts) {
+  const wrap = document.createElement('div');
+  wrap.className = 'finance-balance-check';
+
+  const bar = document.createElement('div');
+  bar.className = 'finance-entry-form finance-action-bar';
+  bar.style.flexWrap = 'wrap';
+  const action = (label, aria, onClick) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'bet-manage-btn';
+    b.textContent = label;
+    b.setAttribute('aria-label', aria);
+    b.style.flex = '1 1 auto';
+    b.addEventListener('click', onClick);
+    return b;
+  };
+
+  bar.appendChild(action('💰 Depósito', `Registrar depósito em ${p.name}`, () => {
+    openActionModal('💰 Registrar depósito', p.name, parts.depositForm, parts.depositInput);
+  }));
+  bar.appendChild(action('↩️ Saque', `Registrar ou editar saque em ${p.name}`, () => {
+    openActionModal('↩️ Registrar saque', p.name, parts.withdrawForm, parts.withdrawInput);
+  }));
+  bar.appendChild(action('🎁 Bônus hoje', `Inserir bônus recebido hoje em ${p.name}`, () => {
+    const section = buildDailyBonusSection(p, ctx);
+    openActionModal('🎁 Inserir bônus hoje', p.name, section, section.querySelector('input'));
+  }));
+  bar.appendChild(action('🔎 Saldo real', `Conferir saldo real (e rollover) de ${p.name}`, async () => {
+    // Abre direto a conferência (saldo + rollover opcional).
+    const result = await openBalanceCheck({ platform: p, ctx, mode: 'standalone' });
+    if (!result || result.status !== 'done') return;
+    savePlatform(state.currentUid, p);
+    openRowId = p.id;
+    refreshRow(p.id);
+    renderFinanceList();
+    if (result.resolution === 'match') await showAppAlert('Saldo conferido ✓ — bate com o sistema.');
+  }));
+
+  parts.betBtn.style.flex = '1 1 auto';
+  parts.betHistoryBtn.style.flex = '1 1 auto';
+  bar.appendChild(parts.betBtn);
+  bar.appendChild(parts.betHistoryBtn);
+
+  bar.appendChild(action('🧾 Bônus', 'Bônus da semana — R, não recebi, abatido, conferência em lote', () => openBonusManager({
+    resolveCtx: resolveCtxForPlatform,
+    focusPlatformId: p.id,
+    onChanged: () => {
+      openRowId = p.id;
+      refreshAllRows();
+      renderFinanceList();
+    }
+  })));
+  wrap.appendChild(bar);
+
+  const note = document.createElement('p');
+  note.className = 'finance-close-week-note';
+  note.textContent = describeLastCheck(p);
+  wrap.appendChild(note);
+  return wrap;
+}
+
+// ---------- Etapa 7, sub-entrega 3: "INSERIR BÔNUS HOJE" (Item 16.4/16.5) ----------
+// Campo de bônus avulso + botão R (escala do Rollover pra ESTE
+// lançamento específico, padrão 1:1). O valor digitado é o TOTAL recebido
+// hoje. (Sub-entrega G) O sistema compara com o que JÁ conta hoje —
+// fórmula atual + avulso efetivo (= max(fórmula atual, total já informado))
+// — e grava só a diferença, junto com o total informado (claimedTotal) e a
+// fórmula do instante (formulaAtLog). Se depois a fórmula subir (ex.: a
+// aposta que atinge o mínimo é registrada mais tarde), o avulso efetivo
+// encolhe na mesma medida — o total do dia nunca passa do informado
+// enquanto a fórmula não o ultrapassar.
+function buildDailyBonusSection(p, ctx) {
+  const container = document.createElement('div');
+
+  const wrap = document.createElement('div');
+  wrap.className = 'finance-entry-form';
+  container.appendChild(wrap);
+
+  const bonusInput = document.createElement('input');
+  bonusInput.type = 'number';
+  bonusInput.step = '0.01';
+  bonusInput.min = '0';
+  bonusInput.placeholder = 'Inserir bônus hoje (total do dia)';
+  bonusInput.setAttribute('aria-label', 'Valor total de bônus recebido hoje');
+  wrap.appendChild(bonusInput);
+
+
+  // Escala (botão R) — padrão 1:1. Só afeta o Rollover, nunca o Saldo
+  // (sempre 1:1 — ver finance-logic.js/computeLiveBalance).
+  // (Sub-entrega 14) aceita 0 = sem rollover.
+  const scaleCtl = buildScaleToggle('Escala do Rollover pra este lançamento');
+  const scaleBtn = scaleCtl.button;
+  const scaleInput = scaleCtl.input;
+  wrap.appendChild(scaleBtn);
+  wrap.appendChild(scaleInput);
+
+  // (Sub-entrega 16) ➗ Dividir a diferença que vai ser lançada.
+  const dailySplit = attachSplit(scaleCtl, () => {
+    const typed = parseFloat(bonusInput.value);
+    return isNaN(typed) ? NaN : r2(computeBonusDiffToday(p, r2(typed), new Date(), ctx));
+  });
+  bonusInput.addEventListener('input', () => dailySplit.refresh());
+
+  // (Sub-entrega G) Resumo do dia: fórmula + avulso efetivo = total.
+  const now = new Date();
+  const expectedNow = r2(getExpectedBonusToday(p, now, ctx));
+  const todayInfo = getEffectiveOtherBonusForDay(p, now, ctx);
+  const summary = document.createElement('p');
+  summary.className = 'finance-close-week-note';
+  if (todayInfo.entries.length > 0) {
+    const total = r2(expectedNow + todayInfo.raw);
+    let text = `Hoje: fórmula ${formatCurrency(expectedNow)} + avulso ${formatCurrency(todayInfo.raw)} = ${formatCurrency(total)}.`;
+    if (todayInfo.claimed !== null && todayInfo.formulaAtLog !== null && todayInfo.formula > todayInfo.formulaAtLog + 0.004) {
+      const grew = r2(todayInfo.formula - todayInfo.formulaAtLog);
+      text += ` A fórmula subiu ${formatCurrency(grew)} depois do seu último lançamento (ex.: VIP diário liberado pela aposta) e foi considerada JÁ INCLUÍDA no total informado (${formatCurrency(todayInfo.claimed)}). Se não estava incluída, informe o novo total do dia.`;
+    }
+    summary.textContent = text;
+  } else {
+    summary.textContent = `Hoje a fórmula já conta ${formatCurrency(expectedNow)}. Digite o TOTAL de bônus recebido hoje — só a diferença é lançada.`;
+  }
+  container.appendChild(dailySplit.el);
+  container.appendChild(summary);
+
+  const confirmBtn = document.createElement('button');
+  confirmBtn.type = 'button';
+  confirmBtn.className = 'bet-manage-btn';
+  confirmBtn.textContent = 'Confirmar bônus';
+  confirmBtn.addEventListener('click', async () => {
+    const typedRaw = parseFloat(bonusInput.value);
+    if (isNaN(typedRaw) || typedRaw < 0) {
+      await showAppAlert('Digite um valor válido pro bônus recebido hoje.');
+      return;
+    }
+    const valorDigitado = r2(typedRaw);
+
+    const clickNow = new Date();
+    const expected = r2(getExpectedBonusToday(p, clickNow, ctx));
+    const alreadyLogged = getEffectiveOtherBonusForDay(p, clickNow, ctx).raw;
+    // A0: arredonda em centavos pra nunca deixar sobra de ponto flutuante
+    // (ex: -0.0000001) passar como positivo/negativo por engano.
+    const diff = r2(computeBonusDiffToday(p, valorDigitado, clickNow, ctx));
+
+    // Avulso = total digitado − (fórmula atual + avulso efetivo de hoje).
+    // Nunca pode ser negativo; zero também não gera lançamento (nada a
+    // registrar, nem no Rollover).
+    if (diff < 0) {
+      await showAppAlert(
+        `Valor menor que o já contabilizado hoje. O sistema já conta ${formatCurrency(expected)} pela fórmula` +
+        (alreadyLogged > 0 ? ` e ${formatCurrency(alreadyLogged)} de avulso` : '') +
+        ` (total ${formatCurrency(r2(expected + alreadyLogged))}). Digite o TOTAL recebido hoje, que precisa ser maior que isso.`
+      );
+      return;
+    }
+    if (diff === 0) {
+      await showAppAlert('Esse valor é igual ao que o sistema já conta hoje. Não há nada a lançar.');
+      return;
+    }
+
+    const currentScale = scaleCtl.get();
+    const rolloverValue = r2(diff * currentScale);
+    // (16) partes do ➗ Dividir (soma = diff).
+    let parts = null;
+    if (dailySplit.isActive()) {
+      const res = dailySplit.getParts();
+      if (!res.ok) { await showAppAlert(res.error); return; }
+      parts = res.parts;
+    }
+
+    const ok = await showAppConfirm(
+      `Registrar ${formatCurrency(valorDigitado)} como TOTAL de bônus de hoje? ` +
+      `O sistema já contava ${formatCurrency(r2(expected + alreadyLogged))} (fórmula VIP/Obrigado/Misterioso` +
+      (alreadyLogged > 0 ? ' + avulso já lançado' : '') + `) — ` +
+      `será lançada só a diferença: ${formatCurrency(diff)} no Saldo` +
+      (parts ? `, dividida no Rollover: ${describeParts(parts)}`
+        : currentScale === 0 ? ' — SEM rollover (o Rollover não muda)' : currentScale !== 1 ? ` e ${formatCurrency(rolloverValue)} no Rollover (escala ${currentScale}x)` : ' e no Rollover (escala 1:1)') +
+      `. Se o VIP diário for liberado depois (aposta mínima), ele será considerado já incluído nesse total.`
+    );
+    if (!ok) return;
+
+    const stampMs = Date.now();
+    const stamp = new Date(stampMs).toISOString();
+    if (!p.otherBonusLog) p.otherBonusLog = [];
+    // (16) uma entrada por parte (createdAt +i ms — itens próprios no
+    // "Bônus da semana"); todas com o mesmo total informado do dia.
+    (parts || [{ value: diff, scale: currentScale }]).forEach((pt, i, all) => {
+      p.otherBonusLog.push({
+        date: stamp,
+        rawValue: r2(pt.value),
+        scale: pt.scale,
+        rolloverValue: r2(pt.value * pt.scale),
+        claimedTotal: valorDigitado,
+        formulaAtLog: expected,
+        createdAt: new Date(stampMs + i).toISOString(),
+        ...(all.length > 1 ? { splitPart: i + 1, splitOf: all.length } : {})
+      });
+    });
+    savePlatform(state.currentUid, p);
+
+    bonusInput.value = '';
+    scaleCtl.reset();
+
+    openRowId = p.id;
+    // Muda o Saldo (e o Rollover, quando visível — sub-entrega 4) — se
+    // o modo ativo for Maior/Menor Saldo, a posição da linha pode mudar.
+    refreshRow(p.id);
+    renderFinanceList();
+  });
+  wrap.appendChild(confirmBtn);
+
+  return container;
+}
+
+// ---------- SEÇÃO "TOTAL DA PLATAFORMA" ----------
+
+function buildPlatformTotalContent(p) {
+  const weeks = p.financeWeeks || [];
+  const totals = computePlatformTotals(p, resolveCtxForPlatform(p));
+
+  const card = document.createElement('div');
+  card.className = 'finance-week-card finance-total-card';
+
+  const header = document.createElement('div');
+  header.className = 'finance-week-card-header';
+  header.innerHTML = `<span>${weeks.length} semana(s) fechada(s)</span>`;
+  card.appendChild(header);
+
+  const note = document.createElement('p');
+  note.className = 'finance-close-week-note';
+  note.textContent = 'Saldo (Balance) é sempre o valor ATUAL da fase atual, ao vivo (já com o Saldo Inicial dela, se houver, e o bônus do dia já somado) — não é uma soma das semanas fechadas nem das fases anteriores.';
+  card.appendChild(note);
+
+  const stats = document.createElement('div');
+  stats.className = 'finance-stats-grid';
+  // (20) Abatimento das semanas fechadas (mesmo conjunto deste card).
+  const inClosedWeeks = k => weeks.some(w => w && w.weekStart <= k && k <= w.weekEnd);
+  const closedAbat = sumRolloverAdjustments(p, null, null, inClosedWeeks);
+  const closedAum = sumRolloverIncreases(p, null, null, inClosedWeeks); // (38)
+  stats.innerHTML = statsGridHtml(totals, { rolloverValue: totals.rollover, rolloverLabel: 'Rollover da fase atual', abatimentoValue: closedAbat, abatimentoLabel: '⬇️ Abatimento (semanas fechadas)', aumentoValue: closedAum, aumentoLabel: '⬆️ Aumento (semanas fechadas)' });
+  card.appendChild(stats);
+
+  return card;
+}
+
+// ---------- SEÇÃO "FASES DO SALDO" ----------
+
+function buildPhaseContent(p) {
+  const fragment = document.createDocumentFragment();
+
+  const note = document.createElement('p');
+  note.className = 'finance-close-week-note';
+  note.textContent = 'Cada fase começa com um Saldo Inicial e um Rollover Inicial (informados na hora de abrir a fase) e soma os movimentos a partir dali. "Iniciar nova fase" só pode começar numa SEGUNDA-FEIRA — trava necessária pra nenhuma semana fechada nunca ficar dividida entre duas fases (isso já causou duplicação de valores no passado). Útil quando o histórico antigo é incompleto, tem números errados, ou quando você está migrando de uma planilha externa e quer começar do valor real de hoje.';
+  fragment.appendChild(note);
+
+  fragment.appendChild(buildPhaseControls(p));
+
+  const phases = computePhaseHistory(p, new Date(), resolveCtxForPlatform(p));
+  const list = document.createElement('div');
+  list.className = 'finance-history';
+  [...phases].reverse().forEach(phase => {
+    list.appendChild(buildPhaseCard(phase, p.id));
+  });
+  fragment.appendChild(list);
+
+  return fragment;
+}
+
+function buildPhaseControls(p) {
+  const wrap = document.createElement('div');
+  wrap.className = 'finance-checkpoint';
+
+  if (startingPhaseId === p.id) {
+    // Etapa 7: sem escolha de hora — toda fase nova começa às 00:00 da
+    // segunda-feira escolhida (nunca outro horário, pra nunca abrir
+    // margem de uma fase "quase alinhada" com a semana). type="date"
+    // (não mais "datetime-local") + validação de dia da semana antes de
+    // confirmar.
+    const dateInput = document.createElement('input');
+    dateInput.type = 'date';
+    const defaultMonday = getWeekStart(new Date());
+    dateInput.value = toLocalDateString(defaultMonday);
+    dateInput.max = toLocalDateString(new Date()); // fase futura não é permitida
+    dateInput.setAttribute('aria-label', 'Data de início da nova fase (precisa ser uma segunda-feira)');
+
+    const initialBalanceInput = document.createElement('input');
+    initialBalanceInput.type = 'number';
+    initialBalanceInput.min = '0';
+    initialBalanceInput.step = '0.01';
+    initialBalanceInput.placeholder = 'Saldo Inicial da nova fase';
+    initialBalanceInput.setAttribute('aria-label', 'Saldo Inicial da nova fase');
+
+    const initialRolloverInput = document.createElement('input');
+    initialRolloverInput.type = 'number';
+    initialRolloverInput.min = '0';
+    initialRolloverInput.step = '0.01';
+    initialRolloverInput.placeholder = 'Rollover Inicial da nova fase';
+    initialRolloverInput.setAttribute('aria-label', 'Rollover Inicial da nova fase');
+
+    const row1 = document.createElement('div');
+    row1.className = 'finance-entry-form';
+    row1.appendChild(dateInput);
+    wrap.appendChild(row1);
+
+    const row2 = document.createElement('div');
+    row2.className = 'finance-entry-form';
+    row2.appendChild(initialBalanceInput);
+    row2.appendChild(initialRolloverInput);
+    wrap.appendChild(row2);
+
+    const actions = document.createElement('div');
+    actions.className = 'reset-modal-buttons';
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = 'btn-confirm';
+    confirmBtn.textContent = 'Confirmar';
+    confirmBtn.addEventListener('click', async () => {
+      if (!dateInput.value) {
+        await showAppAlert('Escolha uma data.');
+        return;
+      }
+
+      const initialBalance = parseFloat(initialBalanceInput.value);
+      if (initialBalanceInput.value.trim() === '' || isNaN(initialBalance) || initialBalance < 0) {
+        await showAppAlert('Informe o Saldo Inicial da nova fase (obrigatório, maior ou igual a zero).');
+        return;
+      }
+
+      const initialRollover = parseFloat(initialRolloverInput.value);
+      if (initialRolloverInput.value.trim() === '' || isNaN(initialRollover) || initialRollover < 0) {
+        await showAppAlert('Informe o Rollover Inicial da nova fase (obrigatório, maior ou igual a zero) — o Saldo real só fica acertivo a partir de agora se esse valor estiver correto.');
+        return;
+      }
+
+      const chosenDate = new Date(`${dateInput.value}T00:00:00`);
+      if (chosenDate.getDay() !== 1) {
+        await showAppAlert('A nova fase só pode começar numa SEGUNDA-FEIRA — escolha outra data. Essa trava existe pra nenhuma semana ficar dividida entre duas fases.');
+        return;
+      }
+      if (toLocalDateString(chosenDate) > toLocalDateString(new Date())) {
+        await showAppAlert('A fase não pode começar numa data futura.');
+        return;
+      }
+
+      const dateLabel = chosenDate.toLocaleDateString('pt-BR');
+      const existingPhases = p.balancePhases || [];
+      const lastPhase = existingPhases.length ? existingPhases[existingPhases.length - 1] : null;
+      const isInsertingPast = !!lastPhase && toLocalDateString(chosenDate) < toLocalDateString(new Date(lastPhase.date));
+      const confirmText = isInsertingPast
+        ? `Inserir uma fase que começa em segunda-feira, ${dateLabel}, ENTRE as fases já existentes de ${p.name}, ` +
+          `com Saldo Inicial de ${formatCurrency(initialBalance)} e Rollover Inicial de ${formatCurrency(initialRollover)}? ` +
+          `A fase atual e as fases seguintes continuam como estão; só a fase anterior a essa data passa a terminar nela.`
+        : `Fechar a fase atual de ${p.name} e começar uma nova a partir de segunda-feira, ${dateLabel}, ` +
+          `com Saldo Inicial de ${formatCurrency(initialBalance)} e Rollover Inicial de ${formatCurrency(initialRollover)}? ` +
+          `Tudo registrado ANTES desse instante continua contando na fase que está fechando (guardada pra ` +
+          `sempre em "Fases do Saldo"); a partir dele, conta na fase nova.`;
+      const ok = await showAppConfirm(confirmText);
+      if (!ok) return;
+
+      const result = startNewPhase(p, chosenDate, initialBalance, initialRollover);
+      if (!result.ok) {
+        const reasons = {
+          'not-monday': 'a data escolhida não é uma segunda-feira.',
+          'future': 'a data escolhida é futura.',
+          'duplicate': 'já existe uma fase começando nessa data.'
+        };
+        await showAppAlert(`Não foi possível abrir a fase: ${reasons[result.reason] || 'dados inválidos.'}`);
+        return;
+      }
+      savePlatform(state.currentUid, p);
+      startingPhaseId = null;
+      openRowId = p.id;
+      refreshRow(p.id);
+      rebuildPhaseSelectOptions();
+      renderFinanceList();
+    });
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'btn-cancel-modal';
+    cancelBtn.textContent = 'Cancelar';
+    cancelBtn.addEventListener('click', () => {
+      startingPhaseId = null;
+      refreshRow(p.id);
+    });
+
+    actions.appendChild(confirmBtn);
+    actions.appendChild(cancelBtn);
+    wrap.appendChild(actions);
+    return wrap;
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'reset-modal-buttons';
+
+  const startBtn = document.createElement('button');
+  startBtn.type = 'button';
+  startBtn.className = 'bet-manage-btn';
+  startBtn.textContent = '🔒 Iniciar nova fase';
+  startBtn.addEventListener('click', () => {
+    startingPhaseId = p.id;
+    openRowId = p.id;
+    refreshRow(p.id);
+  });
+  actions.appendChild(startBtn);
+
+  wrap.appendChild(actions);
+  return wrap;
+}
+
+function buildPhaseCard(phase, platformId) {
+  const card = document.createElement('div');
+  card.className = 'finance-week-card' + (phase.isCurrent ? ' finance-total-card' : '');
+  const key = `${platformId}::${phase.phaseNumber}`;
+  const isExpanded = isPhaseExpanded(key, phase.isCurrent);
+
+  const header = document.createElement('div');
+  header.className = 'finance-week-card-header';
+  const startLabel = phase.startDate ? formatDateTimePt(phase.startDate) : 'início';
+  const endLabel = phase.endDate ? formatDateTimePt(phase.endDate) : 'agora (atual)';
+  const rangeSpan = document.createElement('span');
+  rangeSpan.textContent = `Fase ${phase.phaseNumber}: ${startLabel} – ${endLabel}`;
+  const toggleBtn = document.createElement('button');
+  toggleBtn.type = 'button';
+  toggleBtn.className = 'bet-manage-btn';
+  toggleBtn.textContent = isExpanded ? '−' : '+';
+  toggleBtn.setAttribute('aria-label', isExpanded ? 'Recolher fase' : 'Expandir fase');
+  toggleBtn.addEventListener('click', () => {
+    phaseExpandedOverrides.set(key, !isExpanded);
+    openRowId = platformId;
+    refreshRow(platformId);
+  });
+  const phaseBtnGroup = document.createElement('div');
+  phaseBtnGroup.className = 'finance-week-card-actions';
+  phaseBtnGroup.appendChild(toggleBtn);
+
+  // Fase 1 não tem fronteira própria (começa no início) — não removível.
+  if (phase.phaseNumber >= 2) {
+    const removePhaseBtn = document.createElement('button');
+    removePhaseBtn.type = 'button';
+    removePhaseBtn.className = 'history-delete-btn';
+    removePhaseBtn.textContent = 'Remover';
+    removePhaseBtn.addEventListener('click', async () => {
+      const platform = state.platforms.find(pp => pp.id === platformId);
+      if (!platform) return;
+      const ok = await showAppConfirm(
+        `Remover a Fase ${phase.phaseNumber} (começa em ${startLabel})? Ela se junta de volta à fase anterior e o Saldo/Rollover Inicial dela é descartado. Nenhum depósito, saque, aposta ou semana fechada é apagado.`
+      );
+      if (!ok) return;
+      const removed = removePhaseByNumber(platform, phase.phaseNumber);
+      if (!removed) return;
+      savePlatform(state.currentUid, platform, { allowShrink: ['balancePhases'] });
+      clearOverridesForPlatform(phaseExpandedOverrides, platformId);
+      openRowId = platformId;
+      refreshRow(platformId);
+      rebuildPhaseSelectOptions();
+      renderFinanceList();
+    });
+    phaseBtnGroup.appendChild(removePhaseBtn);
+  }
+
+  header.appendChild(rangeSpan);
+  header.appendChild(phaseBtnGroup);
+
+  card.appendChild(header);
+
+  if (isExpanded) {
+    const stats = document.createElement('div');
+    stats.className = 'finance-stats-grid';
+    stats.innerHTML = statsGridHtml(phase, {
+      balanceLabel: phase.isCurrent ? 'Saldo da fase atual' : 'Saldo da fase',
+      showInitialBalance: true,
+      showInitialRollover: true,
+      rolloverValue: phase.rollover,
+      rolloverLabel: phase.isCurrent ? 'Rollover da fase atual' : 'Rollover da fase',
+      // (20) Abatimento dentro da fase.
+      abatimentoValue: sumRolloverAdjustments(p,
+        phase.startDate ? toLocalDateString(new Date(phase.startDate)) : null,
+        phase.endDate ? toLocalDateString(new Date(new Date(phase.endDate).getTime() - 1)) : null),
+      abatimentoLabel: '⬇️ Abatimento da fase',
+      // (38) Aumento dentro da fase.
+      aumentoValue: sumRolloverIncreases(p,
+        phase.startDate ? toLocalDateString(new Date(phase.startDate)) : null,
+        phase.endDate ? toLocalDateString(new Date(new Date(phase.endDate).getTime() - 1)) : null),
+      aumentoLabel: '⬆️ Aumento da fase'
+    });
+    card.appendChild(stats);
+  }
+
+  return card;
+}
+
+// ---------- SEÇÃO "HISTÓRICO" ----------
+
+function buildHistoryContent(p) {
+  const fragment = document.createDocumentFragment();
+
+  fragment.appendChild(buildAddHistoricalWeekControls(p));
+
+  const searchRow = document.createElement('div');
+  searchRow.className = 'finance-entry-form';
+
+  const dateInput = document.createElement('input');
+  dateInput.type = 'date';
+  dateInput.setAttribute('aria-label', 'Buscar semana por data');
+  if (historyDateFilter) dateInput.value = historyDateFilter;
+  dateInput.addEventListener('change', () => {
+    historyDateFilter = dateInput.value || null;
+    openRowId = p.id;
+    refreshRow(p.id);
+  });
+  searchRow.appendChild(dateInput);
+
+  if (historyDateFilter) {
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.className = 'btn-cancel-modal';
+    clearBtn.textContent = 'Limpar busca';
+    clearBtn.addEventListener('click', () => {
+      historyDateFilter = null;
+      openRowId = p.id;
+      refreshRow(p.id);
+    });
+    searchRow.appendChild(clearBtn);
+  }
+  fragment.appendChild(searchRow);
+
+  let weeks = [...(p.financeWeeks || [])].sort((a, b) => b.weekStart.localeCompare(a.weekStart));
+
+  if (historyDateFilter) {
+    const [y, m, d] = historyDateFilter.split('-').map(Number);
+    const filterDate = new Date(y, m - 1, d, 12, 0, 0);
+    const targetWeekStart = toLocalDateString(getWeekStart(filterDate));
+    weeks = weeks.filter(w => w.weekStart === targetWeekStart);
+  }
+
+  if (weeks.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'finance-empty';
+    empty.textContent = historyDateFilter
+      ? 'Nenhuma semana fechada encontrada pra essa data.'
+      : 'Nenhuma semana fechada ainda.';
+    fragment.appendChild(empty);
+    return fragment;
+  }
+
+  const history = document.createElement('div');
+  history.className = 'finance-history';
+
+  weeks.forEach((w, idx) => {
+    const isEditing = !!editingWeek
+      && editingWeek.platformId === p.id
+      && editingWeek.weekStart === w.weekStart;
+
+    history.appendChild(isEditing ? buildWeekCardEditing(p, w) : buildWeekCardReadOnly(p, w, idx === 0));
+  });
+
+  fragment.appendChild(history);
+  return fragment;
+}
+
+function describeAddHistoricalWeekFailure(reason) {
+  if (reason === 'current-week') {
+    return 'Essa é a semana atual — ela já é registrada automaticamente pelos campos de "Semana atual" acima, não precisa (e não dá) inserir por aqui.';
+  }
+  if (reason === 'duplicate') {
+    return 'Já existe uma semana fechada nesse período pra essa plataforma. Use "Editar" nela se precisar corrigir algo, ou "Excluir" e adicione de novo.';
+  }
+  return 'Não foi possível adicionar essa semana.';
+}
+
+function shortAddHistoricalWeekFailureReason(reason) {
+  if (reason === 'current-week') return 'é a semana atual, não pode ser inserida por aqui';
+  if (reason === 'duplicate') return 'semana já cadastrada';
+  return 'não foi possível adicionar';
+}
+
+function buildAddHistoricalWeekControls(p) {
+  const wrap = document.createElement('div');
+  wrap.className = 'finance-checkpoint';
+
+  if (addingHistoricalWeekId !== p.id) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'bet-manage-btn';
+    btn.textContent = '+ Adicionar semana antiga';
+    btn.addEventListener('click', () => {
+      addingHistoricalWeekId = p.id;
+      openRowId = p.id;
+      refreshRow(p.id);
+    });
+    wrap.appendChild(btn);
+    return wrap;
+  }
+
+  renderHistoricalWeekModeChoice(p, wrap);
+  return wrap;
+}
+
+function renderHistoricalWeekModeChoice(p, wrap) {
+  wrap.innerHTML = '';
+
+  const modeRow = document.createElement('div');
+  modeRow.className = 'finance-entry-form';
+
+  const manualBtn = document.createElement('button');
+  manualBtn.type = 'button';
+  manualBtn.className = 'bet-manage-btn';
+  manualBtn.textContent = 'Preencher manualmente';
+  manualBtn.addEventListener('click', () => {
+    buildManualHistoricalWeekControls(p, wrap);
+  });
+
+  const pasteBtn = document.createElement('button');
+  pasteBtn.type = 'button';
+  pasteBtn.className = 'bet-manage-btn';
+  pasteBtn.textContent = 'Colar da planilha';
+  pasteBtn.addEventListener('click', () => {
+    buildSpreadsheetHistoricalWeekControls(p, wrap);
+  });
+
+  modeRow.appendChild(manualBtn);
+  modeRow.appendChild(pasteBtn);
+  wrap.appendChild(modeRow);
+
+  const note = document.createElement('p');
+  note.className = 'finance-close-week-note';
+  note.textContent = 'Escolha como deseja inserir a semana. "Colar da planilha" permite copiar várias plataformas de uma vez; o sistema calcula sozinho Diferença, Saldo e R.B. + Bônus. Backfill não pede Rollover Inicial — ele não abre fase, só insere uma semana fechada dentro da fase já aberta.';
+  wrap.appendChild(note);
+}
+
+function buildManualHistoricalWeekControls(p, wrap) {
+  wrap.innerHTML = '';
+
+  const note = document.createElement('p');
+  note.className = 'finance-close-week-note';
+  note.textContent = 'Escolha qualquer dia dentro da semana que quer inserir (a semana inteira, de segunda a domingo, é calculada a partir dele). Diferença e R.B. + Bônus são calculados sozinhos. O Saldo final é o valor que você anotou naquele dia — fica gravado só como retrato da semana (card e gráfico); o Saldo atual continua sendo calculado pelos movimentos + Saldo Inicial da fase.';
+  wrap.appendChild(note);
+
+  const dateRow = document.createElement('div');
+  dateRow.className = 'finance-entry-form';
+  const dateInput = document.createElement('input');
+  dateInput.type = 'date';
+  dateInput.setAttribute('aria-label', 'Data dentro da semana antiga');
+  dateRow.appendChild(dateInput);
+  wrap.appendChild(dateRow);
+
+  const row1 = document.createElement('div');
+  row1.className = 'finance-entry-form';
+  // Item 26t: nascem vazios (placeholder só como dica), não com "0"
+  // pré-preenchido — evita que o usuário esqueça de digitar um campo e
+  // ele entre como zero sem querer.
+  const depositInput = numberInput('Depósito', ''); depositInput.min = '0';
+  const withdrawalInput = numberInput('Saque', ''); withdrawalInput.min = '0';
+  row1.appendChild(depositInput);
+  row1.appendChild(withdrawalInput);
+  wrap.appendChild(row1);
+
+  const row2 = document.createElement('div');
+  row2.className = 'finance-entry-form';
+  const wageredInput = numberInput('Apostado', ''); wageredInput.min = '0';
+  const betCountInput = numberInput('N° de apostas', '', '1'); betCountInput.min = '0';
+  row2.appendChild(wageredInput);
+  row2.appendChild(betCountInput);
+  wrap.appendChild(row2);
+
+  const row3 = document.createElement('div');
+  row3.className = 'finance-entry-form';
+  const bonusInput = numberInput('Bônus', '');
+  const resultInput = numberInput('Result Betting (R.B.)', '');
+  row3.appendChild(bonusInput);
+  row3.appendChild(resultInput);
+  wrap.appendChild(row3);
+
+  // Saldo final daquela semana (da planilha do usuário) — retrato da
+  // semana, não altera o Saldo ao vivo.
+  const row4 = document.createElement('div');
+  row4.className = 'finance-entry-form';
+  const balanceInput = numberInput('Saldo final da semana', ''); balanceInput.min = '0';
+  row4.appendChild(balanceInput);
+  wrap.appendChild(row4);
+
+  const actions = document.createElement('div');
+  actions.className = 'reset-modal-buttons';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'btn-confirm';
+  saveBtn.textContent = 'Adicionar semana';
+  saveBtn.addEventListener('click', async () => {
+    if (!dateInput.value) {
+      await showAppAlert('Escolha uma data dentro da semana.');
+      return;
+    }
+
+    const deposit = parseFloat(depositInput.value);
+    const withdrawal = parseFloat(withdrawalInput.value);
+    const wagered = parseFloat(wageredInput.value);
+    const betCount = parseInt(betCountInput.value, 10);
+    const bonus = parseFloat(bonusInput.value);
+    const resultBetting = parseFloat(resultInput.value);
+    const balance = parseFloat(balanceInput.value);
+
+    if ([deposit, withdrawal, wagered, betCount, bonus, resultBetting, balance].some(v => isNaN(v)) || balance < 0) {
+      await showAppAlert('Preencha todos os campos com valores válidos (o Saldo final pode ser 0, mas não negativo).');
+      return;
+    }
+
+    const chosenDate = new Date(`${dateInput.value}T12:00:00`);
+    const wStart = getWeekStart(chosenDate);
+    const wEnd = getWeekEnd(wStart);
+    const rangeLabel = `${wStart.toLocaleDateString('pt-BR')} – ${wEnd.toLocaleDateString('pt-BR')}`;
+
+    const ok = await showAppConfirm(`Adicionar a semana de ${rangeLabel} pra ${p.name}, com Depósito ${formatCurrency(deposit)} e Saque ${formatCurrency(withdrawal)}?`);
+    if (!ok) return;
+
+    // addHistoricalWeek arredonda em centavos (Sub-entrega G).
+    const result = addHistoricalWeek(p, chosenDate, { deposit, withdrawal, wagered, betCount, bonus, resultBetting, balance });
+    if (!result.ok) {
+      await showAppAlert(describeAddHistoricalWeekFailure(result.reason));
+      return;
+    }
+
+    savePlatform(state.currentUid, p);
+    addingHistoricalWeekId = null;
+    openRowId = p.id;
+    refreshRow(p.id);
+    renderFinanceList();
+  });
+
+  const backBtn = document.createElement('button');
+  backBtn.type = 'button';
+  backBtn.className = 'bet-manage-btn';
+  backBtn.textContent = '← Voltar';
+  backBtn.addEventListener('click', () => {
+    renderHistoricalWeekModeChoice(p, wrap);
+  });
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'btn-cancel-modal';
+  cancelBtn.textContent = 'Cancelar';
+  cancelBtn.addEventListener('click', () => {
+    addingHistoricalWeekId = null;
+    refreshRow(p.id);
+  });
+
+  actions.appendChild(saveBtn);
+  actions.appendChild(backBtn);
+  actions.appendChild(cancelBtn);
+  wrap.appendChild(actions);
+}
+
+function buildSpreadsheetHistoricalWeekControls(p, wrap) {
+  wrap.innerHTML = '';
+
+  const note = document.createElement('p');
+  note.className = 'finance-close-week-note';
+  note.textContent = 'Copie da planilha o bloco que contém os nomes das plataformas e as linhas Deposit, Withdrawal, Bonus, Amount wagered, N° Betting e Result Betting. Inclua também a linha Balance (Saldo) pra gravar o saldo final da semana. Pode colar várias plataformas de uma vez.';
+  wrap.appendChild(note);
+
+  const dateRow = document.createElement('div');
+  dateRow.className = 'finance-entry-form';
+  const dateInput = document.createElement('input');
+  dateInput.type = 'date';
+  dateInput.setAttribute('aria-label', 'Data dentro da semana antiga');
+  dateRow.appendChild(dateInput);
+  wrap.appendChild(dateRow);
+
+  const pasteInput = document.createElement('textarea');
+  pasteInput.className = 'finance-spreadsheet-paste';
+  pasteInput.rows = 10;
+  pasteInput.placeholder = 'Cole aqui (Ctrl+V) os dados copiados da planilha...';
+  pasteInput.setAttribute('aria-label', 'Dados da planilha');
+  wrap.appendChild(pasteInput);
+
+  const preview = document.createElement('div');
+  preview.className = 'finance-spreadsheet-preview';
+  wrap.appendChild(preview);
+
+  const analyzeBtn = document.createElement('button');
+  analyzeBtn.type = 'button';
+  analyzeBtn.className = 'bet-manage-btn';
+  analyzeBtn.textContent = 'Analisar dados';
+  wrap.appendChild(analyzeBtn);
+
+  const actions = document.createElement('div');
+  actions.className = 'reset-modal-buttons';
+
+  const importBtn = document.createElement('button');
+  importBtn.type = 'button';
+  importBtn.className = 'btn-confirm';
+  importBtn.textContent = 'Importar semanas';
+  importBtn.disabled = true;
+
+  const backBtn = document.createElement('button');
+  backBtn.type = 'button';
+  backBtn.className = 'bet-manage-btn';
+  backBtn.textContent = '← Voltar';
+  backBtn.addEventListener('click', () => {
+    renderHistoricalWeekModeChoice(p, wrap);
+  });
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'btn-cancel-modal';
+  cancelBtn.textContent = 'Cancelar';
+  cancelBtn.addEventListener('click', () => {
+    addingHistoricalWeekId = null;
+    refreshRow(p.id);
+  });
+
+  actions.appendChild(importBtn);
+  actions.appendChild(backBtn);
+  actions.appendChild(cancelBtn);
+  wrap.appendChild(actions);
+
+  let parsedResult = null;
+
+  function renderPreview(parsed) {
+    preview.innerHTML = '';
+
+    if (parsed.errors.length) {
+      const error = document.createElement('div');
+      error.className = 'finance-close-week-note';
+      error.textContent = parsed.errors.join(' ');
+      preview.appendChild(error);
+      importBtn.disabled = true;
+      return;
+    }
+
+    const title = document.createElement('p');
+    title.className = 'finance-close-week-note';
+    title.textContent = `Plataformas reconhecidas: ${parsed.platforms.length}. As linhas brutas e o Saldo (se vier na planilha) serão importados; Diferença e R.B. + Bônus são calculados pelo sistema.`;
+    preview.appendChild(title);
+
+    const list = document.createElement('div');
+    list.className = 'finance-spreadsheet-preview-list';
+
+    parsed.platforms.forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'finance-stat';
+
+      const label = document.createElement('span');
+      label.className = 'finance-stat-label';
+      label.textContent = item.platformName;
+
+      const values = document.createElement('span');
+      values.className = 'finance-stat-value';
+
+      if (item.valid) {
+        const f = item.fields;
+        values.textContent = `✓ Dep. ${formatImportedNumber(f.deposit)} | Saque ${formatImportedNumber(f.withdrawal)} | Apostado ${formatImportedNumber(f.wagered)} | ${formatImportedNumber(f.betCount)} apostas | Bônus ${formatImportedNumber(f.bonus)} | R.B. ${formatImportedNumber(f.resultBetting)}${f.balance !== undefined ? ` | Saldo ${formatImportedNumber(f.balance)}` : ' | Saldo (não informado → 0)'}`;
+      } else {
+        const missing = item.missing.map(formatImportedFieldName);
+        const invalid = item.invalid.map(x => `${formatImportedFieldName(x.field)} (${x.raw})`);
+        const problems = [];
+        if (missing.length) problems.push(`faltando: ${missing.join(', ')}`);
+        if (invalid.length) problems.push(`inválido: ${invalid.join(', ')}`);
+        values.textContent = `⚠ ${problems.join(' | ')}`;
+      }
+
+      row.appendChild(label);
+      row.appendChild(values);
+      list.appendChild(row);
+    });
+
+    preview.appendChild(list);
+
+    if (parsed.warnings.length) {
+      const warning = document.createElement('p');
+      warning.className = 'finance-close-week-note';
+      warning.textContent = parsed.warnings.join(' ');
+      preview.appendChild(warning);
+    }
+
+    importBtn.disabled = !parsed.platforms.some(item => item.valid) || !dateInput.value;
+  }
+
+  function analyze() {
+    parsedResult = parseFinanceSpreadsheet(
+      pasteInput.value,
+      state.platforms.map(item => item.name)
+    );
+    renderPreview(parsedResult);
+  }
+
+  analyzeBtn.addEventListener('click', analyze);
+
+  dateInput.addEventListener('change', () => {
+    if (parsedResult) renderPreview(parsedResult);
+  });
+
+  pasteInput.addEventListener('paste', () => {
+    setTimeout(analyze, 0);
+  });
+
+  importBtn.addEventListener('click', async () => {
+    if (!dateInput.value) {
+      await showAppAlert('Escolha uma data dentro da semana.');
+      return;
+    }
+
+    if (!parsedResult) analyze();
+    if (!parsedResult || !parsedResult.platforms.some(item => item.valid)) {
+      await showAppAlert('Não há nenhuma plataforma válida pronta para importar.');
+      return;
+    }
+
+    const chosenDate = new Date(`${dateInput.value}T12:00:00`);
+    const wStart = getWeekStart(chosenDate);
+    const wEnd = getWeekEnd(wStart);
+    const rangeLabel = `${wStart.toLocaleDateString('pt-BR')} – ${wEnd.toLocaleDateString('pt-BR')}`;
+
+    const platformMap = new Map(state.platforms.map(item => [item.name.toLowerCase(), item]));
+    const candidates = parsedResult.platforms.filter(item => item.valid);
+    const unavailable = [];
+    const duplicate = [];
+    const ready = [];
+
+    candidates.forEach(item => {
+      const platform = platformMap.get(item.platformName.toLowerCase());
+      if (!platform) {
+        unavailable.push(item.platformName);
+        return;
+      }
+      const alreadyExists = (platform.financeWeeks || []).some(w => w.weekStart === toLocalDateString(wStart));
+      if (alreadyExists) {
+        duplicate.push(item.platformName);
+        return;
+      }
+      ready.push({ item, platform });
+    });
+
+    if (ready.length === 0) {
+      const details = [];
+      if (duplicate.length) details.push(`já cadastradas: ${duplicate.join(', ')}`);
+      if (unavailable.length) details.push(`não encontradas: ${unavailable.join(', ')}`);
+      await showAppAlert(`Nenhuma plataforma está pronta para importar a semana de ${rangeLabel}. ${details.join(' | ')}`);
+      return;
+    }
+
+    const previewText = ready.map(({ item }) => item.platformName).join(', ');
+    const skipped = [];
+    if (duplicate.length) skipped.push(`já cadastradas: ${duplicate.join(', ')}`);
+    if (unavailable.length) skipped.push(`não encontradas: ${unavailable.join(', ')}`);
+    const skippedText = skipped.length ? ` ${skipped.join(' | ')}.` : '';
+
+    const ok = await showAppConfirm(
+      `Importar a semana de ${rangeLabel} para ${ready.length} plataforma(s): ${previewText}?${skippedText}`
+    );
+    if (!ok) return;
+
+    const imported = [];
+    const failed = [];
+
+    for (const { item, platform } of ready) {
+      try {
+        const result = addHistoricalWeek(platform, chosenDate, item.fields);
+        if (!result.ok) {
+          failed.push(`${platform.name} (${shortAddHistoricalWeekFailureReason(result.reason)})`);
+          continue;
+        }
+        savePlatform(state.currentUid, platform);
+        imported.push(platform.name);
+      } catch (error) {
+        console.error('Erro ao importar semana da planilha:', error);
+        failed.push(`${platform.name} (erro inesperado ao salvar — tente novamente)`);
+      }
+    }
+
+    addingHistoricalWeekId = null;
+    ready.forEach(({ platform }) => refreshRow(platform.id));
+    refreshRow(p.id);
+    renderFinanceList();
+
+    const messageParts = [];
+    if (imported.length) messageParts.push(`Importadas: ${imported.join(', ')}.`);
+    if (failed.length) messageParts.push(`Falharam: ${failed.join(', ')}.`);
+    if (duplicate.length) messageParts.push(`Ignoradas por duplicidade: ${duplicate.join(', ')}.`);
+    if (unavailable.length) messageParts.push(`Não encontradas no sistema: ${unavailable.join(', ')}.`);
+    await showAppAlert(messageParts.join(' '));
+  });
+}
+
+function buildWeekCardReadOnly(p, w, isFirst) {
+  const card = document.createElement('div');
+  card.className = 'finance-week-card';
+  const key = `${p.id}::${w.weekStart}`;
+  const isExpanded = isWeekExpanded(key, isFirst);
+  if (isFirst) card.dataset.latestWeek = 'true';
+
+  const header = document.createElement('div');
+  header.className = 'finance-week-card-header';
+
+  const rangeSpan = document.createElement('span');
+  rangeSpan.textContent = `${formatDatePt(w.weekStart)} – ${formatDatePt(w.weekEnd)}`;
+
+  const btnGroup = document.createElement('div');
+  btnGroup.className = 'finance-week-card-actions';
+
+  const toggleBtn = document.createElement('button');
+  toggleBtn.type = 'button';
+  toggleBtn.className = 'bet-manage-btn';
+  toggleBtn.textContent = isExpanded ? '−' : '+';
+  toggleBtn.setAttribute('aria-label', isExpanded ? 'Recolher semana' : 'Expandir semana');
+  toggleBtn.addEventListener('click', () => {
+    weekExpandedOverrides.set(key, !isExpanded);
+    openRowId = p.id;
+    refreshRow(p.id);
+  });
+  btnGroup.appendChild(toggleBtn);
+
+  const editBtn = document.createElement('button');
+  editBtn.type = 'button';
+  editBtn.className = 'bet-manage-btn';
+  editBtn.textContent = 'Editar';
+  editBtn.addEventListener('click', () => {
+    editingWeek = { platformId: p.id, weekStart: w.weekStart };
+    openRowId = p.id;
+    refreshRow(p.id);
+  });
+
+  const deleteBtn = document.createElement('button');
+  deleteBtn.type = 'button';
+  deleteBtn.className = 'history-delete-btn';
+  deleteBtn.textContent = 'Excluir';
+  deleteBtn.addEventListener('click', async () => {
+    const ok = await showAppConfirm(`Excluir a semana de ${formatDatePt(w.weekStart)} – ${formatDatePt(w.weekEnd)} de ${p.name}? Essa ação não pode ser desfeita.`);
+    if (!ok) return;
+    deleteClosedWeek(p, w.weekStart);
+    // Semana de backfill também remove o depósito/saque sintético dela.
+    savePlatform(state.currentUid, p, { allowShrink: ['financeWeeks', 'depositLog', 'withdrawals'] });
+    openRowId = p.id;
+    refreshRow(p.id);
+    renderFinanceList();
+  });
+
+  btnGroup.appendChild(editBtn);
+  btnGroup.appendChild(deleteBtn);
+
+  header.appendChild(rangeSpan);
+  header.appendChild(btnGroup);
+  card.appendChild(header);
+
+  if (isExpanded) {
+    const stats = document.createElement('div');
+    stats.className = 'finance-stats-grid';
+    stats.innerHTML = statsGridHtml(w, {
+      balanceLabel: 'Saldo (travado nesta semana)',
+      rolloverValue: w.rolloverAtClose,
+      rolloverLabel: 'Rollover (no momento do fechamento)',
+      // (20) Abatimento lançado nos dias desta semana.
+      abatimentoValue: sumRolloverAdjustments(p, w.weekStart, w.weekEnd),
+      abatimentoLabel: '⬇️ Abatimento da semana',
+      aumentoValue: sumRolloverIncreases(p, w.weekStart, w.weekEnd), // (38)
+      aumentoLabel: '⬆️ Aumento da semana'
+    });
+    card.appendChild(stats);
+  }
+
+  return card;
+}
+
+function buildWeekCardEditing(p, w) {
+  const card = document.createElement('div');
+  card.className = 'finance-week-card finance-week-card-editing';
+
+  const header = document.createElement('div');
+  header.className = 'finance-week-card-header';
+  header.innerHTML = `<span>${formatDatePt(w.weekStart)} – ${formatDatePt(w.weekEnd)}</span>`;
+  card.appendChild(header);
+
+  const note = document.createElement('p');
+  note.className = 'finance-close-week-note';
+  note.textContent = 'Diferença e R.B. + Bônus são recalculados automaticamente ao salvar. O Saldo travado desta semana e o Rollover distribuído (bonusRollover/rolloverAtClose) são fixos e não podem ser editados aqui — se precisar corrigir de verdade, o caminho mais seguro é excluir esta semana e fechar de novo.';
+  card.appendChild(note);
+
+  if (w.rolloverAtClose !== undefined && w.rolloverAtClose !== null) {
+    const rolloverStat = document.createElement('div');
+    rolloverStat.className = 'finance-stats-grid';
+    rolloverStat.innerHTML = statBox('Rollover (no momento do fechamento)', formatCurrency(Math.max(0, Number(w.rolloverAtClose) || 0)), 'positive');
+    card.appendChild(rolloverStat);
+  }
+
+  const row1 = document.createElement('div');
+  row1.className = 'finance-entry-form';
+  const depositInput = numberInput('Depósito', w.deposit);
+  const withdrawalInput = numberInput('Saque', w.withdrawal);
+  row1.appendChild(depositInput);
+  row1.appendChild(withdrawalInput);
+  card.appendChild(row1);
+
+  const row2 = document.createElement('div');
+  row2.className = 'finance-entry-form';
+  const wageredInput = numberInput('Apostado', w.wagered);
+  const betCountInput = numberInput('N° de apostas', w.betCount, '1');
+  row2.appendChild(wageredInput);
+  row2.appendChild(betCountInput);
+  card.appendChild(row2);
+
+  const row3 = document.createElement('div');
+  row3.className = 'finance-entry-form';
+  const bonusInput = numberInput('Bônus', w.bonus);
+  const resultInput = numberInput('Result Betting (R.B.)', w.resultBetting);
+  row3.appendChild(bonusInput);
+  row3.appendChild(resultInput);
+  card.appendChild(row3);
+
+  // Semana de BACKFILL: o Saldo foi digitado pelo usuário, então pode ser
+  // corrigido. Em semana fechada normal continua fixo (retrato do fechamento).
+  let balanceEditInput = null;
+  if (w.backfilled) {
+    const rowBalance = document.createElement('div');
+    rowBalance.className = 'finance-entry-form';
+    balanceEditInput = numberInput('Saldo final da semana', w.balance);
+    balanceEditInput.min = '0';
+    rowBalance.appendChild(balanceEditInput);
+    card.appendChild(rowBalance);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'reset-modal-buttons';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 'btn-confirm';
+  saveBtn.textContent = 'Salvar';
+  saveBtn.addEventListener('click', async () => {
+    const deposit = parseFloat(depositInput.value);
+    const withdrawal = parseFloat(withdrawalInput.value);
+    const wagered = parseFloat(wageredInput.value);
+    const betCount = parseInt(betCountInput.value, 10);
+    const bonus = parseFloat(bonusInput.value);
+    const resultBetting = parseFloat(resultInput.value);
+    const editedBalance = balanceEditInput ? parseFloat(balanceEditInput.value) : undefined;
+
+    if ([deposit, withdrawal, wagered, betCount, bonus, resultBetting].some(v => isNaN(v))
+      || (balanceEditInput && (isNaN(editedBalance) || editedBalance < 0))) {
+      await showAppAlert('Preencha todos os campos com valores válidos.');
+      return;
+    }
+
+    // updateClosedWeek arredonda em centavos (Sub-entrega G).
+    updateClosedWeek(p, w.weekStart, { deposit, withdrawal, wagered, betCount, bonus, resultBetting, balance: editedBalance });
+    savePlatform(state.currentUid, p);
+    editingWeek = null;
+    openRowId = p.id;
+    refreshRow(p.id);
+    renderFinanceList();
+  });
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'btn-cancel-modal';
+  cancelBtn.textContent = 'Cancelar';
+  cancelBtn.addEventListener('click', () => {
+    editingWeek = null;
+    refreshRow(p.id);
+  });
+
+  actions.appendChild(saveBtn);
+  actions.appendChild(cancelBtn);
+  card.appendChild(actions);
+
+  return card;
+}
+
+// (Sub-entrega G) Valor numérico vindo do banco é mostrado já arredondado
+// (centavos, ou inteiro quando step = '1') — antes um R.B. somado podia
+// aparecer com ~11 casas decimais no campo de edição. String vazia
+// continua vazia (campos que nascem em branco).
+function formatInputValue(value, step) {
+  if (value === '' || value === null || value === undefined) return '';
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '';
+  if (step === '1') return String(Math.round(n));
+  return String(r2(n));
+}
+
+function numberInput(placeholder, value, step = '0.01') {
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.step = step;
+  input.placeholder = placeholder;
+  input.value = formatInputValue(value, step);
+  input.setAttribute('aria-label', placeholder);
+  return input;
+}
+
+// ============================================================
+// BLOCO P — MODAL "ÚLTIMAS APOSTAS" (só semana em aberto)
+// ============================================================
+// Mesmo padrão visual do modal de Histórico de Depósitos (Edição):
+// item + valor + Editar/Excluir, botão Voltar/Fechar no rodapé. Reusa
+// classes já globais (modals.css/manage-panel.css/panel.css) — nenhuma
+// CSS nova precisa ser criada.
+
+function formatBetEntryDateTime(isoStr) {
+  return new Date(isoStr).toLocaleString('pt-BR', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
+}
+
+// Só as apostas da semana ATUAL EM ABERTO — semanas fechadas continuam
+// sendo corrigidas pelo modal de edição já existente em cada card
+// (buildWeekCardEditing).
+function getCurrentWeekBetEntries(platform, refDate = new Date()) {
+  const weekStart = getWeekStart(refDate);
+  const weekEnd = getWeekEnd(weekStart);
+  return (platform.betEntries || []).filter(e => {
+    const d = new Date(e.date);
+    return d >= weekStart && d <= weekEnd;
+  });
+}
+
+// (Sub-entrega 9) Seletor do jogo na edição de um lançamento.
+function buildGameSelect(entry) {
+  const select = document.createElement('select');
+  select.className = 'finance-game-select';
+  select.setAttribute('aria-label', 'Jogo deste lançamento');
+  const fill = () => {
+    select.replaceChildren();
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = 'Sem jogo';
+    select.appendChild(none);
+    if (!isGameCatalogLoaded(state.currentUid)) {
+      const keep = document.createElement('option');
+      keep.value = '__keep';
+      keep.textContent = entry.gameName ? `${entry.gameName} (biblioteca carregando…)` : 'Biblioteca carregando…';
+      select.appendChild(keep);
+      select.value = '__keep';
+      return;
+    }
+    searchGames(getGames(), '').forEach(g => {
+      const o = document.createElement('option');
+      o.value = g.id;
+      o.textContent = `${g.name}${g.provider ? ` · ${g.provider}` : ''}`;
+      select.appendChild(o);
+    });
+    if (entry.gameId && !getGames().some(g => g.id === entry.gameId)) {
+      const gone = document.createElement('option');
+      gone.value = '__keep';
+      gone.textContent = `${entry.gameName || 'Jogo'} (excluído da biblioteca)`;
+      select.appendChild(gone);
+      select.value = '__keep';
+      return;
+    }
+    select.value = entry.gameId || '';
+  };
+  fill();
+  if (!isGameCatalogLoaded(state.currentUid)) {
+    loadGameCatalog(state.currentUid).then(fill).catch(err => {
+      console.warn('Últimas apostas: biblioteca de jogos não carregada.', err);
+      const keep = select.querySelector('option[value="__keep"]');
+      if (keep) keep.textContent = entry.gameName ? `${entry.gameName} (mantém)` : 'Biblioteca indisponível (mantém)';
+    });
+  }
+  return select;
+}
+
+function showBetHistoryModal(platform) {
+  currentBetHistoryPlatform = platform;
+  editingBetEntry = null;
+  renderBetHistoryList();
+  if (betHistoryModal) betHistoryModal.style.display = 'flex';
+}
+
+function closeBetHistoryModal() {
+  if (betHistoryModal) betHistoryModal.style.display = 'none';
+  currentBetHistoryPlatform = null;
+  editingBetEntry = null;
+}
+
+function renderBetHistoryList() {
+  if (!betHistoryList || !currentBetHistoryPlatform) return;
+  const platform = currentBetHistoryPlatform;
+
+  const live = computeCurrentWeekLive(platform);
+  if (betHistoryTitle) {
+    betHistoryTitle.textContent = `Últimas apostas — ${platform.name} (${live.weekStart.toLocaleDateString('pt-BR')} – ${live.weekEnd.toLocaleDateString('pt-BR')})`;
+  }
+
+  betHistoryList.innerHTML = '';
+
+  const entries = [...getCurrentWeekBetEntries(platform)].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  if (entries.length === 0) {
+    betHistoryList.innerHTML = '<div class="history-empty">Nenhuma aposta registrada nesta semana ainda.</div>';
+    return;
+  }
+
+  entries.forEach(entry => {
+    const item = document.createElement('div');
+    item.className = 'history-item';
+
+    const isEditingThis = editingBetEntry === entry;
+
+    if (isEditingThis) {
+      const editWrap = document.createElement('div');
+      editWrap.className = 'platform-form-fields';
+      editWrap.style.flex = '1';
+
+      const dateSpan = document.createElement('span');
+      dateSpan.className = 'history-date';
+      dateSpan.textContent = formatBetEntryDateTime(entry.date);
+      editWrap.appendChild(dateSpan);
+
+      const wageredInput = numberInput('Valor apostado', entry.wagered);
+      const betCountInput = numberInput('N° de apostas', entry.betCount, '1');
+      const rbInput = numberInput('R.B. da aposta', entry.resultBetting);
+      editWrap.appendChild(wageredInput);
+      editWrap.appendChild(betCountInput);
+      editWrap.appendChild(rbInput);
+      // (Sub-entrega 9) Jogo do lançamento (biblioteca).
+      const gameSelect = buildGameSelect(entry);
+      editWrap.appendChild(gameSelect);
+      item.appendChild(editWrap);
+
+      const saveBtn = document.createElement('button');
+      saveBtn.className = 'history-edit-btn';
+      saveBtn.textContent = 'Salvar';
+      saveBtn.addEventListener('click', async () => {
+        const wageredRaw = parseFloat(wageredInput.value);
+        const betCount = parseInt(betCountInput.value, 10);
+        const rbRaw = parseFloat(rbInput.value);
+        if (isNaN(wageredRaw) || r2(wageredRaw) <= 0 || isNaN(betCount) || betCount <= 0 || isNaN(rbRaw)) {
+          await showAppAlert('Digite valor apostado, n° de apostas e R.B. válidos.');
+          return;
+        }
+        entry.wagered = r2(wageredRaw);
+        entry.betCount = betCount;
+        entry.resultBetting = r2(rbRaw);
+        // (9) jogo: '' = sem jogo; '__keep' = mantém (biblioteca indisponível).
+        if (gameSelect.value !== '__keep') {
+          const g = gameSelect.value ? getGames().find(x => x.id === gameSelect.value) : null;
+          setEntryGame(entry, g || null);
+        }
+        savePlatform(state.currentUid, platform);
+        editingBetEntry = null;
+        renderBetHistoryList();
+        // Muda o Saldo (via R.B.) — se o modo ativo for Maior/Menor
+        // Saldo, a posição da linha pode mudar também.
+        refreshRow(platform.id);
+        renderFinanceList();
+      });
+      item.appendChild(saveBtn);
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'history-cancel-btn';
+      cancelBtn.textContent = 'Cancelar';
+      cancelBtn.addEventListener('click', () => {
+        editingBetEntry = null;
+        renderBetHistoryList();
+      });
+      item.appendChild(cancelBtn);
+    } else {
+      const itemContent = document.createElement('div');
+      itemContent.className = 'history-item-content';
+
+      const dateSpan = document.createElement('span');
+      dateSpan.className = 'history-date';
+      dateSpan.textContent = formatBetEntryDateTime(entry.date);
+      itemContent.appendChild(dateSpan);
+
+      const valueSpan = document.createElement('span');
+      valueSpan.className = 'history-value';
+      valueSpan.textContent = `${entry.gameName ? `${entry.gameName} · ` : ''}Apostado ${formatCurrency(entry.wagered)} · ${entry.betCount} aposta(s) · R.B. ${formatCurrency(entry.resultBetting)}`;
+      itemContent.appendChild(valueSpan);
+
+      item.appendChild(itemContent);
+
+      const editBtn = document.createElement('button');
+      editBtn.className = 'history-edit-btn';
+      editBtn.textContent = 'Editar';
+      editBtn.addEventListener('click', () => {
+        editingBetEntry = entry;
+        renderBetHistoryList();
+      });
+      item.appendChild(editBtn);
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'history-delete-btn';
+      deleteBtn.textContent = 'Excluir';
+      deleteBtn.addEventListener('click', async () => {
+        const ok = await showAppConfirm(`Excluir esta aposta (${formatCurrency(entry.wagered)}, R.B. ${formatCurrency(entry.resultBetting)})?`);
+        if (!ok) return;
+        const idx = platform.betEntries.indexOf(entry);
+        if (idx !== -1) platform.betEntries.splice(idx, 1);
+        savePlatform(state.currentUid, platform, { allowShrink: ['betEntries'] });
+        renderBetHistoryList();
+        refreshRow(platform.id);
+        renderFinanceList();
+      });
+      item.appendChild(deleteBtn);
+    }
+
+    betHistoryList.appendChild(item);
+  });
+}
+
+// ============================================================
+// MODAL "EDITAR SAQUES" (só semana em aberto)
+// ============================================================
+// Mesmo padrão do modal "Últimas apostas". Só o VALOR é editável (data/
+// hora nunca mudam). Semanas já fechadas continuam sendo corrigidas pelo
+// card de edição de cada semana (buildWeekCardEditing). Este botão só é
+// montado enquanto a semana atual está aberta (ver buildCurrentWeekSection).
+
+function getCurrentWeekWithdrawals(platform, refDate = new Date()) {
+  const weekStart = getWeekStart(refDate);
+  const weekEnd = getWeekEnd(weekStart);
+  return (platform.withdrawals || []).filter(e => {
+    const d = new Date(e.date);
+    return d >= weekStart && d <= weekEnd;
+  });
+}
+
+function showWithdrawalsModal(platform) {
+  currentWithdrawalsPlatform = platform;
+  editingWithdrawal = null;
+  renderWithdrawalsList();
+  if (withdrawalsModal) withdrawalsModal.style.display = 'flex';
+}
+
+function closeWithdrawalsModal() {
+  if (withdrawalsModal) withdrawalsModal.style.display = 'none';
+  currentWithdrawalsPlatform = null;
+  editingWithdrawal = null;
+}
+
+function renderWithdrawalsList() {
+  if (!withdrawalsList || !currentWithdrawalsPlatform) return;
+  const platform = currentWithdrawalsPlatform;
+
+  const live = computeCurrentWeekLive(platform);
+  if (withdrawalsTitle) {
+    withdrawalsTitle.textContent = `Saques — ${platform.name} (${live.weekStart.toLocaleDateString('pt-BR')} – ${live.weekEnd.toLocaleDateString('pt-BR')})`;
+  }
+
+  withdrawalsList.innerHTML = '';
+
+  const entries = [...getCurrentWeekWithdrawals(platform)].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  if (entries.length === 0) {
+    withdrawalsList.innerHTML = '<div class="history-empty">Nenhum saque registrado nesta semana ainda.</div>';
+    return;
+  }
+
+  entries.forEach(entry => {
+    const item = document.createElement('div');
+    item.className = 'history-item';
+
+    if (editingWithdrawal === entry) {
+      const itemContent = document.createElement('div');
+      itemContent.className = 'history-item-content';
+
+      const dateSpan = document.createElement('span');
+      dateSpan.className = 'history-date';
+      dateSpan.textContent = formatBetEntryDateTime(entry.date);
+      itemContent.appendChild(dateSpan);
+
+      const valueInput = document.createElement('input');
+      valueInput.type = 'number';
+      valueInput.min = '0';
+      valueInput.step = '0.01';
+      valueInput.value = formatInputValue(entry.value, '0.01');
+      valueInput.className = 'history-value-input';
+      valueInput.setAttribute('aria-label', 'Valor do saque');
+      itemContent.appendChild(valueInput);
+      item.appendChild(itemContent);
+
+      const saveBtn = document.createElement('button');
+      saveBtn.className = 'history-edit-btn';
+      saveBtn.textContent = 'Salvar';
+      saveBtn.addEventListener('click', async () => {
+        const raw = parseFloat(valueInput.value);
+        if (isNaN(raw) || r2(raw) <= 0) {
+          await showAppAlert('Digite um valor válido');
+          return;
+        }
+        entry.value = r2(raw);
+        savePlatform(state.currentUid, platform);
+        editingWithdrawal = null;
+        renderWithdrawalsList();
+        refreshRow(platform.id);
+        renderFinanceList();
+      });
+      item.appendChild(saveBtn);
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'history-cancel-btn';
+      cancelBtn.textContent = 'Cancelar';
+      cancelBtn.addEventListener('click', () => {
+        editingWithdrawal = null;
+        renderWithdrawalsList();
+      });
+      item.appendChild(cancelBtn);
+    } else {
+      const itemContent = document.createElement('div');
+      itemContent.className = 'history-item-content';
+
+      const dateSpan = document.createElement('span');
+      dateSpan.className = 'history-date';
+      dateSpan.textContent = formatBetEntryDateTime(entry.date);
+      itemContent.appendChild(dateSpan);
+
+      const valueSpan = document.createElement('span');
+      valueSpan.className = 'history-value';
+      valueSpan.textContent = formatCurrency(entry.value);
+      itemContent.appendChild(valueSpan);
+      item.appendChild(itemContent);
+
+      const editBtn = document.createElement('button');
+      editBtn.className = 'history-edit-btn';
+      editBtn.textContent = 'Editar';
+      editBtn.addEventListener('click', () => {
+        editingWithdrawal = entry;
+        renderWithdrawalsList();
+      });
+      item.appendChild(editBtn);
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.className = 'history-delete-btn';
+      deleteBtn.textContent = 'Excluir';
+      deleteBtn.addEventListener('click', async () => {
+        const ok = await showAppConfirm(`Excluir este saque de ${formatCurrency(entry.value)}? Isso também remove o valor do Saldo.`);
+        if (!ok) return;
+        const idx = platform.withdrawals.indexOf(entry);
+        if (idx !== -1) platform.withdrawals.splice(idx, 1);
+        savePlatform(state.currentUid, platform, { allowShrink: ['withdrawals'] });
+        renderWithdrawalsList();
+        refreshRow(platform.id);
+        renderFinanceList();
+      });
+      item.appendChild(deleteBtn);
+    }
+
+    withdrawalsList.appendChild(item);
+  });
+}
+
+// Resolve o modal "Editar saques" — chamada UMA VEZ por mount() da view,
+// DEPOIS que a view já criou e anexou o modal ao document.body.
+export function initWithdrawalsModalListeners() {
+  withdrawalsModal = document.getElementById('withdrawalsModal');
+  withdrawalsTitle = document.getElementById('withdrawalsTitle');
+  withdrawalsList = document.getElementById('withdrawalsList');
+  withdrawalsCloseBtn = document.getElementById('withdrawalsCloseBtn');
+
+  if (withdrawalsCloseBtn) withdrawalsCloseBtn.addEventListener('click', closeWithdrawalsModal);
+  if (withdrawalsModal) {
+    withdrawalsModal.addEventListener('click', (e) => {
+      if (e.target === withdrawalsModal) closeWithdrawalsModal();
+    });
+  }
+}
+
+// Resolve o modal "Últimas apostas" e liga seus listeners fixos —
+// chamada UMA VEZ por mount() da view, DEPOIS que a view já criou e
+// anexou o modal ao document.body (mesmo padrão "Opção A" já usado
+// pelos modais de Edição).
+export function initBetHistoryModalListeners() {
+  betHistoryModal = document.getElementById('betHistoryModal');
+  betHistoryTitle = document.getElementById('betHistoryTitle');
+  betHistoryList = document.getElementById('betHistoryList');
+  betHistoryCloseBtn = document.getElementById('betHistoryCloseBtn');
+
+  if (betHistoryCloseBtn) {
+    betHistoryCloseBtn.addEventListener('click', closeBetHistoryModal);
+  }
+  if (betHistoryModal) {
+    betHistoryModal.addEventListener('click', (e) => {
+      if (e.target === betHistoryModal) closeBetHistoryModal();
+    });
+  }
+}
+
+// ---------- CONTROLE DO TOPO (busca + ordenar) ----------
+
+// Resolve as referências de DOM (K12) + liga busca e o menu "Ordenar".
+// Chamada UMA VEZ pelo mount() da view, depois que o HTML do painel já
+// foi escrito no container. Retorna o cleanup de initSortMenu() (K1) —
+// quem chama DEVE guardar e executar essa função no próprio unmount().
+export function initFinanceControls() {
+  financeListEl = document.getElementById('financeList');
+  financeSearchEl = document.getElementById('financeSearch');
+  const financeReorderBtn = document.getElementById('financeReorderBtn');
+  const financeBadgeVisibilityBtn = document.getElementById('financeBadgeVisibilityBtn');
+  const financeBadgeVisibilityDropdown = document.getElementById('financeBadgeVisibilityDropdown');
+  const badgeVisibilityBalanceCheckbox = document.getElementById('financeBadgeVisibilityBalance');
+  const badgeVisibilityRolloverCheckbox = document.getElementById('financeBadgeVisibilityRollover');
+
+  if (financeSearchEl) {
+    let searchFrame = null;
+    financeSearchEl.addEventListener('input', (e) => {
+      currentSearch = e.target.value;
+      if (searchFrame) cancelAnimationFrame(searchFrame);
+      searchFrame = requestAnimationFrame(() => {
+        searchFrame = null;
+        renderFinanceList();
+      });
+    });
+  }
+
+  // Item 22/25b — mesmo "Bug 1" já corrigido na Edição: os 3 controles
+  // (⚙️/👁/⇅) não podem ficar abertos ao mesmo tempo, nem o modo
+  // Reordenar ativo enquanto um dropdown também está aberto.
+  function closeSortDropdownUI() {
+    const dd = document.getElementById('financeSortDropdown');
+    const btn = document.getElementById('financeSortBtn');
+    if (dd) dd.classList.remove('open');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+  function closeBadgeDropdownUI() {
+    if (financeBadgeVisibilityDropdown) financeBadgeVisibilityDropdown.classList.remove('open');
+    if (financeBadgeVisibilityBtn) financeBadgeVisibilityBtn.setAttribute('aria-expanded', 'false');
+  }
+  function deactivateReorderModeUI() {
+    if (!reorderModeActive) return;
+    reorderModeActive = false;
+    if (financeReorderBtn) {
+      financeReorderBtn.classList.remove('active');
+      financeReorderBtn.textContent = '⚙️ Reordenar';
+    }
+    refreshAllRows();
+  }
+
+  if (financeReorderBtn) {
+    financeReorderBtn.disabled = currentMode !== null;
+    financeReorderBtn.addEventListener('click', () => {
+      const turningOn = !reorderModeActive;
+      if (turningOn) {
+        closeSortDropdownUI();
+        closeBadgeDropdownUI();
+      }
+      reorderModeActive = !reorderModeActive;
+      financeReorderBtn.classList.toggle('active', reorderModeActive);
+      financeReorderBtn.textContent = reorderModeActive ? '✓ Concluir reordenação' : '⚙️ Reordenar';
+      refreshAllRows();
+    });
+  }
+
+  let closeBadgeDropdown = () => {};
+  if (financeBadgeVisibilityBtn && financeBadgeVisibilityDropdown) {
+    const visibility = getCachedPreferences().badgeVisibility;
+    if (badgeVisibilityBalanceCheckbox) badgeVisibilityBalanceCheckbox.checked = visibility.financeBalanceBadge;
+    if (badgeVisibilityRolloverCheckbox) badgeVisibilityRolloverCheckbox.checked = visibility.financeRolloverBadge;
+
+    function toggleDropdown() {
+      const willOpen = !financeBadgeVisibilityDropdown.classList.contains('open');
+      if (willOpen) {
+        closeSortDropdownUI();
+        deactivateReorderModeUI();
+      }
+      financeBadgeVisibilityDropdown.classList.toggle('open');
+      financeBadgeVisibilityBtn.setAttribute(
+        'aria-expanded',
+        financeBadgeVisibilityDropdown.classList.contains('open') ? 'true' : 'false'
+      );
+    }
+    function onDocumentClick(e) {
+      if (!financeBadgeVisibilityDropdown.contains(e.target) && e.target !== financeBadgeVisibilityBtn) {
+        financeBadgeVisibilityDropdown.classList.remove('open');
+        financeBadgeVisibilityBtn.setAttribute('aria-expanded', 'false');
+      }
+    }
+    function onVisibilityChange() {
+      saveBadgeVisibility(state.currentUid, {
+        financeBalanceBadge: badgeVisibilityBalanceCheckbox ? badgeVisibilityBalanceCheckbox.checked : true,
+        financeRolloverBadge: badgeVisibilityRolloverCheckbox ? badgeVisibilityRolloverCheckbox.checked : true
+      });
+      refreshAllRows();
+    }
+
+    financeBadgeVisibilityBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleDropdown();
+    });
+    document.addEventListener('click', onDocumentClick);
+    if (badgeVisibilityBalanceCheckbox) badgeVisibilityBalanceCheckbox.addEventListener('change', onVisibilityChange);
+    if (badgeVisibilityRolloverCheckbox) badgeVisibilityRolloverCheckbox.addEventListener('change', onVisibilityChange);
+
+    closeBadgeDropdown = () => document.removeEventListener('click', onDocumentClick);
+  }
+
+  const financeSortBtnEl = document.getElementById('financeSortBtn');
+  if (financeSortBtnEl) {
+    financeSortBtnEl.addEventListener('click', () => {
+      closeBadgeDropdownUI();
+      deactivateReorderModeUI();
+    });
+  }
+
+  const sortMenuCleanup = initSortMenu({
+    buttonId: 'financeSortBtn',
+    dropdownId: 'financeSortDropdown',
+    options: FINANCE_SORT_MENU_OPTIONS,
+    onChange: (mode) => {
+      currentMode = mode;
+      if (mode !== null) {
+        reorderModeActive = false;
+        if (financeReorderBtn) {
+          financeReorderBtn.disabled = true;
+          financeReorderBtn.classList.remove('active');
+          financeReorderBtn.textContent = '⚙️ Reordenar';
+        }
+      } else if (financeReorderBtn) {
+        financeReorderBtn.disabled = false;
+      }
+      renderFinanceList();
+    }
+  });
+
+  return function combinedCleanup() {
+    sortMenuCleanup();
+    closeBadgeDropdown();
+  };
+}

@@ -1,0 +1,1814 @@
+// === PÁGINA 4 (EDIÇÃO) — lista fundida + modais ===
+// Cada linha do acordeão junta o que antes eram DUAS listas separadas: a
+// operacional (depósito, histórico, fim, reinício, apostas) e a de
+// cadastro (nome, nível, grupo). Abrir uma plataforma mostra tudo dela
+// num só lugar. Os modais de Histórico/Reinício/Apostas continuam sendo
+// popups de verdade — só o "Gerenciar Plataformas" deixou de ser modal,
+// porque agora ELE é a página inteira.
+//
+// Esta página não tem calendário nem painel VIP, então, diferente do
+// antigo ui-platform-panel.js, aqui NÃO chamamos updateCalendarEvents()
+// nem renderVipPanel() — cada página só atualiza o que é dela. Ao navegar
+// para outra página, os dados são recarregados do Firestore do zero.
+//
+// === MIGRAÇÃO PARA SPA (Etapa 5, sub-entrega 1) — cuidado central ===
+// No Sistema 1, `manageListEl`, `platformSearchEl` e os 3 modais
+// (`historyModal`, `resetModal`, `betModal`) eram capturados como
+// `const` no TOPO do arquivo, resolvidos uma única vez quando o
+// navegador carregava edicao.html do zero. Num módulo ES importado uma
+// única vez pela vida inteira da SPA, isso quebraria: essas constantes
+// seriam resolvidas ANTES do router injetar o HTML da view no
+// `#appShell`, e ficariam `null` para sempre.
+//
+// Solução: as referências de DOM viram variáveis de módulo (`let`),
+// atribuídas dentro de funções chamadas pelo mount() da view
+// (view-edicao.js), NUNCA no escopo de carga do arquivo:
+//   - initManageControls(): resolve `manageListEl`/`platformSearchEl`
+//     (painel principal, já presentes no HTML que a view escreve no
+//     container) e liga busca + "Ordenar" + linha de adicionar.
+//   - initModalListeners(): resolve os 3 modais e seus filhos — só pode
+//     ser chamada DEPOIS que a view cria e anexa os 3 modais ao
+//     document.body (eles não vivem no HTML estático de nenhuma página
+//     global, são criados dinamicamente por view-edicao.js, mesmo
+//     espírito do footer/legenda do Calendário — Opção A).
+//
+// Os listeners fixos dos modais (fechar, cancelar, confirmar reinício,
+// etc.), que no Sistema 1 viviam soltos no escopo do módulo e eram
+// registrados uma única vez, agora entram dentro de initModalListeners()
+// — chamada uma vez por mount(). Como os 3 modais são recriados do zero a
+// cada mount() (e removidos do body no unmount()), não há risco de
+// listener duplicado entre visitas à rota.
+//
+// resetManageListCache() foi simplificada para a SPA: como o container
+// inteiro é substituído pelo router a cada troca de rota, o
+// #platformManageList antigo já não existe mais no DOM quando esta
+// função roda — não há nó nenhum pra limpar manualmente. A função agora
+// só zera o estado em memória (cache de linhas `rowElements`,
+// `openRowId`, `expandedDataId`), que é o que realmente precisa ser
+// resetado entre sessões/visitas.
+//
+// "APOSTEI HOJE": a contagem de dias de aposta (usada pro bônus VIP
+// diário) usa getMonthStart (não getCycleStart) — conta sempre a partir
+// do dia 1 do mês, independente de Reinício. Reinício mexe só no ciclo de
+// nível/depósito (lastResetDate); misturar os dois fazia "Apostei hoje"
+// da própria data do Reinício sumir por causa de um bug de fuso (string
+// só-de-data comparada com limite de ciclo local) — ver changelog do
+// Sistema 1.
+//
+// "DEPÓSITO: X DIAS": badge no cabeçalho que mostra há quantos dias foi
+// feito o último depósito (dia do depósito = Dia 1), baseado em
+// depositLog (histórico PERMANENTE — não reseta com Fim/Reinício, ao
+// contrário do badge "Dia X" que usa lastResetDate). Só aparece quando a
+// contagem está entre 7 e 12 dias — funciona como um aviso de janela
+// pra reforçar depósito, não como um contador permanente na tela (ver
+// getDaysSinceLastDeposit em cycle-logic.js).
+//
+// SAVE: cada ação aqui mexe em UMA plataforma, então usa savePlatform
+// (grava só o doc dela, não reescreve as outras 32) — ver nota em
+// platforms-store.js sobre por que isso importa (evita que uma aba com
+// dados desatualizados em memória apague alterações feitas em outra aba).
+//
+// (Sub-entrega D) REMOVER: a plataforma só sai da memória/tela DEPOIS que
+// o banco confirma a exclusão (deletePlatformDoc agora devolve o
+// resultado). Antes ela sumia na hora e, se a exclusão falhasse, voltava
+// no próximo login.
+//
+// === RECONCILIAÇÃO DE DOM (correção de scroll/busca em mobile, herdada
+//      do Sistema 1 sem alteração) ===
+// Um Map (rowElements) guarda o elemento <div> de cada linha já presente
+// na tela, indexado por platform.id. Duas funções substituem o "sempre
+// reconstruir tudo":
+//   - refreshRow(id): reconstrói e troca SÓ a linha daquela plataforma no
+//     lugar dela (replaceWith) — as outras ~40 linhas nunca são tocadas.
+//   - reconcileList(list): usada por renderManageList() quando o CONJUNTO
+//     ou a ORDEM de linhas pode mudar (busca, trocar Ordenar, Fim/
+//     Reinício/Salvar Dados, Nova plataforma, Remover). Remove só quem
+//     saiu do filtro, cria só quem é novo, reordena quem já existe com
+//     appendChild (que MOVE um nó já presente no DOM em vez de recriar —
+//     preserva foco e nunca deixa o container vazio).
+//
+// Ações que mudam dado usado por filtro/ordenação (name, group,
+// lastResetDate, cycleEnded) chamam refreshRow (pra atualizar a própria
+// linha na hora) SEGUIDO de renderManageList() (pra corrigir posição/
+// visibilidade se algum filtro estiver ativo).
+//
+// === PONTO 1 — Ordenar (filtra + ordena), herdado sem alteração ===
+// getVisibleList() usa filterAndSortForManage() (platform-sort.js) — cada
+// modo decide quem aparece E em que ordem ao mesmo tempo.
+//
+// === PONTO 8 — Minimizar "Dados", herdado sem alteração ===
+// A seção "Dados" (nome/nível/tipo) começa recolhida ao abrir uma
+// plataforma — só "Ações" fica sempre visível. expandedDataId guarda qual
+// plataforma tem "Dados" expandida (reseta junto com openRowId sempre que
+// a linha inteira é aberta/fechada).
+//
+// === (Sub-entrega 7a) TIPO DO DEPÓSITO ("codinome") ===
+// "Adicionar" agora abre o mini-contêiner centralizado de deposit-kinds.js
+// (🗓️ Ativação Semanal / 🎁 Ativação Mensal / 🎲 Depósito de Aposta) DEPOIS
+// de validar o valor e ANTES de gravar. Cancelar = nada é gravado. A entrada
+// nasce com `kind` nas duas cópias (deposits + depositLog, mesmo `date`).
+// O Histórico de Depósitos ganhou:
+//   - o tipo de cada depósito (antigos aparecem "Sem tipo");
+//   - botão "Tipo" pra reclassificar (sincroniza deposits + depositLog pela
+//     data, igual à edição de valor — applyDepositKind);
+//   - visão "Todos" (depositLog, histórico permanente), pra classificar
+//     depósitos de ciclos já encerrados. Nessa visão só o TIPO é editável —
+//     valor/exclusão continuam só na visão "Ciclo atual", como sempre.
+// Nenhuma soma muda: Total, Saldo, Rollover e Misterioso ignoram `kind`.
+//
+// === (Sub-entrega 11a) 🧬 CARACTERÍSTICAS ===
+// Nova seção recolhível no fim do acordeão (ui-traits.js): etiquetas +
+// texto livre por plataforma, gravados em platformTraits/{id} — coleção
+// própria. Este arquivo só ganhou a chamada buildTraitsSection(p).
+//
+// === (Sub-entrega 11c) CICLO DO MISTERIOSO ===
+// a) Dados: "Ciclo do Misterioso" — ✅ Tem ciclo (padrão de toda plataforma
+//    antiga) / 🚫 Sem ciclo / ⚠️ Instável. Gravado no "Salvar" dos Dados
+//    (campo misteriosoCycle). Sem ciclo: fora do calendário e do
+//    Misterioso, campo de depósito SEMPRE liberado (mesmo com 🏁 Fim) e o
+//    total sem cor de patamar. O valor do bônus continua seguindo o
+//    template (nada muda sozinho).
+// b) 🏁 Fim e Reinício agora REGISTRAM no histórico (cycleHistory) no
+//    mesmo savePlatform — nada é sobrescrito.
+// c) Botão "📜 Ciclos": histórico, previsão, lançar à mão e reconstruir
+//    pelas fotos diárias (ui-cycle-history.js).
+
+// === (Sub-entrega 15) SEM "APOSTEI HOJE" / "GERENCIAR" ===
+// Os dois botões da linha de aposta e o modal de apostas (#betModal)
+// saíram — vinham da época em que os bônus eram só "fotos". O dia de
+// aposta agora vem só das apostas lançadas no Financeiro; o contador
+// "🎲 X dia(s)" continua. betDays antigos seguem valendo (só leitura) —
+// nenhum dado é apagado e nada do passado muda de valor.
+// O contador virou BADGE do cabeçalho ("🎲 X dia(s)" = dias com aposta no
+// mês, todas as plataformas), ligada/desligada no 👁 Badges (betDaysBadge,
+// user-preferences-store.js).
+
+// === (Sub-entrega 13) 💎 COLETAR BÔNUS ALTO ===
+// "Adicionar" usa pickDepositKindAndBonus: 💎 pede o valor do bônus alto e
+// grava depósito + highBonusLog no mesmo savePlatform. Com a semana atual
+// já fechada, o depósito 💎 com bônus é recusado (nada gravado).
+// Reclassificar no Histórico continua só trocando o tipo.
+
+// === (Sub-entrega 12) "JÁ RECEBEU O BÔNUS VIP DE HOJE?" ===
+// Dados → Salvar: se nível, grupo ou template VIP mudou (ou há troca já
+// agendada pra amanhã), pergunta antes de gravar (ui-vip-change.js). "Já
+// recebi" = a mudança vale a partir de amanhã (getVipChangeDate,
+// cycle-logic.js); "Ainda não" = desde hoje. Troca agendada aparece como
+// aviso ⏳ embaixo do template.
+
+//
+// (Sub-entrega 20) Reinício com data passada: os depósitos feitos desde
+// essa data (depositLog) voltam pro ciclo (deposits) — avisado na tela.
+import { state } from './state.js';
+import { showAppAlert, showAppConfirm, formatCurrency } from './utils.js';
+import { getMonthStart, getCurrentCycleDay, getTotalDepositsSinceCycle, getDaysSinceLastDeposit, colorForLevel, getEffectiveBetDayKeys, recordLevelChange, getCurrentVipTemplateId, getVipChangeDate, getPendingLevelChange, parseResetDate } from './cycle-logic.js';
+import { askVipChangeTiming } from './ui-vip-change.js'; // (Sub-entrega 12)
+import { savePlatform, deletePlatformDoc } from './platforms-store.js';
+import { filterAndSortForManage } from './platform-sort.js';
+import { initSortMenu } from './ui-sort.js';
+import { getCachedPreferences, saveManualOrder, saveBadgeVisibility } from './user-preferences-store.js';
+import { pickDepositKind, pickDepositKindAndBonus, applyDepositKind, getDepositKindId, getDepositKindInfo, CLEAR_KIND } from './deposit-kinds.js';
+import { buildHighBonusEntry } from './bonus-ledger-logic.js'; // (Sub-entrega 13)
+import { isCurrentWeekClosed } from './finance-logic.js'; // (Sub-entrega 13)
+import { buildTraitsSection } from './ui-traits.js'; // (Sub-entrega 11a)
+import { recordCycleEvent, cycleState, CYCLE_STATES } from './cycle-history-logic.js'; // (11c)
+import { openCycleHistory } from './ui-cycle-history.js'; // (11c)
+
+// --- Referências de DOM do painel principal (busca + lista) ---
+// Resolvidas por initManageControls(), chamada pelo mount() da view
+// DEPOIS que o HTML do painel já foi escrito no container.
+let manageListEl = null;
+let platformSearchEl = null;
+let manageReorderBtn = null;
+let manageBadgeVisibilityBtn = null;
+let manageBadgeVisibilityDropdown = null;
+let badgeVisibilityTotalCheckbox = null;
+let badgeVisibilityCycleDayCheckbox = null;
+let badgeVisibilityDepositCheckbox = null;
+let badgeVisibilityBetDaysCheckbox = null; // (Sub-entrega 15)
+
+// --- Referências de DOM dos 3 modais ---
+// Resolvidas por initModalListeners(), chamada pelo mount() da view
+// DEPOIS que os 3 modais já foram criados e anexados ao document.body.
+let historyModal = null;
+let historyTitle = null;
+let historyList = null;
+let historyCloseBtn = null;
+
+let resetModal = null;
+let resetModalText = null;
+let resetDateInput = null;
+let resetConfirmBtn = null;
+let resetCancelBtn = null;
+
+
+let currentSearch = '';
+let currentMode = null; // um dos SORT_MENU_OPTIONS.value, ou null (Padrão)
+let openRowId = null;
+// Ponto 8: id da plataforma cuja seção "Dados" está expandida (só uma por
+// vez, já que só uma linha fica aberta). Sempre recolhida por padrão —
+// reseta junto com openRowId sempre que uma linha é aberta/fechada.
+let expandedDataId = null;
+
+// Item 22: true enquanto o botão ⚙️ "Reordenar" está ativo — só tem
+// efeito quando currentMode === null (Padrão), já que nos outros modos a
+// ordem é ditada pelo critério escolhido (A-Z, Ativas, etc.), não faz
+// sentido arrastar/mover manualmente. Cada linha ganha duas setas ▲▼
+// nesse modo (ver buildRow) em vez de arrastar — HTML5 drag-and-drop não
+// funciona de forma confiável em navegadores mobile por toque, e o app é
+// usado 100% pelo celular.
+let reorderModeActive = false;
+
+// Lista visível da última renderização (após busca/filtro/ordenação) —
+// usada pelas setas ▲▼ pra saber qual é o "vizinho" visível de uma
+// plataforma (ver moveManualOrder). Sempre atualizada por
+// renderManageList(), nunca por refreshRow() sozinho (que não muda
+// conjunto/ordem).
+let lastVisibleList = [];
+
+// Depósito atualmente em edição dentro do modal de histórico — guardamos
+// pela `date` (chave natural, já que não existe um id próprio por
+// depósito). null quando nenhum item está em edição.
+let editingDepositDate = null;
+
+// (Sub-entrega 7a) Visão do modal de Histórico: 'cycle' (deposits do ciclo
+// atual — editar valor/excluir/tipo, comportamento de sempre) ou 'all'
+// (depositLog permanente — só o tipo é editável). Reseta pra 'cycle' toda
+// vez que o modal é aberto pelo botão "Histórico".
+let historyViewMode = 'cycle';
+
+// Plataforma atualmente associada ao modal de Reinício/Apostas aberto.
+let currentResetPlatform = null;
+
+// id da plataforma -> elemento <div class="platform-manage-row..."> já
+// presente no DOM. Fonte de verdade de "o que está renderizado agora".
+const rowElements = new Map();
+
+// ---------- LISTA PRINCIPAL (fundida) ----------
+
+// Item 22: aplica a ordem manual salva (users/{uid}/meta/preferences,
+// via user-preferences-store.js) só quando "Padrão" está selecionado.
+// Plataformas ausentes de manualOrder (novas, criadas depois da ordem já
+// existir) vão pro FIM, preservando a ordem relativa entre elas — nunca
+// aparecem embaralhadas entre as já ordenadas manualmente. Sort estável
+// (garantido pelos motores JS modernos): quem empata em "ausente" mantém
+// a ordem anterior da lista.
+function applyManualOrder(list) {
+  const order = getCachedPreferences().manualOrder || [];
+  if (order.length === 0) return list;
+  const indexMap = new Map(order.map((id, i) => [id, i]));
+  return [...list].sort((a, b) => {
+    const ia = indexMap.has(a.id) ? indexMap.get(a.id) : Infinity;
+    const ib = indexMap.has(b.id) ? indexMap.get(b.id) : Infinity;
+    return ia - ib;
+  });
+}
+
+function getVisibleList() {
+  const q = currentSearch.trim().toLowerCase();
+  let list = state.platforms.filter(p => p.name.toLowerCase().includes(q));
+
+  // Ponto 1: cada modo filtra E ordena ao mesmo tempo (ex: "A - Z" só
+  // mostra quem começa com letra, já em ordem; "Ativas"/"Inativas"
+  // consideram cycleEnded, não só lastResetDate). Ver
+  // filterAndSortForManage em platform-sort.js pra tabela completa.
+  // Item 22: "Padrão" (currentMode null) usa a ordem manual salva em vez
+  // da ordem arbitrária de chegada do Firestore.
+  if (currentMode) {
+    list = filterAndSortForManage(list, currentMode);
+  } else {
+    list = applyManualOrder(list);
+  }
+  return list;
+}
+
+// Item 22 — todas as ~40 plataformas, na ordem manual efetiva (salva +
+// as que ainda não entraram nela, anexadas no fim). Base usada por
+// moveManualOrder pra sempre gravar a lista COMPLETA — nunca só o
+// subconjunto filtrado pela busca, senão salvar a ordem com uma busca
+// ativa perderia a posição de quem estava escondido no momento.
+function getEffectiveOrderIds() {
+  const order = getCachedPreferences().manualOrder || [];
+  const allIds = new Set(state.platforms.map(p => p.id));
+  const known = order.filter(id => allIds.has(id));
+  const missing = state.platforms.map(p => p.id).filter(id => !known.includes(id));
+  return [...known, ...missing];
+}
+
+// Troca a posição de `platformId` com seu vizinho VISÍVEL (direction -1 =
+// sobe, +1 = desce), dentro da lista efetiva completa — não só dentro do
+// subconjunto filtrado pela busca. Resolve o caso em que a busca deixa
+// "buracos": trocar com o vizinho que aparece na tela, não com o
+// próximo id fisicamente adjacente no array salvo (que pode estar
+// escondido pela busca e dar a impressão de que o clique não fez nada).
+function moveManualOrder(platformId, direction) {
+  const visibleIds = lastVisibleList.map(p => p.id);
+  const idx = visibleIds.indexOf(platformId);
+  const neighborIdx = idx + direction;
+  if (idx === -1 || neighborIdx < 0 || neighborIdx >= visibleIds.length) return;
+  const neighborId = visibleIds[neighborIdx];
+
+  const ids = getEffectiveOrderIds();
+  const posA = ids.indexOf(platformId);
+  const posB = ids.indexOf(neighborId);
+  if (posA === -1 || posB === -1) return;
+
+  [ids[posA], ids[posB]] = [ids[posB], ids[posA]];
+  saveManualOrder(state.currentUid, ids);
+  renderManageList();
+  // Corrige o disabled das setas ▲▼: reconcileList() (chamada por
+  // renderManageList) só REPOSICIONA linhas já existentes no DOM, nunca
+  // reconstrói o conteúdo delas — sem isso, uma linha que nasceu no topo
+  // (▲ desabilitada) carregaria esse estado pra sempre, mesmo depois de
+  // deixar de ser a primeira (e o mesmo, na ponta oposta, pra ▼). Bug
+  // real confirmado em teste: A73/11TT ficavam presas nos extremos
+  // mesmo depois de outras plataformas serem reordenadas ao redor delas.
+  // refreshAllRows() reconstrói TODAS as linhas visíveis, recalculando
+  // cada seta com a posição REAL e atual (lastVisibleList já atualizado
+  // por renderManageList() logo acima).
+  refreshAllRows();
+}
+
+
+// ---------- RECONCILIAÇÃO DE DOM ----------
+
+function refreshRow(platformId) {
+  const platform = state.platforms.find(pp => pp.id === platformId);
+  if (!platform) return;
+  const oldEl = rowElements.get(platformId);
+  if (!oldEl) return;
+  const newEl = buildRow(platform);
+  oldEl.replaceWith(newEl);
+  rowElements.set(platformId, newEl);
+}
+
+function reconcileList(list) {
+  const existingEmpty = manageListEl.querySelector('.platform-manage-row-existing.history-empty');
+  if (existingEmpty) existingEmpty.remove();
+
+  if (list.length === 0) {
+    rowElements.forEach(el => el.remove());
+    rowElements.clear();
+    const empty = document.createElement('div');
+    empty.className = 'history-empty platform-manage-row-existing';
+    empty.textContent = 'Nenhuma plataforma encontrada.';
+    manageListEl.appendChild(empty);
+    return;
+  }
+
+  const visibleIds = new Set(list.map(p => p.id));
+
+  rowElements.forEach((el, id) => {
+    if (!visibleIds.has(id)) {
+      el.remove();
+      rowElements.delete(id);
+    }
+  });
+
+  list.forEach(p => {
+    let el = rowElements.get(p.id);
+    if (!el) {
+      el = buildRow(p);
+      rowElements.set(p.id, el);
+    }
+    manageListEl.appendChild(el);
+  });
+}
+
+// Atualiza o CONTEÚDO de todas as linhas atualmente na tela, sem mudar
+// quais estão visíveis nem a ordem — usado só na virada do dia (o badge
+// "Dia X" muda sozinho mesmo sem nenhuma ação do usuário; ver
+// scheduleDailyUpdate em view-edicao.js).
+export function refreshAllRows() {
+  rowElements.forEach((oldEl, platformId) => {
+    const platform = state.platforms.find(p => p.id === platformId);
+    if (!platform) return;
+    const newEl = buildRow(platform);
+    oldEl.replaceWith(newEl);
+    rowElements.set(platformId, newEl);
+  });
+}
+
+// Zera o estado em memória — DEVE ser chamado no início de cada mount()
+// da view (ver view-edicao.js), antes de initManageControls()/
+// renderManageList(). Como o router já substitui o container inteiro a
+// cada troca de rota, o #platformManageList da visita anterior não
+// existe mais no DOM quando esta função roda — não há nó nenhum pra
+// limpar manualmente aqui (diferente do Sistema 1, onde a mesma página
+// nunca era descartada dentro de uma sessão). Só o cache em memória
+// (rowElements, openRowId, expandedDataId) precisa ser zerado, senão um
+// retorno a esta rota reaproveitaria estado de uma visita anterior.
+export function resetManageListCache() {
+  rowElements.clear();
+  openRowId = null;
+  expandedDataId = null;
+  reorderModeActive = false;
+  lastVisibleList = [];
+  // (6.4, item 8) a tela nova nasce com busca vazia e ordenação "Padrão" —
+  // o estado em memória precisa nascer igual, senão a lista aparece
+  // filtrada por uma busca/modo de uma visita anterior.
+  currentSearch = '';
+  currentMode = null;
+  editingDepositDate = null;
+  historyViewMode = 'cycle';
+  currentResetPlatform = null;
+}
+
+export function renderManageList() {
+  if (!manageListEl) return;
+  const list = getVisibleList();
+  lastVisibleList = list;
+  reconcileList(list);
+}
+
+function buildRow(p) {
+  const row = document.createElement('div');
+  row.className = 'platform-manage-row platform-manage-row-existing' + (p.id === openRowId ? ' open' : '');
+  row.dataset.id = p.id;
+
+  // --- header (fechado): nome + badges + chevron ---
+  const header = document.createElement('div');
+  header.className = 'platform-manage-row-header';
+
+  const title = document.createElement('div');
+  title.className = 'platform-manage-row-title';
+  title.textContent = p.name;
+  if (!p.group) {
+    const badge = document.createElement('span');
+    badge.className = 'vip-unset-badge';
+    badge.textContent = '⚠️ não configurado';
+    title.appendChild(badge);
+  }
+
+  const badges = document.createElement('div');
+  badges.className = 'platform-manage-row-badges';
+
+  // Item 25a: visibilidade de cada badge agora é uma preferência salva
+  // (users/{uid}/meta/preferences), não mais fixa — default (true/true)
+  // reproduz o comportamento de sempre pra quem nunca mexeu no botão 👁.
+  const badgeVisibility = getCachedPreferences().badgeVisibility;
+
+  const cycleBadge = document.createElement('span');
+  const cycleDay = getCurrentCycleDay(p);
+  const noCycle = cycleState(p) === 'no'; // (11c)
+  if (noCycle) {
+    cycleBadge.className = 'cycle-day no-cycle';
+    cycleBadge.textContent = '🚫 Sem ciclo';
+  } else if (p.cycleEnded) {
+    cycleBadge.className = 'cycle-day cycle-ended';
+    cycleBadge.textContent = '⏸ Encerrado';
+  } else if (cycleDay === 0) {
+    cycleBadge.className = 'cycle-day no-bonus';
+    cycleBadge.textContent = 'Dia 0';
+  } else {
+    cycleBadge.className = 'cycle-day';
+    cycleBadge.textContent = `Dia ${cycleDay}`;
+  }
+
+  const total = getTotalDepositsSinceCycle(p);
+  const totalBadge = document.createElement('span');
+  totalBadge.className = 'platform-total-badge';
+  // (11c) Sem ciclo: sem cor de patamar (não muda de cor).
+  totalBadge.style.background = noCycle ? '#94a3b8' : colorForLevel(total);
+  totalBadge.textContent = formatCurrency(total);
+
+  // Item 25a: badge "Dia X"/ciclo pode ser escondido via preferência.
+  if (badgeVisibility.cycleDayBadge) {
+    badges.appendChild(cycleBadge);
+  }
+  // Item 27: o badge de Total some quando o ciclo está encerrado — não
+  // faz sentido mostrar um valor acumulado de um ciclo já parado. Item
+  // 25a: também pode ser escondido via preferência, independente do
+  // badge de Depósito (abaixo), que NUNCA é escondido junto — mede outra
+  // coisa (tempo desde o último depósito em depositLog, que nunca é
+  // zerado por Fim/Reinício).
+  if ((!p.cycleEnded || noCycle) && badgeVisibility.totalBadge) {
+    badges.appendChild(totalBadge);
+  }
+
+  // Badge "Depósito: X dias" — baseado em depositLog (permanente, não
+  // reseta com Fim/Reinício). Item 10d: a partir de 7 dias o badge fica
+  // visível PARA SEMPRE (sem teto superior) — o aviso existe justamente
+  // pra sinalizar que faz tempo que não há depósito, então esconder
+  // depois de um certo dia faria o aviso sumir quando a situação piora.
+  // Quando a plataforma nunca recebeu depósito (daysSinceDeposit null),
+  // o badge continua omitido de propósito. Este badge NÃO tem preferência
+  // de visibilidade (Item 25a é só sobre Total e Dia do ciclo).
+  const daysSinceDeposit = getDaysSinceLastDeposit(p);
+  if (daysSinceDeposit !== null && daysSinceDeposit >= 7 && badgeVisibility.depositDayBadge) {
+    const depositDayBadge = document.createElement('span');
+    depositDayBadge.className = 'cycle-day deposit-day-badge';
+    depositDayBadge.textContent = `Depósito: ${daysSinceDeposit} dias`;
+    depositDayBadge.title = `${daysSinceDeposit} dias desde o último depósito registrado (aviso ativo a partir do 7º dia)`;
+    badges.appendChild(depositDayBadge);
+  }
+
+  // (Sub-entrega 15) "🎲 X dia(s)": dias com aposta no mês — todas as
+  // plataformas, ligado/desligado pelo 👁 Badges (betDaysBadge).
+  if (badgeVisibility.betDaysBadge) {
+    const betDays = countBetDaysInMonth(p);
+    const betDaysBadge = document.createElement('span');
+    betDaysBadge.className = 'cycle-day bet-days-badge';
+    betDaysBadge.textContent = `🎲 ${betDays} dia(s)`;
+    betDaysBadge.title = `${betDays} dia(s) com aposta neste mês`;
+    badges.appendChild(betDaysBadge);
+  }
+
+  // Item 22 — setas ▲▼: só existem quando o modo "Reordenar" (botão ⚙️)
+  // está ativo E "Padrão" está selecionado (currentMode null) — nos
+  // outros modos a ordem é ditada pelo critério escolhido, mover
+  // manualmente não faria sentido. e.stopPropagation() é obrigatório:
+  // sem ele, o clique nas setas também dispararia o listener de
+  // abrir/fechar a linha (registrado no header inteiro, mais abaixo).
+  let reorderControls = null;
+  if (reorderModeActive && currentMode === null) {
+    reorderControls = document.createElement('div');
+    reorderControls.className = 'platform-manage-row-badges';
+    reorderControls.style.gap = '0.25rem';
+
+    const visibleIds = lastVisibleList.map(pp => pp.id);
+    const idx = visibleIds.indexOf(p.id);
+
+    const upBtn = document.createElement('button');
+    upBtn.type = 'button';
+    upBtn.className = 'bet-manage-btn';
+    upBtn.textContent = '▲';
+    upBtn.disabled = idx <= 0;
+    upBtn.setAttribute('aria-label', `Mover ${p.name} pra cima`);
+    upBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      moveManualOrder(p.id, -1);
+    });
+
+    const downBtn = document.createElement('button');
+    downBtn.type = 'button';
+    downBtn.className = 'bet-manage-btn';
+    downBtn.textContent = '▼';
+    downBtn.disabled = idx === -1 || idx >= visibleIds.length - 1;
+    downBtn.setAttribute('aria-label', `Mover ${p.name} pra baixo`);
+    downBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      moveManualOrder(p.id, 1);
+    });
+
+    reorderControls.appendChild(upBtn);
+    reorderControls.appendChild(downBtn);
+  }
+
+  const chevron = document.createElement('span');
+  chevron.className = 'platform-manage-chevron';
+  chevron.textContent = '▾';
+
+  header.appendChild(title);
+  header.appendChild(badges);
+  if (reorderControls) header.appendChild(reorderControls);
+  header.appendChild(chevron);
+  header.addEventListener('click', () => {
+    const previousOpenRowId = openRowId;
+    const wasOpen = previousOpenRowId === p.id;
+    openRowId = wasOpen ? null : p.id;
+    // Ponto 8: "Dados" sempre recolhida de novo ao abrir/fechar a linha —
+    // estado inicial igual pra todas as plataformas, sem lembrar escolha
+    // anterior.
+    expandedDataId = null;
+    if (!wasOpen && previousOpenRowId) {
+      refreshRow(previousOpenRowId); // fecha a linha que estava aberta antes
+    }
+    refreshRow(p.id); // aplica o novo estado (aberta ou fechada) nesta linha
+  });
+
+  // --- body (aberto): Ações + Dados ---
+  const body = document.createElement('div');
+  body.className = 'platform-manage-row-body';
+
+  body.appendChild(buildActionsSection(p));
+
+  const divider = document.createElement('hr');
+  divider.className = 'manage-section-divider';
+  body.appendChild(divider);
+
+  body.appendChild(buildDataSection(p));
+
+  // (Sub-entrega 11a) Características — coleção própria (platformTraits),
+  // nada aqui toca o documento da plataforma.
+  const divider2 = document.createElement('hr');
+  divider2.className = 'manage-section-divider';
+  body.appendChild(divider2);
+  body.appendChild(buildTraitsSection(p));
+
+  row.appendChild(header);
+  row.appendChild(body);
+  return row;
+}
+
+// ---------- SEÇÃO "AÇÕES" (depósito, histórico, fim, reinício, apostas) ----------
+
+function buildActionsSection(p) {
+  const section = document.createElement('div');
+  section.className = 'manage-actions-section';
+
+  const label = document.createElement('div');
+  label.className = 'manage-section-label';
+  label.textContent = 'Ações';
+  section.appendChild(label);
+
+  const resetInfo = document.createElement('div');
+  resetInfo.className = 'reset-date';
+  // (Sub-entrega 19) Data do Reinício lida como DIA LOCAL (parseResetDate,
+  // cycle-logic.js) — a mesma leitura do ciclo/Misterioso.
+  const resetDateObj = p.lastResetDate ? parseResetDate(p.lastResetDate) : null;
+  if (resetDateObj) {
+    const dia = String(resetDateObj.getDate()).padStart(2, '0');
+    const mes = String(resetDateObj.getMonth() + 1).padStart(2, '0');
+    resetInfo.textContent = `Ciclo iniciado: ${dia}/${mes}`;
+  } else {
+    resetInfo.textContent = 'Ciclo não iniciado';
+  }
+  section.appendChild(resetInfo);
+
+  let input = null;
+  // (11c) Sem ciclo: campo de depósito sempre liberado.
+  if (!p.cycleEnded || cycleState(p) === 'no') {
+    const form = document.createElement('div');
+    form.className = 'platform-deposit-form';
+
+    input = document.createElement('input');
+    input.type = 'number';
+    input.placeholder = 'Valor do depósito';
+    input.min = '0';
+    input.step = '0.01';
+
+    const addBtn = document.createElement('button');
+    addBtn.textContent = 'Adicionar';
+    addBtn.className = 'bet-manage-btn';
+    addBtn.addEventListener('click', async () => {
+      const value = parseFloat(input.value);
+      if (isNaN(value) || value <= 0) {
+        await showAppAlert('Digite um valor válido');
+        return;
+      }
+      // (7a) Tipo do depósito — mini-contêiner centralizado. Cancelar não
+      // grava nada (o valor digitado continua no campo). O botão fica
+      // travado enquanto o seletor está aberto, contra toque duplo.
+      addBtn.disabled = true;
+      let picked = null;
+      try {
+        // (Sub-entrega 13) 💎 abre a 2ª página (valor do bônus alto).
+        picked = await pickDepositKindAndBonus({ subtitle: `${p.name} · ${formatCurrency(value)}` });
+      } finally {
+        addBtn.disabled = false;
+      }
+      if (!picked) return;
+      const kind = picked.kind;
+      // (13) Semana já fechada: o bônus alto não entraria em lugar nenhum
+      // (a semana fechada fica congelada). Nada é gravado.
+      if (picked.highBonus && isCurrentWeekClosed(p)) {
+        await showAppAlert('A semana atual já foi fechada — o depósito com bônus alto não foi registrado. Some o bônus no bônus real da semana (Financeiro → Editar).');
+        return;
+      }
+      // A data é carimbada DEPOIS da escolha — é o instante real do registro.
+      const entry = { date: new Date().toISOString(), value, kind };
+      if (!Array.isArray(p.deposits)) p.deposits = [];
+      p.deposits.push(entry);
+      // depositLog é o histórico PERMANENTE usado pelo Financeiro (Página
+      // 5) e também pelo badge "Depósito: X dias" — ao contrário de
+      // p.deposits, Fim/Reinício (mais abaixo) NUNCA apagam este array.
+      if (!p.depositLog) p.depositLog = [];
+      p.depositLog.push({ ...entry });
+      // (Sub-entrega 13) bônus alto — mesmo savePlatform do depósito.
+      if (picked.highBonus) {
+        if (!Array.isArray(p.highBonusLog)) p.highBonusLog = [];
+        // (Sub-entrega 16) ➗ Dividir: uma entrada por parte, cada uma com o seu R.
+        (picked.highBonus.parts || [{ value: picked.highBonus.value, scale: picked.highBonus.scale }]).forEach(pt => {
+          p.highBonusLog.push(buildHighBonusEntry({ depositDate: entry.date, value: pt.value, scale: pt.scale }));
+        });
+      }
+      savePlatform(state.currentUid, p);
+      // Só o conteúdo desta linha muda (total/badge) — depósito não afeta
+      // nenhum filtro/ordenação ativo, então basta atualizar esta linha.
+      refreshRow(p.id);
+    });
+
+    form.appendChild(input);
+    form.appendChild(addBtn);
+    section.appendChild(form);
+  }
+
+  const actionButtons = document.createElement('div');
+  actionButtons.className = 'platform-actions-buttons';
+
+  const historyBtn = document.createElement('button');
+  historyBtn.textContent = 'Histórico';
+  historyBtn.style.background = '#2563eb';
+  historyBtn.addEventListener('click', () => {
+    historyViewMode = 'cycle';
+    editingDepositDate = null;
+    showHistoryModal(p);
+  });
+
+  const endBtn = document.createElement('button');
+  endBtn.className = 'platform-end-btn' + (p.cycleEnded ? ' already-ended' : '');
+  endBtn.textContent = p.cycleEnded ? '⏸ Encerrado' : '🏁 Fim';
+  endBtn.disabled = p.cycleEnded;
+  endBtn.addEventListener('click', async () => {
+    const ok = await showAppConfirm(`Encerrar o ciclo de ${p.name}? Os depósitos serão zerados e o calendário ficará pausado até você apertar "Reinício".`);
+    if (!ok) return;
+    p.deposits = [];
+    p.cycleEnded = true;
+    // (11c) Registra o Fim no histórico de ciclos (mesma gravação).
+    recordCycleEvent(p, 'end', toLocalDateTimeSeconds(new Date()).slice(0, 10), 'auto');
+    savePlatform(state.currentUid, p, { allowShrink: ['deposits'] });
+    // cycleEnded pode afetar filtros de Ativas/Inativas — atualiza a
+    // própria linha (badge "Encerrado") e reconcilia a lista visível.
+    refreshRow(p.id);
+    renderManageList();
+  });
+
+  const resetBtn = document.createElement('button');
+  resetBtn.textContent = 'Reinício';
+  resetBtn.style.background = '#ef4444';
+  resetBtn.addEventListener('click', () => showResetModal(p));
+
+  actionButtons.appendChild(historyBtn);
+  actionButtons.appendChild(endBtn);
+  actionButtons.appendChild(resetBtn);
+  section.appendChild(actionButtons);
+
+  // (11c) Histórico e previsão de ciclos.
+  const cyclesBtn = document.createElement('button');
+  cyclesBtn.type = 'button';
+  cyclesBtn.className = 'bet-manage-btn manage-cycles-btn';
+  cyclesBtn.textContent = '📜 Ciclos';
+  cyclesBtn.addEventListener('click', async () => {
+    cyclesBtn.disabled = true;
+    try {
+      const r = await openCycleHistory({ platform: p });
+      if (r && r.changed) { openRowId = p.id; refreshRow(p.id); }
+    } finally {
+      cyclesBtn.disabled = false;
+    }
+  });
+  section.appendChild(cyclesBtn);
+
+  // (Sub-entrega 15) a linha de aposta saiu do corpo — "🎲 X dia(s)" virou
+  // badge no cabeçalho (controlada pelo 👁 Badges), pra todas as plataformas.
+
+  return section;
+}
+
+// Data/hora local (não toISOString, pra não pular de dia em fuso atrás de UTC).
+function toLocalDateTimeSeconds(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  const ss = String(date.getSeconds()).padStart(2, '0');
+  return `${y}-${m}-${d}T${hh}:${mm}:${ss}`;
+}
+
+// (Sub-entrega 15) Dias com aposta no mês atual (desde o dia 1): dias com
+// aposta lançada no Financeiro (qualquer valor) + os que liberaram o VIP
+// diário (getEffectiveBetDayKeys — inclui marcações manuais antigas).
+// Vale pra todas as plataformas (com ou sem aposta).
+function countBetDaysInMonth(p, now = new Date()) {
+  const monthStart = getMonthStart(now);
+  const keys = getEffectiveBetDayKeys(p, monthStart, now);
+  (p.betEntries || []).forEach(e => {
+    const d = new Date(e && e.date);
+    if (isNaN(d.getTime()) || d < monthStart || d > now) return;
+    keys.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+  });
+  return keys.size;
+}
+
+// ---------- BLOCO C — GERADOR DE CÓDIGOS (grupo de campos reutilizável) ----------
+// Monta um grupo (Identificador, Depósito ou Aposta) dentro da seção
+// "Dados". Não grava nada sozinho — devolve getValues(), chamado só
+// quando o botão "Salvar" (já existente) é clicado, junto com nome/
+// nível/grupo. Nenhuma dependência de codigo-logic-new.js aqui: este
+// arquivo só monta o formulário — quem calcula/exibe o código é sempre
+// codigo-logic.js + ui-codigo.js (Hub), intocados nesta sub-entrega.
+
+// baseDate é gravado como string ISO com hora fixa em meia-noite local
+// (mesmo padrão já usado pra lastResetDate em showResetModal) — evita o
+// mesmo bug de fuso já documentado em getMonthStart/betDays se fosse
+// comparado como string só-de-data.
+function isoToDateInputValue(isoStr) {
+  return isoStr ? String(isoStr).slice(0, 10) : '';
+}
+
+function dateInputValueToIso(value) {
+  return value ? `${value}T00:00:00` : null;
+}
+
+function buildCodigoFieldGroup(title, config, opts = {}) {
+  const cfg = config || {};
+  const wrapper = document.createElement('div');
+
+  const divider = document.createElement('hr');
+  divider.className = 'manage-section-divider';
+  wrapper.appendChild(divider);
+
+  const label = document.createElement('div');
+  label.className = 'manage-section-label manage-section-label-collapsible';
+  const labelText = document.createElement('span');
+  labelText.textContent = title;
+  const labelChevron = document.createElement('span');
+  labelChevron.className = 'platform-manage-chevron';
+  labelChevron.textContent = '▾';
+  label.appendChild(labelText);
+  label.appendChild(labelChevron);
+  wrapper.appendChild(label);
+
+  const fieldsWrap = document.createElement('div');
+  // Minimizado por padrão — expande ao clicar no título. Reseta pra
+  // recolhido toda vez que "Dados" é reconstruída (mesmo espírito do
+  // Ponto 8).
+  fieldsWrap.className = 'platform-form-fields app-hidden';
+  wrapper.appendChild(fieldsWrap);
+
+  label.addEventListener('click', () => {
+    const isOpen = !fieldsWrap.classList.contains('app-hidden');
+    fieldsWrap.classList.toggle('app-hidden', isOpen);
+    labelChevron.classList.toggle('open', !isOpen);
+  });
+
+  // Cada campo nasce dentro do próprio wrapper (label + input juntos),
+  // pra permitir esconder o par inteiro de uma vez quando o Tipo mudar
+  // — .platform-form-fields continua funcionando normalmente (flex
+  // column), já que suas regras de CSS não usam combinador de filho
+  // direto (aplicam a qualquer profundidade).
+  function fieldPair(labelText, inputEl) {
+    const pair = document.createElement('div');
+    const lbl = document.createElement('label');
+    lbl.textContent = labelText;
+    pair.appendChild(lbl);
+    pair.appendChild(inputEl);
+    fieldsWrap.appendChild(pair);
+    return pair;
+  }
+
+  let tipoSelect = null;
+  if (opts.includeTipo) {
+    tipoSelect = document.createElement('select');
+    [
+      ['aleatoria', 'Aleatória'],
+      ['fixa_sequencia', 'Fixa + Sequência'],
+      ['fixa_data', 'Fixa + Mês/dia real']
+    ].forEach(([v, l]) => {
+      const opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = l;
+      tipoSelect.appendChild(opt);
+    });
+    tipoSelect.value = cfg.tipo || 'aleatoria';
+    fieldPair('Tipo', tipoSelect);
+  }
+
+  const fixoInput = document.createElement('input');
+  fixoInput.type = 'text';
+  fixoInput.maxLength = 12;
+  fixoInput.placeholder = 'Ex: PROMO';
+  fixoInput.value = cfg.fixo || '';
+  const fixoPair = fieldPair('Fixo (texto)', fixoInput);
+
+  const variavelInput = document.createElement('input');
+  variavelInput.type = 'number';
+  variavelInput.step = '1';
+  variavelInput.value = (cfg.variavelInicio !== undefined && cfg.variavelInicio !== null) ? cfg.variavelInicio : 0;
+  const variavelPair = fieldPair('Variável início', variavelInput);
+
+  const baseDateInput = document.createElement('input');
+  baseDateInput.type = 'date';
+  baseDateInput.value = isoToDateInputValue(cfg.baseDate);
+  const baseDatePair = fieldPair('Data base', baseDateInput);
+
+  let valorMinimoInput = null;
+  if (opts.includeValorMinimo) {
+    valorMinimoInput = document.createElement('input');
+    valorMinimoInput.type = 'number';
+    valorMinimoInput.min = '0';
+    valorMinimoInput.step = '0.01';
+    valorMinimoInput.value = Number(cfg.valorMinimo) || 0;
+    fieldPair('Valor mínimo', valorMinimoInput);
+  }
+
+  // Condicional só no grupo Identificador (11b/11d): Aleatória esconde
+  // Fixo/Variável/Data base; Fixa+Mês-dia real esconde só Variável/Data
+  // base (mês/dia são calculados sozinhos); Fixa+Sequência mostra tudo.
+  if (tipoSelect) {
+    function applyTipoVisibility() {
+      const tipo = tipoSelect.value;
+      fixoPair.classList.toggle('app-hidden', tipo === 'aleatoria');
+      const showSequenceFields = tipo === 'fixa_sequencia';
+      variavelPair.classList.toggle('app-hidden', !showSequenceFields);
+      baseDatePair.classList.toggle('app-hidden', !showSequenceFields);
+    }
+    tipoSelect.addEventListener('change', applyTipoVisibility);
+    applyTipoVisibility();
+  }
+
+  function getValues() {
+    const result = {
+      fixo: fixoInput.value.trim(),
+      variavelInicio: Number(variavelInput.value) || 0,
+      baseDate: dateInputValueToIso(baseDateInput.value)
+    };
+    if (tipoSelect) result.tipo = tipoSelect.value;
+    if (valorMinimoInput) result.valorMinimo = Math.max(0, Number(valorMinimoInput.value) || 0);
+    return result;
+  }
+
+  return { wrapper, getValues };
+}
+
+// ---------- SEÇÃO "DADOS" (nome, nível, grupo) ----------
+
+function buildDataSection(p) {
+  const section = document.createElement('div');
+  section.className = 'manage-data-section';
+
+  // Ponto 8: "Dados" (nome/nível/tipo) é editado raramente — só depois de
+  // um processo longo de apostas até subir de nível — então fica
+  // recolhida por padrão ao abrir a plataforma. Clicar no cabeçalho
+  // expande/recolhe só esta seção, sem afetar "Ações" (sempre visível).
+  const isDataExpanded = expandedDataId === p.id;
+
+  const label = document.createElement('div');
+  label.className = 'manage-section-label manage-section-label-collapsible';
+  const labelText = document.createElement('span');
+  labelText.textContent = 'Dados';
+  const labelChevron = document.createElement('span');
+  labelChevron.className = 'platform-manage-chevron' + (isDataExpanded ? ' open' : '');
+  labelChevron.textContent = '▾';
+  label.appendChild(labelText);
+  label.appendChild(labelChevron);
+  label.addEventListener('click', () => {
+    expandedDataId = isDataExpanded ? null : p.id;
+    refreshRow(p.id);
+  });
+  section.appendChild(label);
+
+  // Recolhida: nada mais é montado — qualquer alteração não salva nos
+  // campos abaixo (nome/nível/tipo) é descartada ao recolher, já que a
+  // seção inteira é reconstruída do zero na próxima vez que for expandida.
+  if (!isDataExpanded) {
+    return section;
+  }
+
+  const fields = document.createElement('div');
+  fields.className = 'platform-form-fields';
+
+  const nameLabel = document.createElement('label');
+  nameLabel.textContent = 'Código/Nome';
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.maxLength = 12;
+  nameInput.value = p.name;
+
+  const levelLabel = document.createElement('label');
+  levelLabel.textContent = 'Nível VIP';
+  const levelSelect = document.createElement('select');
+  [['', 'Não definido'], ['0', '0'], ['1', '1'], ['2', '2'], ['3', '3'], ['4', '4'], ['5', '5']]
+    .forEach(([v, l]) => {
+      const opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = l;
+      levelSelect.appendChild(opt);
+    });
+  levelSelect.value = (p.level === null || p.level === undefined) ? '' : String(p.level);
+
+  const groupLabel = document.createElement('label');
+  groupLabel.textContent = 'Tipo';
+  const groupSelect = document.createElement('select');
+  [['', 'Não definido'], ['com', 'Com aposta'], ['sem', 'Sem aposta']]
+    .forEach(([v, l]) => {
+      const opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = l;
+      groupSelect.appendChild(opt);
+    });
+  groupSelect.value = p.group || '';
+
+  // Template VIP (valores de Bônus Diário/Semanal/Mensal por nível). "Padrão"
+  // = tabela padrão do sistema. A troca vale a partir de hoje (vigência no
+  // levelHistory) — nunca reescreve o passado. Se o template atual da
+  // plataforma não está carregado, ele aparece como opção de aviso pra que
+  // "Salvar" não o solte sem querer.
+  const templateLabel = document.createElement('label');
+  templateLabel.textContent = 'Template VIP';
+  const templateSelect = document.createElement('select');
+  const defaultTemplateOpt = document.createElement('option');
+  defaultTemplateOpt.value = '';
+  defaultTemplateOpt.textContent = 'Padrão';
+  templateSelect.appendChild(defaultTemplateOpt);
+  const knownTemplates = Array.isArray(state.vipBonusTemplates) ? state.vipBonusTemplates : [];
+  knownTemplates.forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t.id;
+    opt.textContent = t.name;
+    templateSelect.appendChild(opt);
+  });
+  const currentTemplateId = getCurrentVipTemplateId(p);
+  if (currentTemplateId && !knownTemplates.some(t => t.id === currentTemplateId)) {
+    const missingOpt = document.createElement('option');
+    missingOpt.value = currentTemplateId;
+    missingOpt.textContent = '⚠️ Template indisponível';
+    templateSelect.appendChild(missingOpt);
+  }
+  templateSelect.value = currentTemplateId || '';
+
+  fields.appendChild(nameLabel);
+  fields.appendChild(nameInput);
+  fields.appendChild(levelLabel);
+  fields.appendChild(levelSelect);
+  fields.appendChild(groupLabel);
+  fields.appendChild(groupSelect);
+  fields.appendChild(templateLabel);
+  fields.appendChild(templateSelect);
+
+  // (Sub-entrega 12) Troca de nível/grupo/template já agendada pra amanhã.
+  const pendingVip = getPendingLevelChange(p);
+  if (pendingVip) {
+    const [, pm, pd] = String(pendingVip.date).split('-');
+    const pendingNote = document.createElement('div');
+    pendingNote.className = 'reset-date';
+    pendingNote.textContent = `⏳ Nível/grupo/template novos valem a partir de ${pd}/${pm} — o bônus VIP de hoje segue o anterior. Salve de novo e responda "Ainda não recebi" se quiser que valha desde hoje.`;
+    fields.appendChild(pendingNote);
+  }
+
+  // (11c) Ciclo do Misterioso.
+  const cycleLabel = document.createElement('label');
+  cycleLabel.textContent = 'Ciclo do Misterioso';
+  const cycleSelect = document.createElement('select');
+  CYCLE_STATES.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.label;
+    cycleSelect.appendChild(opt);
+  });
+  cycleSelect.value = cycleState(p);
+  fields.appendChild(cycleLabel);
+  fields.appendChild(cycleSelect);
+  section.appendChild(fields);
+
+  // === BLOCO C — Gerador de Códigos (Item 11f + 11h/11i) ===
+  // 3 grupos dentro da mesma seção "Dados" (sem collapse próprio — já
+  // está atrás do recolhimento do Ponto 8). Nenhum cálculo novo: só
+  // grava os campos que codigo-logic-new.js (Etapa 3) já sabe ler.
+  const codigoIdentificador = buildCodigoFieldGroup('Código Identificador', p.codigoConfig, { includeTipo: true });
+  const codigoDeposito = buildCodigoFieldGroup('Código de Depósito', p.codigoDeposito, { includeValorMinimo: true });
+  const codigoAposta = buildCodigoFieldGroup('Código de Aposta', p.codigoAposta, { includeValorMinimo: true });
+
+  section.appendChild(codigoIdentificador.wrapper);
+  section.appendChild(codigoDeposito.wrapper);
+  section.appendChild(codigoAposta.wrapper);
+
+  const actions = document.createElement('div');
+  actions.className = 'reset-modal-buttons';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'btn-confirm';
+  saveBtn.type = 'button';
+  saveBtn.textContent = 'Salvar';
+  saveBtn.addEventListener('click', async () => {
+    const name = nameInput.value.trim().toUpperCase();
+    if (!name) {
+      await showAppAlert('Digite um código para a plataforma.');
+      return;
+    }
+    const duplicate = state.platforms.some(pp => pp !== p && pp.name.toUpperCase() === name);
+    if (duplicate) {
+      await showAppAlert('Já existe uma plataforma com esse código.');
+      return;
+    }
+    // (11c) Troca do ciclo do Misterioso — confirma antes.
+    const newCycle = cycleSelect.value;
+    if (newCycle !== cycleState(p)) {
+      const msg = newCycle === 'no'
+        ? `Marcar ${p.name} como SEM ciclo do Misterioso? Ela sai do calendário e da estratégia do Misterioso, e o campo de depósito fica sempre liberado. O valor do bônus continua seguindo o template (se ela estiver num template de Misterioso, desvincule lá caso não receba).`
+        : newCycle === 'unstable'
+          ? `Marcar ${p.name} como INSTÁVEL? O Planejador evita planejar aposta/depósito perto da virada do mês.`
+          : `Marcar ${p.name} como TEM ciclo do Misterioso?`;
+      const okCycle = await showAppConfirm(msg);
+      if (!okCycle) return;
+    }
+    const newLevel = levelSelect.value === '' ? null : Number(levelSelect.value);
+    const newGroup = groupSelect.value === '' ? null : groupSelect.value;
+    const newTemplateId = templateSelect.value === '' ? null : templateSelect.value;
+
+    // (Sub-entrega 12) Nível, grupo ou template mudou (ou há troca agendada
+    // pra amanhã)? Pergunta se o bônus VIP de hoje já foi recebido — define
+    // se a mudança vale desde hoje ou só a partir de amanhã. Cancelar = nada
+    // é gravado (a pergunta vem ANTES de qualquer alteração na memória).
+    const curLevel = (p.level === null || p.level === undefined || p.level === '') ? null : Number(p.level);
+    const vipChanged = newLevel !== curLevel
+      || newGroup !== (p.group || null)
+      || newTemplateId !== getCurrentVipTemplateId(p);
+    let vipChangeDate = new Date();
+    if (vipChanged || getPendingLevelChange(p)) {
+      const choice = await askVipChangeTiming({
+        subtitle: `${p.name} · nível, grupo ou template VIP`,
+        note: 'Se o bônus VIP de hoje já foi recebido nesta plataforma, a mudança só vale a partir de amanhã.'
+      });
+      if (!choice) return;
+      vipChangeDate = getVipChangeDate(choice === 'tomorrow');
+    }
+
+    p.misteriosoCycle = newCycle;
+    p.name = name;
+    // A0: registra a vigência ANTES de sobrescrever (lê o valor antigo).
+    // (Sub-entrega 12) Vale a partir de hoje 00:00 ou de amanhã 00:00
+    // (resposta acima); o passado não é reescrito.
+    recordLevelChange(p, newLevel, newGroup, vipChangeDate, newTemplateId);
+    p.level = newLevel;
+    p.group = newGroup;
+
+    // Bloco C — os 3 grupos de código são lidos e gravados junto com
+    // nome/nível/grupo, no mesmo clique em "Salvar" e no mesmo
+    // savePlatform (nenhuma chamada nova ao Firestore).
+    p.codigoConfig = codigoIdentificador.getValues();
+    p.codigoDeposito = codigoDeposito.getValues();
+    p.codigoAposta = codigoAposta.getValues();
+
+    savePlatform(state.currentUid, p);
+    openRowId = p.id;
+    // Nome/grupo podem afetar busca e filtros Com/Sem — atualiza a
+    // própria linha e reconcilia a lista visível.
+    refreshRow(p.id);
+    renderManageList();
+  });
+
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'btn-remove-modal';
+  removeBtn.type = 'button';
+  removeBtn.textContent = 'Remover';
+  removeBtn.addEventListener('click', async () => {
+    const ok = await showAppConfirm(
+      `Remover "${p.name}"? Isso apaga também todo o histórico de depósitos e ` +
+      `apostas dela. Essa ação não pode ser desfeita.`
+    );
+    if (!ok) return;
+    // (Sub-entrega D) Só sai da tela depois que o banco confirma.
+    removeBtn.disabled = true;
+    removeBtn.textContent = 'Removendo...';
+    const result = await deletePlatformDoc(state.currentUid, p.id);
+    if (!result.ok) {
+      removeBtn.disabled = false;
+      removeBtn.textContent = 'Remover';
+      await showAppAlert(result.error);
+      return;
+    }
+    state.platforms = state.platforms.filter(pp => pp.id !== p.id);
+    openRowId = null;
+    renderManageList();
+  });
+
+  actions.appendChild(saveBtn);
+  actions.appendChild(removeBtn);
+  section.appendChild(actions);
+
+  return section;
+}
+
+// ---------- LINHA FIXA: ADICIONAR NOVA PLATAFORMA ----------
+
+function initAddRow() {
+  const addRow = document.getElementById('platformManageAddRow');
+  if (!addRow) return;
+  addRow.querySelector('.platform-manage-row-header')
+    .addEventListener('click', () => addRow.classList.toggle('open'));
+
+  // Opções do select "Template VIP" da linha de nova plataforma (textContent,
+  // nunca innerHTML: o nome do template é texto do usuário).
+  const addTemplateSelect = document.getElementById('platformManageAddTemplate');
+  if (addTemplateSelect) {
+    (Array.isArray(state.vipBonusTemplates) ? state.vipBonusTemplates : []).forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.name;
+      addTemplateSelect.appendChild(opt);
+    });
+  }
+
+  document.getElementById('platformManageAddSaveBtn').addEventListener('click', async () => {
+    const nameInput = document.getElementById('platformManageAddName');
+    const levelSelect = document.getElementById('platformManageAddLevel');
+    const groupSelect = document.getElementById('platformManageAddGroup');
+    const templateSelect = document.getElementById('platformManageAddTemplate');
+
+    const name = nameInput.value.trim().toUpperCase();
+    if (!name) {
+      await showAppAlert('Digite um código para a plataforma.');
+      return;
+    }
+    const duplicate = state.platforms.some(p => p.name.toUpperCase() === name);
+    if (duplicate) {
+      await showAppAlert('Já existe uma plataforma com esse código.');
+      return;
+    }
+
+    const newPlatform = {
+      id: 'p' + Date.now(),
+      name,
+      lastResetDate: null,
+      deposits: [],
+      betDays: [],
+      cycleEnded: false,
+      level: levelSelect.value === '' ? null : Number(levelSelect.value),
+      group: groupSelect.value === '' ? null : groupSelect.value,
+      withdrawals: [],
+      betEntries: [],
+      financeWeeks: [],
+      depositLog: [],
+      balancePhases: [],
+      obrigadoDays: [],
+      misteriosoBonusLog: [],
+      otherBonusLog: [],
+      levelHistory: [],
+      codigoConfig: { tipo: null, fixo: '', baseDate: null, variavelInicio: 0 },
+      codigoDeposito: { fixo: '', baseDate: null, variavelInicio: 0, valorMinimo: 0 },
+      codigoAposta: { fixo: '', baseDate: null, variavelInicio: 0, valorMinimo: 0 }
+    };
+    // Template VIP escolhido na criação: plataforma nova não tem passado,
+    // então a entrada-base (1970) já nasce com o template.
+    const chosenTemplateId = templateSelect && templateSelect.value ? templateSelect.value : null;
+    if (chosenTemplateId) {
+      newPlatform.levelHistory = [{
+        date: '1970-01-01',
+        level: newPlatform.level,
+        group: newPlatform.group,
+        vipTemplateId: chosenTemplateId
+      }];
+    }
+    state.platforms.push(newPlatform);
+
+    savePlatform(state.currentUid, newPlatform);
+    nameInput.value = '';
+    levelSelect.value = '';
+    groupSelect.value = '';
+    if (templateSelect) templateSelect.value = '';
+    addRow.classList.remove('open');
+
+    // Plataforma nova: não existe linha pra reaproveitar, reconcileList
+    // cria do zero na posição correta.
+    renderManageList();
+  });
+}
+
+// ---------- MODAL: HISTÓRICO ----------
+
+function formatDepositDateTime(isoStr) {
+  const depositDate = new Date(isoStr);
+  const dia = String(depositDate.getDate()).padStart(2, '0');
+  const mes = String(depositDate.getMonth() + 1).padStart(2, '0');
+  const ano = depositDate.getFullYear();
+  const horas = String(depositDate.getHours()).padStart(2, '0');
+  const minutos = String(depositDate.getMinutes()).padStart(2, '0');
+  return `${dia}/${mes}/${ano} ${horas}:${minutos}`;
+}
+
+// (7a) Etiqueta colorida do tipo ("Sem tipo" pra depósitos antigos).
+function buildDepositKindTag(dep) {
+  const info = getDepositKindInfo(getDepositKindId(dep));
+  const tag = document.createElement('span');
+  tag.className = 'deposit-kind-tag' + (info.id ? '' : ' is-untyped');
+  tag.style.setProperty('--kind-color', info.color);
+  tag.textContent = `${info.emoji} ${info.label}`;
+  return tag;
+}
+
+// (7a) Reclassifica um depósito. Sincroniza deposits + depositLog pela data
+// (applyDepositKind). Mesma gravação da edição de valor: savePlatform da
+// plataforma inteira, sem allowShrink (nenhum array diminui).
+async function reclassifyDeposit(platform, dep) {
+  const current = getDepositKindId(dep);
+  const choice = await pickDepositKind({
+    title: 'Reclassificar depósito',
+    subtitle: `${platform.name} · ${formatDepositDateTime(dep.date)} · ${formatCurrency(dep.value)}`,
+    current,
+    allowClear: true
+  });
+  if (!choice) return;
+  const newKind = choice === CLEAR_KIND ? null : choice;
+  if (newKind === current) return;
+  const changed = applyDepositKind(platform, dep.date, dep.value, newKind);
+  if (!changed) {
+    await showAppAlert('Não encontrei esse depósito pra reclassificar — feche o histórico e abra de novo.');
+    return;
+  }
+  savePlatform(state.currentUid, platform);
+  openRowId = platform.id;
+  // Não afeta filtro/ordenação nem nenhum total — só o conteúdo exibido.
+  refreshRow(platform.id);
+  showHistoryModal(platform);
+}
+
+function buildHistoryViewToggle(platform) {
+  const wrap = document.createElement('div');
+  wrap.className = 'deposit-history-views';
+  wrap.setAttribute('role', 'tablist');
+  const cycleCount = (platform.deposits || []).length;
+  const allCount = (platform.depositLog || []).length;
+  [['cycle', `Ciclo atual (${cycleCount})`], ['all', `Todos (${allCount})`]].forEach(([mode, text]) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'deposit-history-view-btn' + (historyViewMode === mode ? ' active' : '');
+    btn.setAttribute('role', 'tab');
+    btn.setAttribute('aria-selected', historyViewMode === mode ? 'true' : 'false');
+    btn.textContent = text;
+    btn.addEventListener('click', () => {
+      if (historyViewMode === mode) return;
+      historyViewMode = mode;
+      editingDepositDate = null;
+      showHistoryModal(platform);
+    });
+    wrap.appendChild(btn);
+  });
+  return wrap;
+}
+
+function showHistoryModal(platform) {
+  historyTitle.textContent = `Histórico de Depósitos - ${platform.name}`;
+  historyList.innerHTML = '';
+  historyList.appendChild(buildHistoryViewToggle(platform));
+
+  if (historyViewMode === 'all') {
+    renderAllDepositsHistory(platform);
+    historyModal.style.display = 'flex';
+    return;
+  }
+
+  const cycleDeposits = Array.isArray(platform.deposits) ? platform.deposits : [];
+  if (cycleDeposits.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'history-empty';
+    empty.textContent = 'Nenhum depósito registrado';
+    historyList.appendChild(empty);
+  } else {
+    const sortedDeposits = [...cycleDeposits].sort((a, b) => new Date(b.date) - new Date(a.date));
+    sortedDeposits.forEach((dep) => {
+      const item = document.createElement('div');
+      item.className = 'history-item';
+
+      const itemContent = document.createElement('div');
+      itemContent.className = 'history-item-content';
+
+      const dateSpan = document.createElement('span');
+      dateSpan.className = 'history-date';
+      dateSpan.textContent = formatDepositDateTime(dep.date);
+      itemContent.appendChild(dateSpan);
+
+      const isEditingThis = editingDepositDate === dep.date;
+
+      if (isEditingThis) {
+        // Modo edição: só o VALOR é editável — data/hora nunca mudam, pra
+        // não confundir quem não está acostumado com planilha. O tipo é
+        // preservado (só `value` muda nas duas cópias).
+        const valueInput = document.createElement('input');
+        valueInput.type = 'number';
+        valueInput.min = '0';
+        valueInput.step = '0.01';
+        valueInput.value = dep.value;
+        valueInput.className = 'history-value-input';
+        itemContent.appendChild(valueInput);
+        item.appendChild(itemContent);
+
+        const saveBtn = document.createElement('button');
+        saveBtn.className = 'history-edit-btn';
+        saveBtn.textContent = 'Salvar';
+        saveBtn.addEventListener('click', async () => {
+          const newValue = parseFloat(valueInput.value);
+          if (isNaN(newValue) || newValue <= 0) {
+            await showAppAlert('Digite um valor válido');
+            return;
+          }
+          dep.value = newValue;
+          // Sincroniza com depositLog (histórico permanente que o
+          // Financeiro usa) pela mesma data — é assim que financeiro.html
+          // reconhece a correção na semana/fase atual (e no Saldo).
+          const logEntry = (platform.depositLog || []).find(d => d.date === dep.date);
+          if (logEntry) logEntry.value = newValue;
+          savePlatform(state.currentUid, platform);
+          editingDepositDate = null;
+          openRowId = platform.id;
+          // Não afeta filtro/ordenação — só o conteúdo da linha muda.
+          refreshRow(platform.id);
+          showHistoryModal(platform);
+        });
+        item.appendChild(saveBtn);
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'history-cancel-btn';
+        cancelBtn.textContent = 'Cancelar';
+        cancelBtn.addEventListener('click', () => {
+          editingDepositDate = null;
+          showHistoryModal(platform);
+        });
+        item.appendChild(cancelBtn);
+      } else {
+        itemContent.appendChild(buildDepositKindTag(dep));
+
+        const valueSpan = document.createElement('span');
+        valueSpan.className = 'history-value';
+        valueSpan.textContent = formatCurrency(dep.value);
+        itemContent.appendChild(valueSpan);
+        item.appendChild(itemContent);
+
+        const kindBtn = document.createElement('button');
+        kindBtn.className = 'history-edit-btn deposit-kind-edit-btn';
+        kindBtn.textContent = 'Tipo';
+        kindBtn.setAttribute('aria-label', 'Alterar o tipo deste depósito');
+        kindBtn.addEventListener('click', () => reclassifyDeposit(platform, dep));
+        item.appendChild(kindBtn);
+
+        const editBtn = document.createElement('button');
+        editBtn.className = 'history-edit-btn';
+        editBtn.textContent = 'Editar';
+        editBtn.addEventListener('click', () => {
+          editingDepositDate = dep.date;
+          showHistoryModal(platform);
+        });
+        item.appendChild(editBtn);
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'history-delete-btn';
+        deleteBtn.textContent = 'Excluir';
+        deleteBtn.addEventListener('click', async () => {
+          const ok = await showAppConfirm(`Deseja excluir este depósito de ${formatCurrency(dep.value)}? Isso também remove esse valor do Saldo/Rollover no Financeiro.`);
+          if (ok) {
+            platform.deposits.splice(platform.deposits.indexOf(dep), 1);
+            // Bug corrigido (Etapa 7 — "depósito fantasma"): excluir aqui
+            // só removia de `deposits` (ciclo VIP), nunca de `depositLog`
+            // (histórico PERMANENTE usado pelo Financeiro pra Saldo e
+            // Rollover). O depósito excluído continuava sendo somado pra
+            // sempre no Saldo, mesmo já não existindo mais na Edição —
+            // mesma identificação por data+valor já usada em
+            // deleteClosedWeek (finance-logic.js) pra remover eventos
+            // sintéticos de backfill.
+            if (platform.depositLog) {
+              const logIndex = platform.depositLog.findIndex(
+                d => d.date === dep.date && Number(d.value) === Number(dep.value)
+              );
+              if (logIndex !== -1) platform.depositLog.splice(logIndex, 1);
+            }
+            savePlatform(state.currentUid, platform, { allowShrink: ['deposits', 'depositLog'] });
+            openRowId = platform.id;
+            // Não afeta filtro/ordenação — só o conteúdo da linha muda.
+            refreshRow(platform.id);
+            showHistoryModal(platform);
+          }
+        });
+        item.appendChild(deleteBtn);
+      }
+
+      historyList.appendChild(item);
+    });
+  }
+
+  historyModal.style.display = 'flex';
+}
+
+// (7a) Visão "Todos": depositLog (permanente, inclui ciclos encerrados).
+// Só o tipo é editável aqui — valor e exclusão continuam exclusivos da
+// visão "Ciclo atual" (mesmas regras de sincronização de sempre).
+function renderAllDepositsHistory(platform) {
+  const note = document.createElement('p');
+  note.className = 'deposit-history-note';
+  note.textContent = 'Histórico permanente (inclui ciclos encerrados). Aqui só o TIPO pode ser alterado — valor e exclusão ficam em "Ciclo atual".';
+  historyList.appendChild(note);
+
+  const log = Array.isArray(platform.depositLog) ? platform.depositLog : [];
+  if (log.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'history-empty';
+    empty.textContent = 'Nenhum depósito registrado';
+    historyList.appendChild(empty);
+    return;
+  }
+
+  const sorted = log
+    .filter(d => d && d.date && !isNaN(new Date(d.date).getTime()))
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  sorted.forEach(dep => {
+    const item = document.createElement('div');
+    item.className = 'history-item';
+
+    const itemContent = document.createElement('div');
+    itemContent.className = 'history-item-content';
+
+    const dateSpan = document.createElement('span');
+    dateSpan.className = 'history-date';
+    dateSpan.textContent = formatDepositDateTime(dep.date);
+    itemContent.appendChild(dateSpan);
+    itemContent.appendChild(buildDepositKindTag(dep));
+
+    const valueSpan = document.createElement('span');
+    valueSpan.className = 'history-value';
+    valueSpan.textContent = formatCurrency(Number(dep.value) || 0);
+    itemContent.appendChild(valueSpan);
+    item.appendChild(itemContent);
+
+    const kindBtn = document.createElement('button');
+    kindBtn.className = 'history-edit-btn deposit-kind-edit-btn';
+    kindBtn.textContent = 'Tipo';
+    kindBtn.setAttribute('aria-label', 'Alterar o tipo deste depósito');
+    kindBtn.addEventListener('click', () => reclassifyDeposit(platform, dep));
+    item.appendChild(kindBtn);
+
+    historyList.appendChild(item);
+  });
+}
+
+// ---------- MODAL: REINÍCIO DE CICLO ----------
+
+function showResetModal(platform) {
+  currentResetPlatform = platform;
+  resetModalText.textContent = `Reiniciar ciclo de ${platform.name}?`;
+
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const dd = String(today.getDate()).padStart(2, '0');
+  resetDateInput.value = `${yyyy}-${mm}-${dd}`;
+
+  resetModal.style.display = 'flex';
+}
+
+function closeResetModal() {
+  resetModal.style.display = 'none';
+  currentResetPlatform = null;
+}
+
+// ---------- INICIALIZAÇÃO DE DOM (chamadas pelo mount() da view) ----------
+
+// Resolve as referências do painel principal (lista + busca), liga a
+// linha fixa "+ Nova plataforma", a busca, o menu "Ordenar", o botão ⚙️
+// "Reordenar" (Item 22) e o botão 👁 "Badges" (Item 25a). Chamada UMA
+// VEZ por mount(), depois que o HTML do painel já foi escrito no
+// container pela view. Retorna um cleanup COMBINADO (Ordenar + dropdown
+// de badges) — quem chama (view-edicao.js) DEVE guardar e executar essa
+// função no próprio unmount(), senão os listeners globais de
+// document.click se acumulam a cada visita à rota.
+export function initManageControls() {
+  manageListEl = document.getElementById('platformManageList');
+  platformSearchEl = document.getElementById('platformSearch');
+  manageReorderBtn = document.getElementById('manageReorderBtn');
+  manageBadgeVisibilityBtn = document.getElementById('manageBadgeVisibilityBtn');
+  manageBadgeVisibilityDropdown = document.getElementById('manageBadgeVisibilityDropdown');
+  badgeVisibilityTotalCheckbox = document.getElementById('badgeVisibilityTotal');
+  badgeVisibilityCycleDayCheckbox = document.getElementById('badgeVisibilityCycleDay');
+  badgeVisibilityDepositCheckbox = document.getElementById('badgeVisibilityDeposit');
+  badgeVisibilityBetDaysCheckbox = document.getElementById('badgeVisibilityBetDays');
+
+  initAddRow();
+
+  if (platformSearchEl) {
+    // A busca é adiada pro próximo frame (requestAnimationFrame) em vez de
+    // rodar de forma síncrona dentro do evento 'input'. Isso dá tempo do
+    // navegador/teclado virtual terminar de processar a tecla digitada
+    // antes de qualquer atualização de DOM — evita a disputa com o ciclo
+    // de composição do teclado (IME) que causava teclas "comidas" em
+    // telas pequenas.
+    let searchFrame = null;
+    platformSearchEl.addEventListener('input', (e) => {
+      currentSearch = e.target.value;
+      if (searchFrame) cancelAnimationFrame(searchFrame);
+      searchFrame = requestAnimationFrame(() => {
+        searchFrame = null;
+        renderManageList();
+      });
+    });
+  }
+
+  // Item 22 — botão ⚙️ "Reordenar": só tem efeito com "Padrão"
+  // selecionado (currentMode === null). Começa desabilitado se algum
+  // outro modo já estiver ativo (não deveria acontecer logo no mount(),
+  // já que currentMode sempre reseta pra null a cada visita à rota, mas
+  // o guard fica aqui por segurança).
+  //
+  // Bug 1 (achado em teste): os 3 controles (⚙️/👁/⇅) foram implementados
+  // de forma isolada — nenhum sabia da existência dos outros dois, então
+  // era possível abrir o dropdown de Badges e o de Ordenar ao mesmo
+  // tempo, ou deixar o modo Reordenar ativo enquanto qualquer um dos
+  // dois dropdowns também estava aberto. closeSortDropdownUI() e
+  // closeBadgeDropdownUI() fecham os dropdowns de fora (initSortMenu()
+  // só olha a classe 'open' do próprio elemento a cada clique — mudar
+  // essa classe por fora é seguro e não quebra o toggle interno dele).
+  function closeSortDropdownUI() {
+    const dd = document.getElementById('manageSortDropdown');
+    const btn = document.getElementById('manageSortBtn');
+    if (dd) dd.classList.remove('open');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+  function closeBadgeDropdownUI() {
+    if (manageBadgeVisibilityDropdown) manageBadgeVisibilityDropdown.classList.remove('open');
+    if (manageBadgeVisibilityBtn) manageBadgeVisibilityBtn.setAttribute('aria-expanded', 'false');
+  }
+  function deactivateReorderModeUI() {
+    if (!reorderModeActive) return;
+    reorderModeActive = false;
+    if (manageReorderBtn) {
+      manageReorderBtn.classList.remove('active');
+      manageReorderBtn.textContent = '⚙️ Reordenar';
+    }
+    refreshAllRows();
+  }
+
+  if (manageReorderBtn) {
+    manageReorderBtn.disabled = currentMode !== null;
+    manageReorderBtn.addEventListener('click', () => {
+      const turningOn = !reorderModeActive;
+      if (turningOn) {
+        closeSortDropdownUI();
+        closeBadgeDropdownUI();
+      }
+      reorderModeActive = !reorderModeActive;
+      manageReorderBtn.classList.toggle('active', reorderModeActive);
+      manageReorderBtn.textContent = reorderModeActive ? '✓ Concluir reordenação' : '⚙️ Reordenar';
+      // Muda o CONTEÚDO de todas as linhas (mostra/some as setas ▲▼) sem
+      // mudar quais estão visíveis nem a ordem — mesmo uso de
+      // refreshAllRows já feito na virada do dia.
+      refreshAllRows();
+    });
+  }
+
+  // Item 25a — botão 👁 "Badges": dropdown simples com 2 checkboxes,
+  // reaproveitando o visual de .sort-menu-dropdown (sort-menu.css), mas
+  // com lógica de abrir/fechar própria (não é uma lista de opções
+  // exclusivas como o menu Ordenar, então não usa initSortMenu()).
+  let closeBadgeDropdown = () => {};
+  if (manageBadgeVisibilityBtn && manageBadgeVisibilityDropdown) {
+    const visibility = getCachedPreferences().badgeVisibility;
+    if (badgeVisibilityTotalCheckbox) badgeVisibilityTotalCheckbox.checked = visibility.totalBadge;
+    if (badgeVisibilityCycleDayCheckbox) badgeVisibilityCycleDayCheckbox.checked = visibility.cycleDayBadge;
+    if (badgeVisibilityDepositCheckbox) badgeVisibilityDepositCheckbox.checked = visibility.depositDayBadge;
+    if (badgeVisibilityBetDaysCheckbox) badgeVisibilityBetDaysCheckbox.checked = visibility.betDaysBadge;
+
+    function toggleDropdown() {
+      const willOpen = !manageBadgeVisibilityDropdown.classList.contains('open');
+      if (willOpen) {
+        closeSortDropdownUI();
+        deactivateReorderModeUI();
+      }
+      manageBadgeVisibilityDropdown.classList.toggle('open');
+      manageBadgeVisibilityBtn.setAttribute(
+        'aria-expanded',
+        manageBadgeVisibilityDropdown.classList.contains('open') ? 'true' : 'false'
+      );
+    }
+    function onDocumentClick(e) {
+      if (!manageBadgeVisibilityDropdown.contains(e.target) && e.target !== manageBadgeVisibilityBtn) {
+        manageBadgeVisibilityDropdown.classList.remove('open');
+        manageBadgeVisibilityBtn.setAttribute('aria-expanded', 'false');
+      }
+    }
+    function onVisibilityChange() {
+      const newVisibility = {
+        totalBadge: badgeVisibilityTotalCheckbox ? badgeVisibilityTotalCheckbox.checked : true,
+        cycleDayBadge: badgeVisibilityCycleDayCheckbox ? badgeVisibilityCycleDayCheckbox.checked : true,
+        depositDayBadge: badgeVisibilityDepositCheckbox ? badgeVisibilityDepositCheckbox.checked : true,
+        betDaysBadge: badgeVisibilityBetDaysCheckbox ? badgeVisibilityBetDaysCheckbox.checked : true
+      };
+      saveBadgeVisibility(state.currentUid, newVisibility);
+      // Muda o CONTEÚDO de todas as linhas (badges aparecem/somem) sem
+      // mudar quem está visível nem a ordem.
+      refreshAllRows();
+    }
+
+    manageBadgeVisibilityBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleDropdown();
+    });
+    document.addEventListener('click', onDocumentClick);
+    if (badgeVisibilityTotalCheckbox) badgeVisibilityTotalCheckbox.addEventListener('change', onVisibilityChange);
+    if (badgeVisibilityCycleDayCheckbox) badgeVisibilityCycleDayCheckbox.addEventListener('change', onVisibilityChange);
+    if (badgeVisibilityDepositCheckbox) badgeVisibilityDepositCheckbox.addEventListener('change', onVisibilityChange);
+    if (badgeVisibilityBetDaysCheckbox) badgeVisibilityBetDaysCheckbox.addEventListener('change', onVisibilityChange);
+
+    closeBadgeDropdown = () => document.removeEventListener('click', onDocumentClick);
+  }
+
+  // Bug 1: um clique em "⇅ Ordenar" também precisa fechar o dropdown de
+  // Badges e desligar o modo Reordenar. initSortMenu() é genérico (usado
+  // também pelo Calendário) e não conhece os outros 2 controles — por
+  // isso um listener EXTRA e independente é somado aqui, sem alterar
+  // ui-sort.js. Roda sempre que o botão é clicado (abrindo ou fechando o
+  // próprio dropdown, tanto faz) — fechar quem já está fechado é inofensivo.
+  const manageSortBtnEl = document.getElementById('manageSortBtn');
+  if (manageSortBtnEl) {
+    manageSortBtnEl.addEventListener('click', () => {
+      closeBadgeDropdownUI();
+      deactivateReorderModeUI();
+    });
+  }
+
+  const sortMenuCleanup = initSortMenu({
+    buttonId: 'manageSortBtn',
+    dropdownId: 'manageSortDropdown',
+    // Página 4: cada modo filtra E ordena ao mesmo tempo (Ponto 1) — ver
+    // getVisibleList / filterAndSortForManage em platform-sort.js.
+    onChange: (mode) => {
+      currentMode = mode;
+      // Item 22: trocar pra qualquer modo diferente de "Padrão" desliga
+      // o modo Reordenar automaticamente (não faz sentido continuar
+      // mostrando setas ▲▼ numa ordem que não é mais a manual) e
+      // desabilita o botão ⚙️ até "Padrão" ser selecionado de novo.
+      if (mode !== null) {
+        reorderModeActive = false;
+        if (manageReorderBtn) {
+          manageReorderBtn.disabled = true;
+          manageReorderBtn.classList.remove('active');
+          manageReorderBtn.textContent = '⚙️ Reordenar';
+        }
+      } else if (manageReorderBtn) {
+        manageReorderBtn.disabled = false;
+      }
+      renderManageList();
+    }
+  });
+
+  // Cleanup combinado: quem chama (view-edicao.js) só precisa guardar e
+  // executar UMA função no unmount(), que desliga os dois listeners
+  // globais (Ordenar + dropdown de Badges).
+  return function combinedCleanup() {
+    sortMenuCleanup();
+    closeBadgeDropdown();
+  };
+}
+
+// Resolve os 2 modais (Histórico/Reinício) e liga seus listeners
+// fixos. Chamada UMA VEZ por mount(), DEPOIS que a view já criou e anexou
+// os 3 modais ao document.body — diferente do Sistema 1, onde esses
+// elementos existiam no HTML estático de edicao.html e os listeners eram
+// registrados uma única vez, na carga do script. Como os modais são
+// recriados do zero a cada mount() (e removidos no unmount() da view),
+// não há risco de listener duplicado entre visitas à rota.
+export function initModalListeners() {
+  historyModal = document.getElementById('historyModal');
+  historyTitle = document.getElementById('historyTitle');
+  historyList = document.getElementById('historyList');
+  historyCloseBtn = document.getElementById('historyCloseBtn');
+
+  historyCloseBtn.addEventListener('click', () => {
+    editingDepositDate = null;
+    historyModal.style.display = 'none';
+  });
+  historyModal.addEventListener('click', (e) => {
+    if (e.target === historyModal) {
+      editingDepositDate = null;
+      historyModal.style.display = 'none';
+    }
+  });
+
+  resetModal = document.getElementById('resetModal');
+  resetModalText = document.getElementById('resetModalText');
+  resetDateInput = document.getElementById('resetDateInput');
+  resetConfirmBtn = document.getElementById('resetConfirmBtn');
+  resetCancelBtn = document.getElementById('resetCancelBtn');
+
+  resetConfirmBtn.addEventListener('click', async () => {
+    if (currentResetPlatform) {
+      if (!resetDateInput.value) {
+        await showAppAlert('Selecione uma data válida para reiniciar o ciclo.');
+        return;
+      }
+      currentResetPlatform.lastResetDate = `${resetDateInput.value}T00:00:00`;
+      currentResetPlatform.cycleEnded = false;
+      // (11c) Registra o Reinício no histórico de ciclos (mesma gravação).
+      recordCycleEvent(currentResetPlatform, 'reset', resetDateInput.value, 'auto');
+      // Reinício também refaz os depósitos do ciclo — garantia extra caso
+      // alguém clique direto em "Reinício" sem passar por "Fim" antes. NÃO
+      // mexe em betDays de propósito: "Apostei hoje" é contado por mês
+      // (getMonthStart), não pelo ciclo.
+      // (Sub-entrega 20) Reinício com data PASSADA: os depósitos feitos
+      // desde essa data (histórico permanente depositLog) VOLTAM pro ciclo
+      // — antes eram zerados e a faixa do Misterioso ficava menor que a
+      // real. Reinício com a data de hoje: só os depósitos de hoje (feitos
+      // antes do clique) entram.
+      const resetStart = parseResetDate(currentResetPlatform.lastResetDate);
+      const nowMs = Date.now();
+      const restored = (currentResetPlatform.depositLog || []).filter(e => {
+        const t = e && e.date ? new Date(e.date).getTime() : NaN;
+        return Number.isFinite(t) && resetStart && t >= resetStart.getTime() && t <= nowMs;
+      }).map(e => ({ ...e }));
+      currentResetPlatform.deposits = restored;
+      const restoredTotal = restored.reduce((sum, e) => sum + (Number(e.value) || 0), 0);
+      openRowId = currentResetPlatform.id;
+      savePlatform(state.currentUid, currentResetPlatform, { allowShrink: ['deposits'] });
+      if (restored.length) {
+        showAppAlert(`${restored.length} depósito(s) feito(s) desde ${resetDateInput.value.split('-').reverse().join('/')} voltaram pro ciclo (${formatCurrency(restoredTotal)}) — eles contam pra faixa do Misterioso.`);
+      }
+      // lastResetDate/cycleEnded podem afetar filtros de Ativas/Inativas e
+      // ordenação por dias no ciclo — atualiza a linha e reconcilia a lista.
+      refreshRow(currentResetPlatform.id);
+      renderManageList();
+    }
+    closeResetModal();
+  });
+
+  resetCancelBtn.addEventListener('click', closeResetModal);
+  resetModal.addEventListener('click', (e) => { if (e.target === resetModal) closeResetModal(); });
+}
