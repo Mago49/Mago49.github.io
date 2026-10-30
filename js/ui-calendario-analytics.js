@@ -20,6 +20,12 @@
 //
 // SEGURANÇA: nomes só por textContent.
 //
+// === (Sub-entrega 42) ===
+// Detalhe do dia: plataforma que é SÓ "😴 Folga do plano" sai da lista
+// (filtro na tela — buildDayPlatforms em calendar-logic.js não muda).
+// Folga com 🃏 emissão, depósito, rotina, aposta fora do plano ou 🚫
+// continua aparecendo.
+//
 // === (Sub-entrega 29) 🏁 ENCERRAR O DIA + RESULTADO DO DIA ===
 // Cartão da plataforma: 📈 R.B. do dia junto do apostado; hoje, com o lucro
 // ≥ meta do dia e ainda faltando apostar, 💡 sugere encerrar. "🏁 Encerrar
@@ -1305,7 +1311,11 @@ function openDayDetail(d) {
   }
   if (sum.childNodes.length) box.appendChild(sum);
 
-  const list = buildDayPlatforms(d, { showIgnored: ui.layers.has('ended') });
+  // (42) Card que é SÓ "😴 Folga do plano" (sem emissão, depósito, rotina,
+  // aposta fora do plano, dia proibido ou 🙈) não aparece — só ocupava espaço.
+  const onlyRest = x => x.restDay && !x.plan && !x.emission && !x.deposits.length && !x.routines.length
+    && !x.betRoutines.length && !(x.offPlanC > 0) && !x.forbidden && !x.noPlan && !x.ignored;
+  const list = buildDayPlatforms(d, { showIgnored: ui.layers.has('ended') }).filter(x => !onlyRest(x));
   // (32) 🏁 Encerrar várias (hoje, 2+ com resto) — abre tudo DESMARCADO.
   if (d.isToday) {
     const open = list.filter(p => p.plan && !p.plan.stopped && p.plan.plannedC > p.plan.realC);

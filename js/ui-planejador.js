@@ -165,6 +165,18 @@
 //    entradas previstas e falta hoje.
 // f) requestPlanejadorFocus(platformId): o Calendário abre a aba já com a
 //    plataforma escolhida ("Abrir no Planejador").
+//
+// === (Sub-entrega 42) 🔎 POR QUE MUDOU — POR PLATAFORMA + ⚡ NO GRUPO ===
+// a) O 🔎 do 🔄 deixa de ser texto corrido: uma linha por plataforma
+//    (antes → depois + chips do que aconteceu desde a foto: 🎲 apostado,
+//    💰 depósito, 🎁 bônus e outros, ⬆️/⬇️ ajuste, 🏁 resto de hoje,
+//    ⏳ falta hoje, 📥 entradas previstas, ⚡ peso ≠ ×1). Tocar abre as
+//    duas contas que sempre fecham: Rollover (salvo → agora) e Meta nova
+//    (Rollover × peso − 🔒 − falta hoje ± giros/caixa). No topo: 📅 dias de
+//    aposta salvo → agora. Grupo com 🔎 não repete a lista de plataformas.
+//    Só exibição: lê a foto (snap) da Sub 29 — nada novo é gravado.
+// b) ⚡ no plano de GRUPO: na linha de cada plataforma (Prévia) aparece o
+//    peso (sempre, mesmo ×1) e "Editar" abre o mesmo editor do individual.
 
 import { state } from './state.js';
 import { formatCurrency, showAppAlert, showAppConfirm } from './utils.js';
@@ -2461,6 +2473,8 @@ function groupMembers(g, cfg = formGroupCfg()) {
       todayLeftC: leftC,
       todayRawC: rawLeftC, // (29b)
       todayClosing: closing,
+      baseC, // (42) 🔎 conta da meta
+      resTargetC: res.targetC, // (42)
       cashCap: cfg.noCap || !valid ? null : cashCapFor(p, rolloverC, cfg.startKey, inflows, base, !closing), // (28) (29b)
       excludeKeys: valid ? forbiddenBetDays(routines, p, cfg.startKey, cfg.endKey) : [],
       skipEmissions: cfg.skipEmissions.slice(),
@@ -2634,6 +2648,29 @@ function renderMemberReserve(pid, member) {
         ? `Guarda o Rollover inteiro (${formatCurrency(fromCents(member.reservedC))}); a meta cobre só os depósitos de ativação previstos: ${formatCurrency(member.target)}.`
         : `Guarda ${formatCurrency(fromCents(member.reservedC))} de ${formatCurrency(fromCents(roll))}; meta ${formatCurrency(member.target)}.`))));
   if (member.todayLeftC > 0) box.appendChild(el('p', 'plan-hint', `↻ Descontou ${formatCurrency(fromCents(member.todayLeftC))} que ainda falta apostar hoje.`)); // (24)
+  // (42) ⚡ Peso desta plataforma — visível e editável também no grupo.
+  const spRow = el('div', 'plan-row plan-group-speed');
+  spRow.appendChild(el('span', 'plan-hint plan-speed-info', `⚡ Peso ${formatMult(member.speed)}${member.speed === 1 ? ' (normal — aposta o Rollover)' : ' — meta = Rollover × peso'}`));
+  const spBtn = el('button', 'bet-manage-btn plan-btn-inline', 'Editar');
+  spBtn.type = 'button';
+  spBtn.setAttribute('aria-label', `Editar o peso ⚡ de ${member.name}`);
+  spBtn.addEventListener('click', async () => {
+    const platform = findPlatform(pid);
+    if (!platform || busy) return;
+    spBtn.disabled = true;
+    try {
+      const r = await openSpeedEditor({ platform });
+      if (r.status === 'saved' && mounted) {
+        renderCash(); // prioridade do Misterioso pode mudar
+        renderGroupPreview();
+        refreshAlert();
+      }
+    } finally {
+      spBtn.disabled = false;
+    }
+  });
+  spRow.appendChild(spBtn);
+  box.appendChild(spRow);
   return box;
 }
 
@@ -3235,8 +3272,27 @@ function explainChange(saved, platform, opts = {}) {
   const wageredSince = sumSince(platform.betEntries, 'wagered', snap.at);
   const depositSince = sumSince(platform.depositLog, 'value', snap.at);
   const rollBefore = Number.isFinite(snap.rolloverC) ? snap.rolloverC : null;
+  // (42) ⬇️/⬆️ ajustes do rollover desde a foto; o resto vira 🎁 bônus e outros.
+  const adjSince = sumSince(platform.rolloverAdjustments, 'value', snap.at);
+  const incSince = sumSince(platform.rolloverIncreases, 'value', snap.at);
+  const otherC = rollBefore !== null && rollNow !== null ? (rollNow - rollBefore) + wageredSince : null;
+  // (42) 🏁 de hoje DEPOIS da foto: o resto foi pros próximos dias.
+  const stop = activeStop(todayPlanDay(saved, platform, t));
+  const stopAt = stop && stop.at ? new Date(stop.at).getTime() : NaN;
+  const stopPushC = stop && Number.isFinite(stopAt) && stopAt > new Date(snap.at).getTime()
+    ? Math.max(0, Math.round(Number(stop.plannedC) || 0) - Math.round(Number(stop.wageredC) || 0)) : 0;
+  // (42) dias de aposta que o plano salvo tinha depois do dia da foto
+  const oldKeys = (Array.isArray(saved.days) ? saved.days : [])
+    .filter(d => d && typeof d.key === 'string' && d.key > snap.day && Math.round(Number(d.plannedC) || 0) > 0)
+    .map(d => d.key);
   return {
     at: snap.at,
+    day: snap.day,
+    adjSince,
+    incSince,
+    bonusC: otherC === null ? null : otherC - depositSince - incSince + adjSince,
+    stopPushC,
+    oldKeys,
     sameDay: snap.day === t,
     rollBefore,
     rollNow,
@@ -3244,7 +3300,7 @@ function explainChange(saved, platform, opts = {}) {
     depositSince,
     // Rollover que mudou por outra coisa que não as apostas (depósitos,
     // bônus, abatimentos/ajustes).
-    otherC: rollBefore !== null && rollNow !== null ? (rollNow - rollBefore) + wageredSince : null,
+    otherC,
     inflowBefore: Math.round(Number(snap.inflowC) || 0),
     inflowNow: endKey ? memberInflows(platform, endKey).reduce((s2, x) => s2 + x.valueC, 0) : 0,
     leftBefore: snap.day === t ? Math.round(Number(snap.todayLeftC) || 0) : null,
@@ -3280,7 +3336,16 @@ function sumWhy(list) {
   };
 }
 
+// (42) dd/mm hh:mm
+function fmtWhen(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  const z = (n) => String(n).padStart(2, '0');
+  return `${z(d.getDate())}/${z(d.getMonth() + 1)} ${z(d.getHours())}:${z(d.getMinutes())}`;
+}
+
 // Linhas legíveis do 🔎 (só o que mudou).
+// (42) Não é mais usada no 🔄 (whyBlock) — fica como referência/fallback.
 function describeWhy(w) {
   if (!w) return ['Sem a foto de quando foi salvo (plano anterior à Sub 29) — a partir do próximo salvamento aparece aqui o que mudou.'];
   const m = (c) => moneyC(c);
@@ -3351,6 +3416,10 @@ function buildPlanRow(saved, opts, t, tomorrow) {
   const plan = buildPlan(params, t);
   if (!plan.ok) return { ...row, significant: false, error: plan.error, why: explainChange(saved, p, opts) };
   const diff = planUpdateDiff(saved, plan, t);
+  // (42) conta da meta pro 🔎
+  row.calc = keep
+    ? { keep: true, targetC, afterC: diff.afterC }
+    : { rollC: row.rolloverC, inflowC: row.projected ? Math.max(0, autoBaseC(p, sp.endKey, true) - row.rolloverC) : 0, speed: row.speed, baseC, resTargetC: res.targetC, leftC: row.todayDedC, targetC, afterC: diff.afterC };
   // (29) planejado × planejado (os dois com o teto pelo caixa)
   return { ...row, params, plan, afterC: diff.afterC, deltaC: diff.deltaC, significant: diff.significant, why: explainChange(saved, p, opts), days: plan.totals.activeDays, firstKey: plan.days[0].key, lastKey: plan.days[plan.days.length - 1].key };
 }
@@ -3422,7 +3491,13 @@ function buildGroupRow(g, opts, t, tomorrow) {
         : (members[i].reservedC > 0 ? '🔒 Todo o Rollover ficou guardado — nada a apostar.'
           : (members[i].todayLeftC > 0 ? 'Sem Rollover depois de descontar o que falta hoje — nada a apostar.' : 'Sem Rollover — nada a apostar.'));
     }
-    return { platformId: m.platformId, name: m.name, beforeC: plannedAfterC(sv, t), afterC: m.plan ? m.plan.totals.plannedC : 0, error: err, why: explainChange(sv, findPlatform(m.platformId), opts) };
+    const src = members[i] || {};
+    const afterM = m.plan ? m.plan.totals.plannedC : 0;
+    // (42) conta da meta pro 🔎
+    const calc = m.plan && src.rolloverC !== null && src.rolloverC !== undefined
+      ? { rollC: src.rolloverC, inflowC: row.projected ? src.inflowC : 0, speed: src.speed, baseC: src.baseC, resTargetC: src.resTargetC, leftC: src.todayLeftC || 0, targetC: toCents(src.target), afterC: afterM }
+      : null;
+    return { platformId: m.platformId, name: m.name, beforeC: plannedAfterC(sv, t), afterC: afterM, error: err, why: explainChange(sv, findPlatform(m.platformId), opts), calc, speed: src.speed };
   });
   if (!res.ok) return { ...row, significant: false, error: `${res.error || 'Nenhuma plataforma do grupo conseguiu montar o plano.'} Toque em "plataformas" pra ver o motivo.` };
   row.res = res;
@@ -3516,7 +3591,7 @@ function openUpdatePlans(opts = {}) {
   const stopInfo = opts.stopInfo && opts.stopInfo.platformId === only ? opts.stopInfo : null; // (29) 🏁
   // (29b) "Descontar" sempre começa ligado; a plataforma do 🏁 é a única
   // que manda o resto pra frente. Desligar = parei por hoje em todas.
-  const st = { deductToday: true, stopIds: new Set(stopInfo ? [stopInfo.platformId] : []), choices: new Map(), checked: new Set(), openGroups: new Set(), rows: [], saving: false };
+  const st = { deductToday: true, stopIds: new Set(stopInfo ? [stopInfo.platformId] : []), choices: new Map(), checked: new Set(), openGroups: new Set(), openWhy: new Set(), openWhyBox: new Set(), rows: [], saving: false };
   // (29b) linha com erro ainda pode ser marcada quando tem resto de hoje
   // pra encerrar (🏁): o plano fica como está, só hoje é encerrado.
   const canPick = (r) => !r.error || r.todayKeepC > 0;
@@ -3642,13 +3717,9 @@ function openUpdatePlans(opts = {}) {
     todayLines(r, line);
     line('📅 Período', `${fmtShort(r.firstKey)} a ${fmtShort(r.lastKey)} · ${r.days} dia(s)`);
     card.appendChild(nums);
-    // (29) 🔎 Por que mudou
-    if (r.deltaC !== 0 || r.significant) {
-      const det = el('details', 'pu-why');
-      det.appendChild(el('summary', '', '🔎 Por que mudou'));
-      describeWhy(r.why).forEach(tx => det.appendChild(el('p', 'pu-why-line', tx)));
-      card.appendChild(det);
-    }
+    // (29) 🔎 Por que mudou — (42) por plataforma, em contas
+    const hasWhy = r.deltaC !== 0 || r.significant;
+    if (hasWhy) card.appendChild(whyBlock(r));
 
     // Meta digitada / desconhecida: manter ou usar o Rollover.
     if (r.kind === 'plan' && r.mode !== 'auto') {
@@ -3667,8 +3738,135 @@ function openUpdatePlans(opts = {}) {
         : `Rollover: ${moneyC(r.rolloverC)}${r.speed && r.speed !== 1 ? ` × ${formatMult(r.speed)}` : ''} − 🔒 ${moneyC(r.reservedAfterC)}${r.todayDedC ? ` − ${moneyC(r.todayDedC)} de hoje` : ''}.`));
     }
 
-    if (r.kind === 'group' && r.members.length) card.appendChild(membersBlock(r));
+    if (r.kind === 'group' && r.members.length && !hasWhy) card.appendChild(membersBlock(r)); // (42) com 🔎 a lista já está nele
     return card;
+  };
+
+  // (42) 🔎 Por que mudou: uma linha por plataforma + as contas dela.
+  const whyBlock = (r) => {
+    const det = el('details', 'pu-why');
+    det.open = st.openWhyBox.has(r.key);
+    det.addEventListener('toggle', () => { if (det.open) st.openWhyBox.add(r.key); else st.openWhyBox.delete(r.key); });
+    det.appendChild(el('summary', '', '🔎 Por que mudou'));
+    const entries = r.kind === 'group'
+      ? r.members.map(m => ({ ...m, stay: m.error || null }))
+      : [{ platformId: r.id, name: r.name, beforeC: r.beforeC, afterC: r.afterC, stay: null, why: r.why, calc: r.calc || null, speed: r.speed }];
+    const whys = entries.map(e => e.why).filter(Boolean);
+    // Salvo em … · 📅 dias de aposta salvo → agora
+    if (whys.length) {
+      const at = whys.map(w => w.at).sort()[0];
+      const oldDays = new Set(whys.flatMap(w => w.oldKeys || [])).size;
+      const sameDay = whys.every(w => w.sameDay);
+      const head = el('div', 'pu-why-head');
+      head.appendChild(el('span', 'pu-why-chip', `💾 salvo ${fmtWhen(at)}`));
+      if (!sameDay || oldDays !== r.days) head.appendChild(el('span', 'pu-why-chip', `📅 ${oldDays} → ${r.days || 0} dia(s) de aposta`));
+      det.appendChild(head);
+      if (!sameDay) det.appendChild(el('p', 'pu-why-note', 'Os dias que já passaram saem da conta — o que não foi apostado neles fica no Rollover e entra nos dias que restam.'));
+    } else {
+      det.appendChild(el('p', 'pu-why-note', 'Sem a foto de quando foi salvo (plano anterior à Sub 29) — a partir do próximo salvamento aparece aqui o que mudou.'));
+    }
+    const sorted = entries.slice().sort((a, b) => ((a.stay ? 1 : 0) - (b.stay ? 1 : 0))
+      || (Math.abs((b.afterC || 0) - (b.beforeC || 0)) - Math.abs((a.afterC || 0) - (a.beforeC || 0)))
+      || String(a.name).localeCompare(String(b.name), 'pt-BR', { numeric: true }));
+    const single = r.kind !== 'group';
+    sorted.forEach(e => {
+      const k = `${r.key}|${e.platformId}`;
+      const open = single || st.openWhy.has(k);
+      const item = el('div', `pu-why-item${e.stay ? ' pu-why-item-stay' : ''}`);
+      const top = el(single ? 'div' : 'button', 'pu-why-row');
+      if (!single) {
+        top.type = 'button';
+        top.setAttribute('aria-expanded', open ? 'true' : 'false');
+        top.addEventListener('click', () => { if (st.openWhy.has(k)) st.openWhy.delete(k); else st.openWhy.add(k); draw(); });
+      }
+      const line1 = el('span', 'pu-why-row-top');
+      line1.appendChild(el('span', 'pu-why-name', `${single ? '' : (open ? '▾ ' : '▸ ')}${e.name}`));
+      const d = (e.afterC || 0) - (e.beforeC || 0);
+      line1.appendChild(el('span', `pu-why-val${e.stay ? '' : (d > 0 ? ' pu-why-val-up' : (d < 0 ? ' pu-why-val-down' : ''))}`,
+        e.stay ? `${moneyC(e.beforeC)} · fica como está` : `${moneyC(e.beforeC)} → ${moneyC(e.afterC)}`));
+      top.appendChild(line1);
+      const chips = whyChips(e);
+      if (chips.childNodes.length) top.appendChild(chips);
+      item.appendChild(top);
+      if (open) item.appendChild(whyCalc(e));
+      det.appendChild(item);
+    });
+    if (entries.some(e => e.calc && e.calc.leftC > 0)) {
+      det.appendChild(el('p', 'pu-why-note', '⏳ Já parou hoje numa delas? 🏁 Encerrar o dia no Calendário — o resto vai pros próximos dias.'));
+    }
+    return det;
+  };
+
+  // (42) Chips: o que aconteceu desde a foto (só o que não é zero).
+  const whyChips = (e) => {
+    const box = el('div', 'pu-why-chips');
+    const w = e.why;
+    const add = (txt, cls = '') => box.appendChild(el('span', `pu-why-chip${cls ? ` ${cls}` : ''}`, txt));
+    const short = (c) => moneyC(Math.abs(c)).replace(/^R\$[\s\u00a0]*/, '');
+    if (w) {
+      if (w.wageredSince) add(`🎲 −${short(w.wageredSince)}`, 'pu-why-chip-down');
+      if (w.depositSince) add(`💰 +${short(w.depositSince)}`, 'pu-why-chip-up');
+      if (w.bonusC) add(`🎁 ${w.bonusC > 0 ? '+' : '−'}${short(w.bonusC)}`, w.bonusC > 0 ? 'pu-why-chip-up' : 'pu-why-chip-down');
+      if (w.incSince) add(`⬆️ +${short(w.incSince)}`, 'pu-why-chip-up');
+      if (w.adjSince) add(`⬇️ −${short(w.adjSince)}`, 'pu-why-chip-down');
+      if (w.stopPushC) add(`🏁 +${short(w.stopPushC)} de hoje`);
+      if (w.inflowNow !== w.inflowBefore) add(`📥 ${short(w.inflowBefore)} → ${short(w.inflowNow)}`);
+    }
+    if (e.calc && e.calc.leftC > 0) add(`⏳ −${short(e.calc.leftC)} hoje`);
+    const sp = e.calc && e.calc.speed !== undefined ? e.calc.speed : e.speed;
+    if (sp && sp !== 1) add(`⚡ ${formatMult(sp)}`);
+    return box;
+  };
+
+  // (42) As duas contas de UMA plataforma (sempre fecham).
+  const whyCalc = (e) => {
+    const box = el('div', 'pu-why-calc');
+    const block = (title) => { const b = el('div', 'pu-why-block'); b.appendChild(el('span', 'pu-why-block-title', title)); box.appendChild(b); return b; };
+    const ln = (b, label, c, kind = '') => {
+      const signed = kind !== 'total' && kind !== 'plain';
+      const d = el('div', `pu-line${kind === 'total' ? ' pu-why-total' : ''}${signed && c > 0 ? ' pu-up' : ''}${signed && c < 0 ? ' pu-down' : ''}`);
+      d.appendChild(el('span', 'pu-l', label));
+      d.appendChild(el('span', 'pu-r', kind === 'total' || kind === 'plain' ? moneyC(c) : signedC(c)));
+      b.appendChild(d);
+    };
+    const w = e.why;
+    if (w && w.rollBefore !== null && w.rollNow !== null) {
+      const b = block('Rollover');
+      ln(b, `Quando salvou (${fmtWhen(w.at)})`, w.rollBefore, 'plain');
+      if (w.wageredSince) ln(b, '🎲 Apostado', -w.wageredSince);
+      if (w.depositSince) ln(b, '💰 Depósitos', w.depositSince);
+      if (w.incSince) ln(b, '⬆️ Aumentos', w.incSince);
+      if (w.adjSince) ln(b, '⬇️ Abatimentos', -w.adjSince);
+      if (w.bonusC) ln(b, '🎁 Bônus e outros', w.bonusC);
+      ln(b, '= Agora', w.rollNow, 'total');
+    }
+    if (e.stay) {
+      box.appendChild(el('p', 'pu-why-note', `Fica como está: ${e.stay}`));
+      return box;
+    }
+    const c = e.calc;
+    if (!c) return box;
+    const b = block('Meta nova (amanhã em diante)');
+    if (c.keep) {
+      ln(b, '✍️ Meta digitada mantida', c.targetC, 'plain');
+    } else {
+      ln(b, 'Rollover agora', c.rollC, 'plain');
+      if (c.inflowC) ln(b, '📥 Entradas previstas', c.inflowC);
+      const pesoC = c.baseC - (c.rollC + c.inflowC);
+      if (pesoC) ln(b, `⚡ Peso ${formatMult(c.speed)}`, pesoC);
+      const guardC = c.resTargetC - c.baseC;
+      if (guardC) ln(b, '🔒 Guardado', guardC);
+      if (c.leftC) ln(b, '⏳ Falta apostar hoje', -c.leftC);
+      const clampC = c.targetC - (c.resTargetC - c.leftC);
+      if (clampC) ln(b, 'Meta não fica negativa', clampC);
+    }
+    const adjC = c.afterC - c.targetC;
+    if (adjC) {
+      ln(b, '= Meta calculada', c.targetC, 'total');
+      ln(b, adjC > 0 ? '🎰 Arredondamento dos giros' : '🔒 Limite do caixa / giros', adjC);
+    }
+    ln(b, '= Meta nova', c.afterC, 'total');
+    return box;
   };
 
   // (29b) Resto de hoje: descontado (ainda vai apostar) × pra frente (🏁).
