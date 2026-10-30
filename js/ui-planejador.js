@@ -177,6 +177,20 @@
 //    Só exibição: lê a foto (snap) da Sub 29 — nada novo é gravado.
 // b) ⚡ no plano de GRUPO: na linha de cada plataforma (Prévia) aparece o
 //    peso (sempre, mesmo ×1) e "Editar" abre o mesmo editor do individual.
+//
+// === (Sub-entrega 43) 🎁 BÔNUS VIP NAS ENTRADAS PREVISTAS ===
+// a) As entradas previstas (memberInflows / computeInflows) passam a ter o
+//    bônus de fórmula de cada dia DEPOIS de hoje até o fim do plano: VIP
+//    diário, semanal, mensal e Obrigado (getExpectedBonusBreakdownForDate,
+//    o mesmo cálculo do Saldo/Rollover), cada um × o R do dia (bonusScales)
+//    ou, sem R no dia, o ÚLTIMO R daquele tipo na plataforma (sem histórico
+//    = 1:1). VIP "com aposta" no futuro = 0 (só existe depois da aposta
+//    mínima). Misterioso continua como era (projectMisteriosoInflows).
+//    Entra na meta só na base Projetado; teto do caixa, gráfico, botão R e
+//    painel 📊 também enxergam. Hoje não entra (já está no Rollover desde
+//    00:00). Só leitura — nada é gravado.
+// b) 🔎: o bônus de fórmula que entrou no Rollover desde a foto vira o chip
+//    "🎁 VIP" (separado de "🎁 Bônus e outros").
 
 import { state } from './state.js';
 import { formatCurrency, showAppAlert, showAppConfirm } from './utils.js';
@@ -211,6 +225,7 @@ import { forbiddenBetDays, routineBetDays, betRoutinesFor, ROUTINE_HISTORY_DAYS,
 import { buildMisteriosoStrategy, projectMisteriosoInflows } from './strategy-logic.js';
 import { computeAdherence, realWageredC, realRBC } from './calendar-logic.js';
 import { loadPlanLogs, isPlanLogLoaded, getPlanLogEntry } from './plan-log-store.js';
+import { getExpectedBonusBreakdownForDate, getFormulaScale, normalizeRolloverScale, isVipDailyTimed, getTimedVipDailyRollover } from './bonus-ledger-logic.js'; // (43)
 
 const PREVIEW_DEBOUNCE_MS = 120;
 const DAYS_COLLAPSED = 7;
@@ -416,7 +431,7 @@ function computeWorld(platform) {
 
 // (7b) O que ainda vai entrar no Rollover de hoje até endKey.
 function computeInflows(platform, endKey) {
-  const empty = { items: [], routineC: 0, suggestionC: 0, misteriosoC: 0, unknown: 0, pick: null };
+  const empty = { items: [], routineC: 0, suggestionC: 0, misteriosoC: 0, vipC: 0, unknown: 0, pick: null };
   if (!platform || !world || world.rolloverC === null || !endKey) return empty;
   const today = todayKey();
   if (endKey < today) return empty;
@@ -437,7 +452,86 @@ function computeInflows(platform, endKey) {
   } else {
     out.items = items;
   }
+  // (43) 🎁 bônus VIP/Obrigado dos próximos dias
+  const vip = formulaInflows(platform, endKey);
+  out.vipC = vip.reduce((s, x) => s + x.valueC, 0);
+  out.items = [...out.items, ...vip];
   return out;
+}
+
+// ---------- (43) 🎁 bônus de fórmula previstos ----------
+const FORMULA_INFLOW_TYPES = [
+  ['vipDaily', '🎁 VIP diário'],
+  ['vipWeekly', '🎁 VIP semanal'],
+  ['vipMonthly', '🎁 VIP mensal'],
+  ['obrigado', '🙏 Obrigado']
+];
+
+// Último R gravado (bonusScales) daquele tipo na plataforma; null = nunca.
+function lastFormulaScale(p, type) {
+  const list = (p && Array.isArray(p.bonusScales) ? p.bonusScales : [])
+    .filter(e => e && e.type === type && typeof e.dayKey === 'string')
+    .sort((a, b) => b.dayKey.localeCompare(a.dayKey));
+  return list.length ? normalizeRolloverScale(list[0].scale) : null;
+}
+
+/**
+ * Bônus de fórmula (VIP diário/semanal/mensal, Obrigado) que ainda vão
+ * ENTRAR no Rollover, de amanhã até endKey — centavos, já × R.
+ * R: o do dia (bonusScales) ou o último daquele tipo (sem histórico = 1:1).
+ */
+function formulaInflows(p, endKey) {
+  if (!p || !endKey || !contextConfirmed) return [];
+  const t = todayKey();
+  if (endKey <= t) return [];
+  let ctx = {};
+  try { ctx = resolveCtx(p) || {}; } catch (err) { ctx = {}; }
+  const last = {};
+  FORMULA_INFLOW_TYPES.forEach(([type]) => { last[type] = lastFormulaScale(p, type); });
+  const hasDay = (k, type) => (Array.isArray(p.bonusScales) ? p.bonusScales : []).some(e => e && e.dayKey === k && e.type === type);
+  const out = [];
+  for (let k = addDaysKey(t, 1), n = 0; k <= endKey && n < 400; k = addDaysKey(k, 1), n++) {
+    let b;
+    try { b = getExpectedBonusBreakdownForDate(p, dayKeyToDate(k), ctx); } catch (err) { continue; }
+    FORMULA_INFLOW_TYPES.forEach(([type, name]) => {
+      const v = Number(b[type]) || 0;
+      if (!(v > 0)) return;
+      const sc = hasDay(k, type) ? getFormulaScale(p, k, type) : (last[type] === null ? 1 : last[type]);
+      const valueC = Math.round(v * 100 * sc);
+      if (valueC > 0) out.push({ key: k, valueC, name, formula: true });
+    });
+  }
+  return out;
+}
+
+// (43) 🎁 Bônus de fórmula (sem Misterioso) que ENTROU no Rollover depois de
+// atIso, até agora — centavos, já × R. VIP "com aposta" no horário dele.
+function formulaSinceC(p, atIso, fromDayKey) {
+  if (!p || !contextConfirmed || !fromDayKey) return 0;
+  const at = new Date(atIso).getTime();
+  if (!Number.isFinite(at)) return 0;
+  const now = Date.now();
+  const t = todayKey();
+  let ctx = {};
+  try { ctx = resolveCtx(p) || {}; } catch (err) { ctx = {}; }
+  let total = 0;
+  for (let k = fromDayKey, n = 0; k <= t && n < 400; k = addDaysKey(k, 1), n++) {
+    const d = dayKeyToDate(k);
+    let b;
+    try { b = getExpectedBonusBreakdownForDate(p, d, ctx); } catch (err) { continue; }
+    const dayStart = d.getTime();
+    const timed = isVipDailyTimed(p, d);
+    FORMULA_INFLOW_TYPES.forEach(([type]) => {
+      if (type === 'vipDaily' && timed) return;
+      if (!(dayStart > at)) return; // entrou às 00:00 — já estava na foto
+      total += (Number(b[type]) || 0) * getFormulaScale(p, k, type);
+    });
+    if (timed) {
+      const ev = getTimedVipDailyRollover(p, d, ctx);
+      if (ev && ev.t > at && ev.t <= now) total += Number(ev.v) || 0;
+    }
+  }
+  return Math.round(total * 100);
 }
 
 function currentFloor() {
@@ -1375,7 +1469,7 @@ function syncGroupInputs() {
   hide('planGroupBaseField', !group);
   const gbh = $('planGroupBaseHint');
   if (gbh) gbh.textContent = (form.groupBase === 'projected'
-    ? 'Projetado: Rollover de hoje + o que ainda vai entrar até o fim do período (depósitos das rotinas e bônus do Misterioso das próximas emissões), × peso ⚡, menos o 🔒 guardado.'
+    ? 'Projetado: Rollover de hoje + o que ainda vai entrar até o fim do período (depósitos das rotinas, bônus VIP/Obrigado dos próximos dias e bônus do Misterioso das próximas emissões), × peso ⚡, menos o 🔒 guardado.'
     : 'Rollover de hoje × peso ⚡, menos o 🔒 guardado.')
     + ' O 🔒 de cada plataforma fica na linha dela, na Prévia.'
     + (form.groupDeductToday ? ' ↻ Recalculado: a meta de cada uma desconta o que ainda falta apostar hoje.' : '');
@@ -1850,6 +1944,7 @@ function renderProjectedHint() {
   if (inf.routineC) parts.push(`rotinas ${formatCurrency(fromCents(inf.routineC))}`);
   if (inf.suggestionC) parts.push(`depósito sugerido do Misterioso ${formatCurrency(fromCents(inf.suggestionC))}`);
   if (inf.misteriosoC) parts.push(`bônus Misterioso ${formatCurrency(fromCents(inf.misteriosoC))}`);
+  if (inf.vipC) parts.push(`🎁 bônus VIP ${formatCurrency(fromCents(inf.vipC))}`); // (43)
   const projected = world.rolloverC + total;
   const sb = speedBase();
   hint.textContent = `Rollover atual: ${formatCurrency(fromCents(world.rolloverC))} · previsto até ${fmtShort(form.endKey)}: ${formatCurrency(fromCents(projected))} (+${parts.join(' + ')})${sb !== 1 ? ` · peso ${formatMult(sb)}` : ''}`;
@@ -2224,7 +2319,7 @@ function renderPreview() {
     kpis.appendChild(kpi('Dias de aposta', String(t.activeDays), `${fmtShort(plan.days[0].key)} a ${fmtShort(plan.days[plan.days.length - 1].key)}`));
     kpis.appendChild(kpi('Maior / menor dia', `${formatCurrency(fromCents(t.maxDayC))}`, `menor ${formatCurrency(fromCents(t.minDayC))}`));
     kpis.appendChild(kpi('Giros', String(t.spins), t.buys ? `+ ${t.buys} compra(s) de bônus` : ''));
-    if (proj.inflowInPlanC > 0) kpis.appendChild(kpi('Entradas previstas', formatCurrency(fromCents(proj.inflowInPlanC)), 'rotinas + Misterioso, somadas ao Rollover'));
+    if (proj.inflowInPlanC > 0) kpis.appendChild(kpi('Entradas previstas', formatCurrency(fromCents(proj.inflowInPlanC)), 'rotinas + VIP + Misterioso, somadas ao Rollover'));
     if (proj.rolloverZeroKey) kpis.appendChild(kpi('Rollover zerado', fmtDay(proj.rolloverZeroKey), 'se o plano for cumprido'));
     else if (world && world.rolloverC !== null) kpis.appendChild(kpi('Rollover ao fim', formatCurrency(fromCents(proj.rollover[proj.rollover.length - 1] || 0)), 'ainda restante'));
     proj.vipReach.forEach(r => kpis.appendChild(kpi(`V${r.level} atingido`, fmtDay(r.key), 'pelo total apostado', 'plan-kpi-vip')));
@@ -2409,10 +2504,11 @@ function memberInflows(p, endKey) {
   const items = depositRoutineInflows(routines, p, t, endKey).items.map(x => ({ key: x.key, valueC: x.valueC, name: `💰 ${x.name || 'Depósito de rotina'}` }));
   let tpl = null;
   if (contextConfirmed) { try { tpl = (resolveCtx(p) || {}).misteriosoTemplate || null; } catch (err) { tpl = null; } }
+  const vip = formulaInflows(p, endKey); // (43) 🎁 VIP/Obrigado previstos
   if (tpl && !p.cycleEnded) {
-    try { return [...items, ...projectMisteriosoInflows(p, tpl, items, endKey, new Date()).map(x => ({ ...x, name: '🃏 Bônus do Misterioso' }))]; } catch (err) { return items; }
+    try { return [...items, ...projectMisteriosoInflows(p, tpl, items, endKey, new Date()).map(x => ({ ...x, name: '🃏 Bônus do Misterioso' })), ...vip]; } catch (err) { return [...items, ...vip]; }
   }
-  return items;
+  return [...items, ...vip];
 }
 
 // Membros com meta (Rollover × peso) e dias bloqueados de CADA plataforma.
@@ -3276,6 +3372,8 @@ function explainChange(saved, platform, opts = {}) {
   const adjSince = sumSince(platform.rolloverAdjustments, 'value', snap.at);
   const incSince = sumSince(platform.rolloverIncreases, 'value', snap.at);
   const otherC = rollBefore !== null && rollNow !== null ? (rollNow - rollBefore) + wageredSince : null;
+  // (43) 🎁 bônus VIP/Obrigado que entrou no Rollover depois da foto
+  const vipSinceC = otherC === null ? 0 : formulaSinceC(platform, snap.at, snap.day);
   // (42) 🏁 de hoje DEPOIS da foto: o resto foi pros próximos dias.
   const stop = activeStop(todayPlanDay(saved, platform, t));
   const stopAt = stop && stop.at ? new Date(stop.at).getTime() : NaN;
@@ -3290,7 +3388,8 @@ function explainChange(saved, platform, opts = {}) {
     day: snap.day,
     adjSince,
     incSince,
-    bonusC: otherC === null ? null : otherC - depositSince - incSince + adjSince,
+    vipSinceC, // (43)
+    bonusC: otherC === null ? null : otherC - depositSince - incSince + adjSince - vipSinceC,
     stopPushC,
     oldKeys,
     sameDay: snap.day === t,
@@ -3806,7 +3905,8 @@ function openUpdatePlans(opts = {}) {
     if (w) {
       if (w.wageredSince) add(`🎲 −${short(w.wageredSince)}`, 'pu-why-chip-down');
       if (w.depositSince) add(`💰 +${short(w.depositSince)}`, 'pu-why-chip-up');
-      if (w.bonusC) add(`🎁 ${w.bonusC > 0 ? '+' : '−'}${short(w.bonusC)}`, w.bonusC > 0 ? 'pu-why-chip-up' : 'pu-why-chip-down');
+      if (w.vipSinceC) add(`🎁 VIP +${short(w.vipSinceC)}`, 'pu-why-chip-up'); // (43)
+      if (w.bonusC) add(`🎁 outros ${w.bonusC > 0 ? '+' : '−'}${short(w.bonusC)}`, w.bonusC > 0 ? 'pu-why-chip-up' : 'pu-why-chip-down');
       if (w.incSince) add(`⬆️ +${short(w.incSince)}`, 'pu-why-chip-up');
       if (w.adjSince) add(`⬇️ −${short(w.adjSince)}`, 'pu-why-chip-down');
       if (w.stopPushC) add(`🏁 +${short(w.stopPushC)} de hoje`);
@@ -3835,6 +3935,7 @@ function openUpdatePlans(opts = {}) {
       ln(b, `Quando salvou (${fmtWhen(w.at)})`, w.rollBefore, 'plain');
       if (w.wageredSince) ln(b, '🎲 Apostado', -w.wageredSince);
       if (w.depositSince) ln(b, '💰 Depósitos', w.depositSince);
+      if (w.vipSinceC) ln(b, '🎁 Bônus VIP / Obrigado', w.vipSinceC); // (43)
       if (w.incSince) ln(b, '⬆️ Aumentos', w.incSince);
       if (w.adjSince) ln(b, '⬇️ Abatimentos', -w.adjSince);
       if (w.bonusC) ln(b, '🎁 Bônus e outros', w.bonusC);
@@ -4250,7 +4351,7 @@ function renderOverview() {
   ti.checked = ov.inflows;
   ti.addEventListener('change', () => { ov.inflows = ti.checked; renderOverview(); });
   tg.appendChild(ti);
-  tg.appendChild(document.createTextNode(' Contar entradas previstas (depósitos de rotina + Misterioso)'));
+  tg.appendChild(document.createTextNode(' Contar entradas previstas (depósitos de rotina + bônus VIP + Misterioso)'));
   box.appendChild(tg);
 
   // Data

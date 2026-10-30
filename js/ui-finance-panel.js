@@ -156,6 +156,17 @@
 //      UM savePlatform. Rollover, saldo, VIP, fechamento, códigos, Total
 //      Apostado e Planejador leem esses lançamentos como qualquer outro.
 //
+// === (Sub-entrega 43) 🎁 R DO VIP DIÁRIO "COM APOSTA" ===
+// Depois do SIM do "coletado?" (avulso ou lote) abre askVipScale
+// (ui-vip-collect.js): Sem rollover · 1:1 · Outro R — a última resposta da
+// plataforma vem marcada; Cancelar = nada é gravado (lote volta pra prévia).
+// O R vira o bonusScales do dia (setFormulaScale, mesmo campo do 🧾 Bônus)
+// no MESMO savePlatform da aposta. Sem a pergunta (NÃO, ou a aposta que
+// liberou foi a última), applyVipScaleToday grava sozinho o ÚLTIMO R da
+// plataforma — só se o VIP de hoje já está liberado e ainda não tem R. Sem
+// histórico de R: nada é gravado (continua 1:1, como antes). Só o dia de
+// hoje — o padrão geral (1:1) da lógica não muda, nenhum dia passado muda.
+//
 // === CUIDADO SPA (Adendo K12) ===
 // `financeListEl`/`financeSearchEl` NÃO são resolvidos no topo do
 // módulo (isso quebraria, já que o router injeta o HTML da view DEPOIS
@@ -186,7 +197,7 @@ import {
 import {
   getExpectedBonusToday, computeBonusDiffToday, getEffectiveOtherBonusForDay,
   getAccumulatedBonusThisWeek, computeAutoAccruedBonusForWeek, buildHighBonusEntry,
-  getVipCollectPrompt
+  getVipCollectPrompt, isVipDailyTimed, getVipDailyUnlockTs, normalizeRolloverScale // (43)
 } from './bonus-ledger-logic.js';
 import { getCachedPreferences, saveManualOrder, saveBadgeVisibility } from './user-preferences-store.js';
 import { savePlatform } from './platforms-store.js';
@@ -197,7 +208,7 @@ import { filterAndSortForManage } from './platform-sort.js';
 import { initSortMenu } from './ui-sort.js';
 import { scheduleDailySnapshot } from './daily-snapshot-store.js';
 import { pickDepositKindAndBonus } from './deposit-kinds.js';
-import { askVipCollect, vipCollectQuestion } from './ui-vip-collect.js'; // (Sub-entrega 15)
+import { askVipCollect, vipCollectQuestion, askVipScale } from './ui-vip-collect.js'; // (Sub-entrega 15) (43)
 import { createBonusSplit } from './ui-bonus-split.js'; // (Sub-entrega 16)
 import { openBalanceCheck } from './ui-balance-check.js';
 import { openBetEntry } from './ui-bet-entry.js';
@@ -205,7 +216,7 @@ import { planBatch, matchGame, batchVipQuestion } from './bet-batch-logic.js'; /
 import { gameStamp, setEntryGame, searchGames } from './game-catalog-logic.js';
 import { loadGameCatalog, isGameCatalogLoaded, getGames } from './game-catalog-store.js';
 import { openBonusManager } from './ui-bonus-manager.js';
-import { hasBalanceCheckToday, getLastBalanceCheck, parseRealBalance } from './balance-check-logic.js';
+import { hasBalanceCheckToday, getLastBalanceCheck, parseRealBalance, setFormulaScale } from './balance-check-logic.js';
 
 const r2 = roundMoney;
 
@@ -1238,6 +1249,7 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
       // (Sub-entrega 15) VIP diário "com aposta" já liberado e ainda não
       // coletado: pergunta ANTES do formulário. Cancelar = nada acontece.
       let vipCollected = false;
+      let vipScale = null; // (43)
       const prompt = getVipCollectPrompt(p, new Date(), ctx);
       if (prompt) {
         const answer = await askVipCollect({
@@ -1247,6 +1259,12 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
         });
         if (!answer) return;
         vipCollected = answer === 'yes';
+        // (43) SIM: em seguida, o R desse VIP. Cancelar = nada acontece.
+        if (vipCollected) {
+          const sc = await askVipScale({ subtitle: `${p.name} · VIP diário ${formatCurrency(prompt.value)}`, lastScale: lastVipScale(p) });
+          if (sc === null) return;
+          vipScale = sc;
+        }
       }
       let initial = null;
       for (;;) {
@@ -1255,7 +1273,7 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
         // (22) Lote: mesmo caminho (VIP → saldo → savePlatform). Cancelar
         // qualquer passo volta pra prévia do lote sem perder nada.
         if (entry.status === 'batch') {
-          const res = await registerBetBatch(p, ctx, entry.batch, { vipAsked: !!prompt, vipCollected });
+          const res = await registerBetBatch(p, ctx, entry.batch, { vipAsked: !!prompt, vipCollected, vipScale });
           if (res && res.reopen) {
             initial = { mode: 'batch', batch: entry.batch };
             continue;
@@ -1288,6 +1306,7 @@ function buildCurrentWeekSection(p, live, closed, liveBalance, ctx) {
           bet.vipCollectedBefore = true;
         }
         p.betEntries.push(bet);
+        applyVipScaleToday(p, vipScale); // (43) R do VIP de hoje — mesmo savePlatform
         savePlatform(state.currentUid, p);
         openRowId = p.id;
         refreshRow(p.id);
@@ -1557,8 +1576,33 @@ function openActionModal(title, subtitle, content, focusEl = null) {
   }
 }
 
+// ---------- (Sub-entrega 43) R do VIP diário "com aposta" ----------
+
+// Último R gravado do VIP diário na plataforma (bonusScales); null = nunca.
+function lastVipScale(p) {
+  const list = (p && Array.isArray(p.bonusScales) ? p.bonusScales : [])
+    .filter(e => e && e.type === 'vipDaily' && typeof e.dayKey === 'string')
+    .sort((a, b) => b.dayKey.localeCompare(a.dayKey));
+  return list.length ? normalizeRolloverScale(list[0].scale) : null;
+}
+
+// Chamar DEPOIS de pôr as apostas em p.betEntries e ANTES do savePlatform.
+// scale = R respondido agora (número) ou null (sem pergunta: usa o último R
+// da plataforma, só se o VIP de hoje já está liberado e ainda não tem R).
+function applyVipScaleToday(p, scale) {
+  const now = new Date();
+  const key = toLocalDateString(now);
+  if (!isVipDailyTimed(p, now)) return false;
+  if (getVipDailyUnlockTs(p, key) === null) return false;
+  if (scale !== null && scale !== undefined) return setFormulaScale(p, key, 'vipDaily', scale, now);
+  const has = (Array.isArray(p.bonusScales) ? p.bonusScales : []).some(e => e && e.dayKey === key && e.type === 'vipDaily');
+  if (has) return false;
+  const last = lastVipScale(p);
+  return last === null ? false : setFormulaScale(p, key, 'vipDaily', last, now);
+}
+
 // (Sub-entrega 22) Grava o lote colado. { reopen:true } = voltar pra prévia.
-async function registerBetBatch(p, ctx, batch, { vipAsked = false, vipCollected = false } = {}) {
+async function registerBetBatch(p, ctx, batch, { vipAsked = false, vipCollected = false, vipScale = null } = {}) {
   const now = new Date();
   const plan = planBatch(p, batch.rows, { now, whenTime: batch.whenTime, weekStartKey: toLocalDateString(getWeekStart(now)) });
   if (plan.errorCount > 0 || plan.entries.length === 0) {
@@ -1570,6 +1614,7 @@ async function registerBetBatch(p, ctx, batch, { vipAsked = false, vipCollected 
 
   // 1) VIP diário "com aposta" — só se a pergunta não foi feita antes.
   let collected = vipCollected;
+  let scale = vipScale; // (43)
   if (!vipAsked && plan.todayEntries.length) {
     const sim = getVipCollectPrompt({ ...p, betEntries: [...(p.betEntries || []), ...plan.todayEntries] }, now, ctx);
     if (sim) {
@@ -1580,6 +1625,12 @@ async function registerBetBatch(p, ctx, batch, { vipAsked = false, vipCollected 
       });
       if (!answer) return { reopen: true };
       collected = answer === 'yes';
+      // (43) SIM: o R desse VIP. Cancelar = volta pra prévia do lote.
+      if (collected) {
+        const sc = await askVipScale({ subtitle: `${p.name} · VIP diário ${formatCurrency(sim.value)}`, lastScale: lastVipScale(p) });
+        if (sc === null) return { reopen: true };
+        scale = sc;
+      }
     }
   }
 
@@ -1606,6 +1657,7 @@ async function registerBetBatch(p, ctx, batch, { vipAsked = false, vipCollected 
   }
   if (!p.betEntries) p.betEntries = [];
   p.betEntries.push(...plan.entries);
+  applyVipScaleToday(p, scale); // (43) R do VIP de hoje — mesmo savePlatform
   savePlatform(state.currentUid, p);
   openRowId = p.id;
   refreshRow(p.id);
