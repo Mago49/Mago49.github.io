@@ -1873,7 +1873,7 @@ function buildPhaseContent(p) {
   const list = document.createElement('div');
   list.className = 'finance-history';
   [...phases].reverse().forEach(phase => {
-    list.appendChild(buildPhaseCard(phase, p.id));
+    list.appendChild(buildPhaseCard(phase, p.id, p));
   });
   fragment.appendChild(list);
 
@@ -2023,7 +2023,7 @@ function buildPhaseControls(p) {
   return wrap;
 }
 
-function buildPhaseCard(phase, platformId) {
+function buildPhaseCard(phase, platformId, p) {
   const card = document.createElement('div');
   card.className = 'finance-week-card' + (phase.isCurrent ? ' finance-total-card' : '');
   const key = `${platformId}::${phase.phaseNumber}`;
