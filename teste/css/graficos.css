@@ -2957,3 +2957,56 @@
 .cal-stop-many-item.cal-stop-many-on { border-color: #2563eb; background: rgba(37, 99, 235, .06); }
 .cal-dist-toggle { align-self: flex-start; font-size: .8rem; }
 .cal-dist-toggle-bad { border-color: #dc2626 !important; color: #b91c1c; }
+
+/* (Sub-entrega 42) 🔎 Por que mudou — por plataforma, em contas · ⚡ no grupo */
+.pu-why[open] { display: flex; flex-direction: column; gap: 0.4rem; }
+.pu-why-head, .pu-why-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.pu-why-chip {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 0.74rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pu-why-chip-up { background: #dcfce7; color: #166534; }
+.pu-why-chip-down { background: #fee2e2; color: #991b1b; }
+.pu-why-note { margin: 0; font-size: 0.76rem; color: #64748b; overflow-wrap: anywhere; }
+.pu-why-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+}
+.pu-why-item-stay { opacity: 0.75; }
+.pu-why-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.45rem 0.55rem;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+button.pu-why-row { cursor: pointer; }
+.pu-why-row-top { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+.pu-why-name { font-weight: 800; color: #0f172a; min-width: 0; overflow-wrap: anywhere; }
+.pu-why-val { font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; color: #334155; }
+.pu-why-val-up { color: #15803d; }
+.pu-why-val-down { color: #b91c1c; }
+.pu-why-calc { display: flex; flex-direction: column; gap: 0.45rem; padding: 0 0.55rem 0.55rem; }
+.pu-why-block { display: flex; flex-direction: column; gap: 0.12rem; padding: 0.4rem 0.5rem; border-radius: 8px; background: #f8fafc; }
+.pu-why-block-title { font-size: 0.72rem; font-weight: 800; color: #1e3a8a; text-transform: uppercase; letter-spacing: 0.03em; }
+.pu-why-total { border-top: 1px solid #cbd5e1; padding-top: 0.15rem; margin-top: 0.1rem; }
+.pu-why-total .pu-l, .pu-why-total .pu-r { font-weight: 800; color: #0f172a; }
+.plan-group-speed { align-items: center; margin-top: 0.4rem; }
+.plan-group-speed .plan-btn-inline { min-height: 44px; }
