@@ -20,6 +20,12 @@
 //
 // SEGURANÇA: nomes só por textContent.
 //
+// === (Sub-entrega 44) ===
+// Cartão da plataforma: selos "🏧 zerar o Rollover" (dia de zerar do
+// plano) e "🔮 previsto" (dia de emissão previsto do próximo ciclo). Hoje
+// ou passado, 🔮 com o ciclo ainda encerrado: aviso pra registrar o
+// Reinício e usar 🔄 / 🏁. Só exibição.
+//
 // === (Sub-entrega 42) ===
 // Detalhe do dia: plataforma que é SÓ "😴 Folga do plano" sai da lista
 // (filtro na tela — buildDayPlatforms em calendar-logic.js não muda).
@@ -1155,8 +1161,16 @@ function platformCard(d, x) {
   if (x.emission) badges.appendChild(el('span', 'cal-badge cal-badge-em', '🃏 Emissão'));
   if (x.forbidden) badges.appendChild(el('span', `cal-badge${x.forbidden.broken ? ' cal-badge-bad' : ' cal-badge-forb'}`, x.forbidden.broken ? '⚠️ Apostou em dia proibido' : '🚫 Não apostar'));
   if (x.plan && x.plan.overC > 0) badges.appendChild(el('span', 'cal-badge cal-badge-over', `+${money(x.plan.overC)} acima`));
+  // (44) 🏧 zerar o Rollover / 🔮 dia de emissão previsto
+  if (x.plan && x.plan.zeroPoint) badges.appendChild(el('span', 'cal-badge cal-badge-zero', '🏧 zerar o Rollover'));
+  if (x.plan && x.plan.predicted) badges.appendChild(el('span', 'cal-badge cal-badge-pred', '🔮 previsto'));
   if (x.plan && x.plan.tier && !d.isToday && d.isFuture) badges.appendChild(el('span', 'cal-badge', `dia ${TIER_LABEL[x.plan.tier] || x.plan.tier}`));
   if (badges.childNodes.length) card.appendChild(badges);
+  // (44) 🔮 dia previsto e o ciclo ainda encerrado: o Reinício não veio.
+  if (x.plan && x.plan.predicted && !d.isFuture && !x.plan.stopped) {
+    const pf = state.platforms.find(pp => pp.id === x.platformId);
+    if (pf && pf.cycleEnded) card.appendChild(el('p', 'cal-pf-tip cal-pf-tip-stop', '🔮 Dia previsto do novo ciclo — o Reinício ainda não foi registrado. Registre o Reinício e use 🔄 Atualizar no Planejador, ou 🏁 Encerrar o dia (o resto vai pros próximos dias).'));
+  }
 
   // (29) 📈 resultado já obtido no dia
   if (x.plan && !d.isFuture && (x.plan.realC > 0 || x.plan.rbC)) {

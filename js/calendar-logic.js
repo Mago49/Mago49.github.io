@@ -55,6 +55,9 @@
 //    apostado até parar — o dia conta como cumprido em tudo (Calendário,
 //    Aderência, 🏆 Grupos); a meta original fica em originalC. Linhas do
 //    plano levam rbC (R.B. do dia) pro "resultado já obtido".
+// j) (44) planDayFor / linhas do plano repassam zeroPoint (🏧 zerar o
+//    Rollover no dia) e predicted (🔮 dia de emissão previsto do próximo
+//    ciclo) do dia do plano salvo — só exibição no Calendário.
 // e) computeRealMetrics devolve planRows: os dias × plataformas que formam
 //    o planejado do "Real × plano".
 
@@ -180,7 +183,9 @@ export function planDayFor(dayKey, platformId, world) {
       lines,
       stakesC: stakesC.length ? stakesC : stakesFromLines(lines),
       buy: cleanBuy(params.buy),
-      source: 'plan'
+      source: 'plan',
+      ...(pday.zeroPoint ? { zeroPoint: true } : {}), // (44) 🏧
+      ...(pday.predicted ? { predicted: true } : {}) // (44) 🔮
     };
   };
   const fromLog = () => {
@@ -293,7 +298,9 @@ export function buildCalendarMonth(ym, world) {
           platformId: p.id, name: String(p.name || ''), plannedC, realC, status, overC: Math.max(0, realC - plannedC),
           tier: pd.tier, lines: pd.lines, stakesC: pd.stakesC, buy: pd.buy, source: pd.source,
           rbC: d.isFuture ? 0 : realRBC(p, d.key), // (29) resultado já obtido
-          ...(pd.stopped ? { stopped: true, stop: pd.stop, originalC: pd.originalC } : {})
+          ...(pd.stopped ? { stopped: true, stop: pd.stop, originalC: pd.originalC } : {}),
+          ...(pd.zeroPoint ? { zeroPoint: true } : {}), // (44) 🏧
+          ...(pd.predicted ? { predicted: true } : {}) // (44) 🔮
         });
       } else if (pd && pd.stopped && !d.isFuture) {
         // (29b) 🏁 encerrado sem ter apostado nada: conta como cumprido (R$ 0 de R$ 0)

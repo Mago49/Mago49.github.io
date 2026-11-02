@@ -3010,3 +3010,13 @@ button.pu-why-row { cursor: pointer; }
 .pu-why-total .pu-l, .pu-why-total .pu-r { font-weight: 800; color: #0f172a; }
 .plan-group-speed { align-items: center; margin-top: 0.4rem; }
 .plan-group-speed .plan-btn-inline { min-height: 44px; }
+
+/* (Sub-entrega 44) 🏧 zerar o Rollover · 🔮 dia previsto · 🎯 só emissão */
+.plan-tier-zero { background: #dcfce7; color: #166534; }
+.plan-tier-pred { background: #ede9fe; color: #5b21b6; }
+.plan-zero-dates { margin-top: 0.35rem; }
+.plan-zero-dates:empty { display: none; }
+#planZeroCount { max-width: 8rem; margin-top: 0.35rem; }
+.plan-group-em { margin-top: 0.4rem; }
+.cal-badge-zero { background: #dcfce7; color: #166534; }
+.cal-badge-pred { background: #ede9fe; color: #5b21b6; }

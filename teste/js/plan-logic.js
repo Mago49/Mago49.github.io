@@ -115,6 +115,28 @@
 // espaço = R$ 0 (capped). Não é gravado nos parâmetros (sanitizeParams não
 // leva): vale só na hora de montar o plano — o plano salvo guarda os dias.
 
+// === (Sub-entrega 44) 🏧 ZERAR O ROLLOVER + 🎯 SÓ NOS DIAS DE EMISSÃO ===
+// a) params.zero = { mode: 'end'|'dates'|'count', dates, count }:
+//    'end'   como sempre — a meta se espalha pelo período inteiro.
+//    'dates' / 'count' — o plano vira TRECHOS que terminam em cada 🏧. No
+//    fim de cada trecho o acumulado planejado alcança o CAIXA até aquele dia
+//    (cashCap: Rollover − falta hoje + entradas até o dia, × peso, menos o
+//    🔒 guardado — reservedC), então o Rollover chega a ~R$ 0 (tolerância de
+//    1 giro) e dá pra sacar. O último trecho fecha a meta. A curva roda
+//    dentro de cada trecho. 'count' = N trechos iguais em dias de aposta
+//    (N inclui o fim). Data sem aposta → zera no último dia de aposta antes
+//    dela (aviso). Dias de zerar levam zeroPoint:true. Sem cashCap (prévia
+//    de plano salvo sem alteração) os trechos dividem a meta pelo peso da
+//    curva (sem garantia de zero — o plano salvo já traz os dias).
+// b) params.emissionMode = 'skip' (como sempre: skipKeys pulados) | 'only':
+//    a plataforma aposta SÓ nos dias de emissão (emissionOnlyKeys, do ciclo
+//    atual) + predictedKeys (🔮 emissões do próximo ciclo, pela previsão de
+//    cycle-history-logic — resolvidas pela tela). Exceção da plataforma:
+//    ignora folgas da semana, Intercalar e "Seguir rotina"; continua
+//    respeitando dias proibidos (excludeKeys) e pausa do ciclo (pauseKeys).
+//    Dia 🔮 que ainda não é emissão real leva predicted:true.
+// Planos antigos (sem os campos) = 'end' e 'skip': sameParams igual.
+
 import { toLocalDateString, getWeekStart } from './finance-logic.js';
 import { getCycleStart } from './cycle-logic.js';
 
@@ -473,23 +495,32 @@ export function buildPlan(params, todayKey = null) {
   if (!check.ok) return check;
 
   const p = params;
-  if (p.followRoutineId && !(Array.isArray(p.onlyKeys) && p.onlyKeys.length)) {
+  const emOnly = p.emissionMode === 'only'; // (44)
+  if (!emOnly && p.followRoutineId && !(Array.isArray(p.onlyKeys) && p.onlyKeys.length)) {
     return { ok: false, error: 'A rotina escolhida não tem nenhum dia neste período.' };
   }
   // (11a) Dias de emissão do Misterioso marcados pra não apostar.
   const skipKeys = Array.isArray(p.skipKeys) ? p.skipKeys : [];
   const pauseKeys = Array.isArray(p.pauseKeys) ? p.pauseKeys : []; // (11c)
   const excluded = [...(Array.isArray(p.excludeKeys) ? p.excludeKeys : []), ...skipKeys, ...pauseKeys];
-  const filtered = listActiveDays(p.startKey, p.endKey, p.weekdaysOff, p.onlyKeys, excluded);
+  // (44) 🎯 Só nos dias de emissão: emissões reais + 🔮 previstas.
+  const realEm = new Set(Array.isArray(p.emissionOnlyKeys) ? p.emissionOnlyKeys : []);
+  const predEm = new Set((Array.isArray(p.predictedKeys) ? p.predictedKeys : []).filter(k => !realEm.has(k)));
+  if (emOnly && realEm.size + predEm.size === 0) {
+    return { ok: false, error: 'Sem dia de emissão do Misterioso no período (ciclo encerrado sem volta prevista, ou plataforma sem ciclo).' };
+  }
+  const filtered = emOnly
+    ? listActiveDays(p.startKey, p.endKey, [], [...realEm, ...predEm], [...(Array.isArray(p.excludeKeys) ? p.excludeKeys : []), ...pauseKeys])
+    : listActiveDays(p.startKey, p.endKey, p.weekdaysOff, p.onlyKeys, excluded);
   let days = filtered;
   // (19) Intercalar: 1 dia por semana, revezando entre os dias marcados.
-  const alternate = p.weekMode === 'alternate';
+  const alternate = p.weekMode === 'alternate' && !emOnly;
   let alt = null;
   if (alternate) {
     alt = pickAlternateDays(p.startKey, p.weekdaysOff, filtered, listActiveDays(p.startKey, p.endKey, p.weekdaysOff, p.onlyKeys, null), p.phase);
     days = alt.days;
   }
-  if (days.length === 0) return { ok: false, error: 'Nenhum dia ativo no período (folgas, dias proibidos, dias de emissão ou rotina sem dias).' };
+  if (days.length === 0) return { ok: false, error: emOnly ? 'Os dias de emissão do período caem em dias proibidos ou fora do ciclo.' : 'Nenhum dia ativo no período (folgas, dias proibidos, dias de emissão ou rotina sem dias).' };
   const baseDays = listActiveDays(p.startKey, p.endKey, p.weekdaysOff, p.onlyKeys, null).length;
   const skippedForbidden = baseDays - listActiveDays(p.startKey, p.endKey, p.weekdaysOff, p.onlyKeys, p.excludeKeys).length;
   const withEmission = [...(Array.isArray(p.excludeKeys) ? p.excludeKeys : []), ...skipKeys];
@@ -511,24 +542,77 @@ export function buildPlan(params, todayKey = null) {
     });
   }
 
-  const dist = distributeCents(targetC, weights, floorC, capC);
-  if (!dist.ok) return dist;
+  // (28) Teto acumulado pelo caixa (Rollover + entradas até o dia).
+  const cap = cleanCashCap(p.cashCap);
+  const capCum = (key) => (cap ? cap.startC + cap.inflows.filter(x => x.key <= key).reduce((s2, x) => s2 + x.valueC, 0) : Infinity);
+
+  // (44) 🏧 Trechos: índices (em `days`) dos dias de zerar.
+  const zero = cleanZero(p.zero, p.startKey, p.endKey);
+  const zeroIdx = [];
+  const zeroNotes = [];
+  if (zero.mode === 'count' && zero.count >= 2) {
+    const n = Math.min(zero.count, days.length);
+    for (let i = 1; i <= n; i++) zeroIdx.push(Math.round((days.length * i) / n) - 1);
+  } else if (zero.mode === 'dates' && zero.dates.length) {
+    zero.dates.forEach(dk => {
+      let idx = -1;
+      days.forEach((d, i) => { if (d.key <= dk) idx = i; });
+      if (idx < 0) { zeroNotes.push(`🏧 ${fmtDM(dk)} vem antes do 1º dia de aposta — ignorado.`); return; }
+      if (days[idx].key !== dk) zeroNotes.push(`🏧 ${fmtDM(dk)} não tem aposta — zera em ${fmtDM(days[idx].key)}.`);
+      zeroIdx.push(idx);
+    });
+    zeroIdx.push(days.length - 1);
+  }
+  const bounds = [...new Set(zeroIdx)].filter(i => i >= 0 && i < days.length).sort((a, b) => a - b);
+  const segmented = bounds.length >= 2 || (bounds.length === 1 && bounds[0] !== days.length - 1);
+  if (segmented && bounds[bounds.length - 1] !== days.length - 1) bounds.push(days.length - 1);
+  const reservedC = Math.max(0, Math.round(Number(p.reservedC) || 0));
+  let dist;
+  if (!segmented) {
+    dist = distributeCents(targetC, weights, floorC, capC);
+    if (!dist.ok) return dist;
+  } else {
+    // Acumulado desejado em cada 🏧: o caixa até o dia (menos o guardado),
+    // nunca acima da meta; o último trecho fecha a meta.
+    const totalW = weights.reduce((a, b) => a + b, 0) || 1;
+    let prevCum = 0;
+    let start = 0;
+    const amounts = [];
+    for (let b = 0; b < bounds.length; b++) {
+      const end = bounds[b];
+      let cum;
+      if (b === bounds.length - 1) cum = targetC;
+      else if (cap) cum = Math.min(targetC, Math.max(prevCum, capCum(days[end].key) - reservedC));
+      else cum = Math.min(targetC, Math.round(targetC * weights.slice(0, end + 1).reduce((a, x) => a + x, 0) / totalW));
+      const segW = weights.slice(start, end + 1);
+      const segAmount = Math.max(0, cum - prevCum);
+      if (segAmount > 0) {
+        const seg = distributeCents(segAmount, segW, Math.min(floorC, Math.floor(segAmount / segW.length)), capC);
+        if (!seg.ok) return { ok: false, error: `Trecho até o 🏧 ${fmtDM(days[end].key)}: ${seg.error}` };
+        amounts.push(...seg.amounts);
+      } else {
+        amounts.push(...segW.map(() => 0));
+      }
+      prevCum = Math.max(prevCum, cum);
+      start = end + 1;
+    }
+    dist = { ok: true, amounts };
+  }
+  const zeroSet = new Set(segmented ? bounds : []);
 
   const buy = p.buy && p.buy.enabled ? { enabled: true, multiplier: Math.round(Number(p.buy.multiplier) || 0) } : null;
   const warnings = [];
   if (buy && !(buy.multiplier >= 2)) warnings.push('Multiplicador da compra de bônus inválido — compra ignorada.');
-  if (skippedForbidden > 0) warnings.push(`${skippedForbidden} dia(s) proibido(s) pelas rotinas foram pulados.`);
-  if (skippedEmission > 0) warnings.push(`${skippedEmission} dia(s) de emissão do Misterioso pulado(s).`);
-  if (skippedPause > 0) warnings.push(`${skippedPause} dia(s) fora do ciclo (encerrado ou virada do mês instável) pulado(s).`);
+  if (!emOnly && skippedForbidden > 0) warnings.push(`${skippedForbidden} dia(s) proibido(s) pelas rotinas foram pulados.`);
+  if (emOnly) warnings.push(`🎯 Só nos dias de emissão: ${days.length} dia(s)${predEm.size ? ` — ${days.filter(d => predEm.has(d.key)).length} 🔮 previsto(s) do próximo ciclo` : ''} (folgas da semana não valem pra esta plataforma).`);
+  if (!emOnly && skippedEmission > 0) warnings.push(`${skippedEmission} dia(s) de emissão do Misterioso pulado(s).`);
+  if (!emOnly && skippedPause > 0) warnings.push(`${skippedPause} dia(s) fora do ciclo (encerrado ou virada do mês instável) pulado(s).`);
   if (boostedDays > 0) warnings.push(`${boostedDays} dia(s) em época de velocidade recebem fatia maior da meta.`);
   if (alt) {
     warnings.push(`Intercalar: ${days.length} dia(s) de aposta — 1 por semana, revezando entre os dias marcados.`);
     if (alt.blockedWeeks > 0) warnings.push(`${alt.blockedWeeks} semana(s) sem aposta: todos os dias marcados estavam bloqueados (proibido, emissão ou fora do ciclo).`);
   }
 
-  // (28) Teto acumulado pelo caixa (Rollover + entradas até o dia).
-  const cap = cleanCashCap(p.cashCap);
-  const capCum = (key) => (cap ? cap.startC + cap.inflows.filter(x => x.key <= key).reduce((s2, x) => s2 + x.valueC, 0) : Infinity);
   let cappedDays = 0;
 
   // Fechamento carregado: cada dia cobre o que falta até o acumulado
@@ -559,8 +643,24 @@ export function buildPlan(params, todayKey = null) {
       lines
     };
     if (capped) row.capped = true;
+    if (zeroSet.has(i)) row.zeroPoint = true; // (44) 🏧
+    if (predEm.has(d.key)) row.predicted = true; // (44) 🔮
     return row;
   });
+  // (44) 🏧 dias de zerar e o que sobra no caixa em cada um.
+  const zeroKeys = out.filter(d => d.zeroPoint).map(d => d.key);
+  zeroNotes.forEach(n => warnings.push(n));
+  if (zeroKeys.length) {
+    let acc = 0;
+    const left = [];
+    out.forEach(d => {
+      acc += d.plannedC;
+      if (d.zeroPoint && cap) left.push({ key: d.key, leftC: capCum(d.key) - reservedC - acc });
+    });
+    const miss = left.filter(x => x.leftC >= stakesC[0]);
+    warnings.push(`🏧 Zerar o Rollover em ${zeroKeys.length} dia(s): ${zeroKeys.map(fmtDM).join(', ')}.`);
+    if (miss.length) warnings.push(`🏧 Não zera em ${miss.map(x => `${fmtDM(x.key)} (sobra R$ ${(x.leftC / 100).toFixed(2).replace('.', ',')})`).join(', ')} — a meta do plano é menor que o caixa até lá.`);
+  }
   // (28) Parte da meta que não coube no caixa do período.
   const cashShortC = cap ? Math.max(0, targetC - plannedCum) : 0;
   if (cap && plannedCum <= 0) {
@@ -585,6 +685,7 @@ export function buildPlan(params, todayKey = null) {
       targetC,
       plannedC: plannedCum,
       cashShortC, // (28)
+      zeroKeys, // (44)
       excessC,
       activeDays: out.filter(d => d.plannedC > 0).length, // (28) dia limitado a R$ 0 não conta
       maxDayC: Math.max(...planned),
@@ -630,6 +731,9 @@ export function buildGroupPlan(base, members, group, todayKey = null) {
       skipKeys: m.skipKeys || [],
       pauseKeys: m.pauseKeys || [],
       dayBoost: m.dayBoost || {},
+      emissionMode: m.emissionMode === 'only' ? 'only' : 'skip', // (44)
+      emissionOnlyKeys: m.emissionOnlyKeys || [],
+      predictedKeys: m.predictedKeys || [],
       reserve: cleanReserve(m.reserve),
       reservedC: Math.max(0, Math.round(Number(m.reservedC) || 0)),
       targetBase: base.targetBase === 'projected' ? 'projected' : 'rollover',
@@ -785,6 +889,8 @@ export function planToDoc(platform, params, plan, nowIso) {
       tier: d.tier,
       targetC: d.targetC,
       plannedC: d.plannedC,
+      ...(d.zeroPoint ? { zeroPoint: true } : {}), // (44) 🏧
+      ...(d.predicted ? { predicted: true } : {}), // (44) 🔮
       lines: d.lines.map(l => (l.kind === 'buy'
         ? { kind: 'buy', stakeC: l.stakeC, multiplier: l.multiplier, subtotalC: l.subtotalC }
         : { kind: 'spin', stakeC: l.stakeC, count: l.count, subtotalC: l.subtotalC }))
@@ -842,8 +948,37 @@ export function sanitizeParams(p) {
     reserve: cleanReserve(p.reserve),
     reservedC: Math.max(0, Math.round(Number(p.reservedC) || 0)),
     // (24)
-    targetMode: TARGET_MODES.includes(p.targetMode) ? p.targetMode : 'unknown'
+    targetMode: TARGET_MODES.includes(p.targetMode) ? p.targetMode : 'unknown',
+    // (44)
+    zero: cleanZero(p.zero, startKey, endKey),
+    emissionMode: p.emissionMode === 'only' ? 'only' : 'skip',
+    emissionOnlyKeys: p.emissionMode === 'only' ? cleanKeyList(p.emissionOnlyKeys, startKey, endKey) : [],
+    predictedKeys: p.emissionMode === 'only' ? cleanKeyList(p.predictedKeys, startKey, endKey) : []
   };
+}
+
+// (44) 🏧 Zerar o Rollover — tipos garantidos.
+export const ZERO_MODES = Object.freeze([
+  Object.freeze({ id: 'end', label: 'Só no fim' }),
+  Object.freeze({ id: 'dates', label: 'Em datas' }),
+  Object.freeze({ id: 'count', label: 'N vezes' })
+]);
+export const ZERO_MAX_COUNT = 30;
+export function cleanZero(z, startKey = null, endKey = null) {
+  const mode = z && ['dates', 'count'].includes(z.mode) ? z.mode : 'end';
+  if (mode === 'dates') {
+    const dates = cleanKeyList(z.dates, startKey || null, endKey || null).slice(0, ZERO_MAX_COUNT);
+    return dates.length ? { mode, dates, count: 0 } : { mode: 'end', dates: [], count: 0 };
+  }
+  if (mode === 'count') {
+    const count = Math.max(0, Math.min(ZERO_MAX_COUNT, Math.round(Number(z.count) || 0)));
+    return count >= 2 ? { mode, dates: [], count } : { mode: 'end', dates: [], count: 0 };
+  }
+  return { mode: 'end', dates: [], count: 0 };
+}
+
+function fmtDM(key) {
+  return `${key.slice(8, 10)}/${key.slice(5, 7)}`;
 }
 
 // (28) Teto pelo caixa — tipos garantidos (null = sem teto).

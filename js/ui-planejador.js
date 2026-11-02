@@ -191,6 +191,20 @@
 //    00:00). Só leitura — nada é gravado.
 // b) 🔎: o bônus de fórmula que entrou no Rollover desde a foto vira o chip
 //    "🎁 VIP" (separado de "🎁 Bônus e outros").
+//
+// === (Sub-entrega 44) 🏧 ZERAR O ROLLOVER + 🎯 SÓ NOS DIAS DE EMISSÃO ===
+// a) 💼 Caixa → "🏧 Zerar o Rollover": Só no fim · Em datas · N vezes
+//    (params.zero — plan-logic.js faz os trechos). Igual no grupo (todas as
+//    plataformas com os mesmos pontos). Prévia/gráfico marcam o dia 🏧; o
+//    📊 lista os próximos 🏧 de cada plataforma.
+// b) 🚫 Restrições → "Dias de emissão do Misterioso": 🚫 Não apostar · 🎯 Só
+//    nesses dias (individual). No GRUPO o 🎯 é por plataforma (linha dela na
+//    Prévia, junto do 🔒 e do ⚡); as outras seguem o "Não apostar".
+//    Dias do ciclo marcados (nenhum = os 5). emissionPlanKeys resolve as
+//    datas: emissões do ciclo atual + 🔮 previstas do(s) próximo(s) ciclo(s)
+//    (predictCycle: volta prevista do ciclo encerrado / próximo Reinício
+//    previsto, repetindo pelo intervalo aprendido). O 🔄 / ⚠️ refaz quando
+//    o Reinício real é registrado.
 
 import { state } from './state.js';
 import { formatCurrency, showAppAlert, showAppConfirm } from './utils.js';
@@ -204,7 +218,8 @@ import {
   computeGoalProgress, getCautionStatus, computeCautionStats,
   addDaysKey, toCents, fromCents, EMISSION_CYCLE_DAYS, emissionKeysInRange,
   WEEK_MODES, buildGroupPlan, RESERVE_MODES, cleanReserve, applyReserve,
-  planUpdateDiff, isSignificantChange, plannedAfterC, planDayOf, overlaySavedDays, projectRolloverPath, overlayGroupSavedDays
+  planUpdateDiff, isSignificantChange, plannedAfterC, planDayOf, overlaySavedDays, projectRolloverPath, overlayGroupSavedDays,
+  ZERO_MODES, ZERO_MAX_COUNT // (44)
 } from './plan-logic.js';
 import { activeStop } from './stop-reasons.js'; // (32)
 import { getPlatformSpeed, dayBoostsFor, formatMult } from './speed-logic.js';
@@ -302,7 +317,11 @@ const form = {
   targetMode: 'unknown',  // 'auto' | 'manual' | 'unknown' (modo plataforma)
   targetBase: 'rollover', // 'rollover' | 'projected' (modo plataforma)
   todayLeftC: 0,          // ↻ Recalcular: quanto da meta foi descontado (falta hoje)
-  groupDeductToday: false // ↻ Recalcular grupo: desconta o que falta hoje
+  groupDeductToday: false, // ↻ Recalcular grupo: desconta o que falta hoje
+  // (44)
+  zero: { mode: 'end', dates: [], count: 2 },  // 🏧 zerar o Rollover
+  emissionMode: 'skip',   // 'skip' | 'only' (modo plataforma)
+  groupEmissionOnly: {}   // { [platformId]: true } — 🎯 só emissão (modo grupo)
 };
 
 function isGroupMode() {
@@ -577,7 +596,9 @@ function currentParams() {
     targetMode: form.targetMode,
     targetBase: form.targetBase,
     // (28)
-    cashCap: individualCashCap()
+    cashCap: individualCashCap(),
+    // (44)
+    zero: zeroParams()
   };
 }
 
@@ -646,12 +667,65 @@ function reapplyReserve() {
 // (11a) Dias de emissão a pular + multiplicadores das épocas no período.
 function speedAndEmissionKeys(startKey, endKey) {
   const platform = findPlatform(form.platformId);
-  const out = { skipEmissions: form.skipEmissions.slice(), skipKeys: [], dayBoost: {}, pauseKeys: [] };
+  const out = { skipEmissions: form.skipEmissions.slice(), skipKeys: [], dayBoost: {}, pauseKeys: [], emissionMode: form.emissionMode, emissionOnlyKeys: [], predictedKeys: [] };
   if (!platform || !startKey || !endKey || startKey > endKey) return out;
   out.pauseKeys = betPauseKeys(platform, startKey, endKey, todayKey()); // (11c → 27)
-  out.skipKeys = emissionKeysInRange(platform, startKey, endKey, form.skipEmissions);
+  Object.assign(out, emissionPlanKeys(platform, startKey, endKey, form.skipEmissions, form.emissionMode)); // (44)
   out.dayBoost = dayBoostsFor(getSpeedConfig(), platform.id, startKey, endKey);
   return out;
+}
+
+// ---------- (44) 🎯 dias de emissão: pular × só neles (+ 🔮 previstos) ----------
+// cycleDays: dias do ciclo marcados (2/3/7/15/30). mode 'skip' → skipKeys
+// (como sempre); 'only' → emissionOnlyKeys (ciclo atual) + predictedKeys.
+function emissionPlanKeys(platform, startKey, endKey, cycleDays, mode) {
+  const days = Array.isArray(cycleDays) ? cycleDays.slice() : [];
+  if (mode !== 'only') {
+    return { emissionMode: 'skip', skipKeys: emissionKeysInRange(platform, startKey, endKey, days), emissionOnlyKeys: [], predictedKeys: [] };
+  }
+  const wanted = days.length ? days : EMISSION_CYCLE_DAYS.slice();
+  const real = emissionKeysInRange(platform, startKey, endKey, wanted);
+  const predicted = predictedEmissionKeys(platform, startKey, endKey, wanted).filter(k => !real.includes(k));
+  return { emissionMode: 'only', skipKeys: [], emissionOnlyKeys: real, predictedKeys: predicted };
+}
+
+// 🔮 Emissões dos PRÓXIMOS ciclos, pela previsão do histórico de ciclos:
+// ciclo encerrado → a partir da volta prevista; ativo com Reinício → a
+// partir do próximo Reinício previsto. Repete pelo intervalo aprendido.
+// Sem previsão (sem histórico) ou ciclo mensal (sem Reinício) = nenhuma.
+function predictedEmissionKeys(platform, startKey, endKey, cycleDays) {
+  if (!platform || !startKey || !endKey || startKey > endKey) return [];
+  if (cycleState(platform) === 'no') return [];
+  const t = todayKey();
+  const tomorrow = addDaysKey(t, 1);
+  let pred;
+  try { pred = predictCycle(platform, t); } catch (err) { return []; }
+  if (!pred || pred.status === 'no-cycle') return [];
+  let first = null;
+  if (platform.cycleEnded) first = pred.expectedReturnKey && !pred.overdue ? pred.expectedReturnKey : (pred.overdue ? tomorrow : null);
+  else if (platform.lastResetDate) first = pred.nextResetKey ? (pred.nextResetKey > t ? pred.nextResetKey : tomorrow) : null; // previsto pra hoje/atrasado → amanhã
+  if (!first) return [];
+  if (first < tomorrow) first = tomorrow;
+  const step = pred.intervals && Number(pred.intervals.predicted) > 0 ? Math.round(Number(pred.intervals.predicted)) : null;
+  const out = new Set();
+  let cs = first;
+  for (let guard = 0; cs <= endKey && guard < 24; guard++) {
+    cycleDays.forEach(day => {
+      const k = addDaysKey(cs, Number(day) - 1);
+      if (k >= startKey && k <= endKey) out.add(k);
+    });
+    if (!step) break;
+    cs = addDaysKey(cs, step);
+  }
+  return [...out].sort();
+}
+
+// (44) 🏧 do formulário → params.zero (plan-logic limpa de novo).
+function zeroParams() {
+  const z = form.zero || {};
+  if (z.mode === 'dates') return { mode: 'dates', dates: (z.dates || []).slice().sort(), count: 0 };
+  if (z.mode === 'count') return { mode: 'count', dates: [], count: Math.round(Number(z.count) || 0) };
+  return { mode: 'end', dates: [], count: 0 };
 }
 
 // (27) Dias em que o plano NÃO aposta por causa do ciclo: só a instável
@@ -710,6 +784,8 @@ function applyParamsToForm(params) {
   form.buy = { enabled: p.buy.enabled, multiplier: p.buy.multiplier || 100 };
   form.followRoutineId = p.followRoutineId || null;
   form.skipEmissions = (p.skipEmissions || []).slice();
+  form.zero = p.zero.mode === 'end' ? { mode: 'end', dates: [], count: 2 } : { mode: p.zero.mode, dates: p.zero.dates.slice(), count: p.zero.count || 2 }; // (44)
+  form.emissionMode = p.emissionMode; // (44)
   form.weekMode = p.weekMode;
   form.phase = p.phase;
   form.phaseCount = p.phaseCount;
@@ -795,6 +871,18 @@ function renderSkeleton() {
           <p id="planReserveHint" class="plan-hint"></p>
         </div>
 
+        <div class="plan-field" id="planZeroField" data-ptab="caixa">
+          <span class="plan-label">🏧 Zerar o Rollover <small>pra sacar no meio do plano</small></span>
+          <div id="planZeroModes" class="plan-chips" role="group" aria-label="Zerar o Rollover"></div>
+          <div id="planZeroDatesWrap" class="plan-row app-hidden">
+            <input type="date" id="planZeroDate" class="plan-input" aria-label="Data pra zerar o Rollover" />
+            <button type="button" id="planZeroAdd" class="bet-manage-btn plan-btn-inline">+ Adicionar</button>
+          </div>
+          <div id="planZeroDates" class="plan-chips plan-zero-dates"></div>
+          <input type="number" id="planZeroCount" class="plan-input app-hidden" min="2" max="30" step="1" inputmode="numeric" aria-label="Quantas vezes zerar no plano" />
+          <p id="planZeroHint" class="plan-hint"></p>
+        </div>
+
         <div class="plan-field app-hidden" id="planGroupBaseField" data-ptab="caixa">
           <span class="plan-label">Base da meta <small>de cada plataforma</small></span>
           <div id="planGroupBase" class="plan-chips" role="group" aria-label="Base da meta"></div>
@@ -845,8 +933,9 @@ function renderSkeleton() {
         </div>
 
         <div class="plan-field" data-ptab="restricoes">
-          <span class="plan-label">Não apostar nos dias de emissão do Misterioso <small>dia do ciclo</small></span>
-          <div id="planSkipEm" class="plan-chips" role="group" aria-label="Dias de emissão a pular"></div>
+          <span class="plan-label">Dias de emissão do Misterioso <small>dia do ciclo</small></span>
+          <div id="planEmMode" class="plan-chips" role="group" aria-label="O que fazer nos dias de emissão"></div>
+          <div id="planSkipEm" class="plan-chips" role="group" aria-label="Dias do ciclo"></div>
           <p id="planSkipHint" class="plan-hint"></p>
         </div>
 
@@ -936,8 +1025,8 @@ function renderSkeleton() {
 
 // Campos do formulário de cada aba (● alteração não salva).
 const TAB_FORM_KEYS = {
-  caixa: ['target', 'reserve', 'goal', 'groupBase', 'groupReserve'],
-  restricoes: ['startKey', 'endKey', 'weekdaysOff', 'weekMode', 'followRoutineId', 'followGroup', 'skipEmissions', 'floorMode', 'floor', 'groupFloorMode', 'groupFloor', 'cap', 'stakes', 'buy'],
+  caixa: ['target', 'reserve', 'goal', 'groupBase', 'groupReserve', 'zero'],
+  restricoes: ['startKey', 'endKey', 'weekdaysOff', 'weekMode', 'followRoutineId', 'followGroup', 'skipEmissions', 'emissionMode', 'groupEmissionOnly', 'floorMode', 'floor', 'groupFloorMode', 'groupFloor', 'cap', 'stakes', 'buy'],
   modulador: ['curve', 'intensity', 'rhythm', 'seed']
 };
 
@@ -960,12 +1049,13 @@ function tabCounts() {
   if (form.weekdaysOff.length) r++;
   if (form.weekMode === 'alternate') r++;
   if (group ? (form.followGroup && currentGroup() && currentGroup().routine.action === 'bet') : !!form.followRoutineId) r++;
-  if (form.skipEmissions.length) r++;
+  if (form.skipEmissions.length || (group ? Object.keys(form.groupEmissionOnly).length : form.emissionMode === 'only')) r++; // (44)
   if (group ? form.groupFloorMode === 'manual' : (form.floorMode === 'manual' || (form.floorMode === 'auto' && world && world.minimum > 0))) r++;
   if (parseMoneyInput(form.cap) > 0) r++;
   if (Array.isArray(form.stakes) && form.stakes.length && form.stakes.length < palette.stakes.length) r++;
   if (form.buy.enabled) r++;
   let c = 0;
+  if (form.zero.mode !== 'end') c++; // (44)
   if (group) {
     c += Object.keys(form.groupReserve).length ? 1 : 0;
     if (form.groupBase === 'projected') c++;
@@ -1233,6 +1323,41 @@ function renderChips() {
       schedulePreview(0);
     })));
   }
+  // (44) 🚫 Não apostar × 🎯 Só nesses dias (individual)
+  const emm = $('planEmMode');
+  if (emm) {
+    emm.replaceChildren();
+    emm.classList.toggle('app-hidden', isGroupMode());
+    [['skip', '🚫 Não apostar nesses dias'], ['only', '🎯 Só nesses dias']].forEach(([id, label]) => emm.appendChild(chip(label, form.emissionMode === id, () => {
+      form.emissionMode = id;
+      renderChips();
+      syncInputs();
+      schedulePreview(0);
+    })));
+  }
+  // (44) 🏧 Zerar o Rollover
+  const zm = $('planZeroModes');
+  if (zm) {
+    zm.replaceChildren();
+    ZERO_MODES.forEach(m => zm.appendChild(chip(m.label, form.zero.mode === m.id, () => {
+      form.zero = { ...form.zero, mode: m.id };
+      renderChips();
+      syncInputs();
+      schedulePreview(0);
+    })));
+  }
+  const zd = $('planZeroDates');
+  if (zd) {
+    zd.replaceChildren();
+    if (form.zero.mode === 'dates') {
+      form.zero.dates.forEach(k => zd.appendChild(chip(`🏧 ${fmtShort(k)} ✕`, true, () => {
+        form.zero = { ...form.zero, dates: form.zero.dates.filter(x => x !== k) };
+        renderChips();
+        syncInputs();
+        schedulePreview(0);
+      })));
+    }
+  }
   // (11a) Dias de emissão a pular
   const skip = $('planSkipEm');
   if (skip) {
@@ -1418,7 +1543,14 @@ function syncInputs() {
   // (11a) Dias de emissão e velocidade
   const skipHint = $('planSkipHint');
   const platformNow = findPlatform(form.platformId);
-  if (skipHint) {
+  if (skipHint && form.emissionMode === 'only' && platformNow && !isGroupMode()) {
+    // (44) 🎯 Só nos dias de emissão
+    const ek = emissionPlanKeys(platformNow, form.startKey, form.endKey, form.skipEmissions, 'only');
+    const all = [...ek.emissionOnlyKeys.map(k => fmtShort(k)), ...ek.predictedKeys.map(k => `${fmtShort(k)} 🔮`)];
+    skipHint.textContent = all.length
+      ? `Aposta só em: ${all.join(', ')}${form.skipEmissions.length ? '' : ' (os 5 dias do ciclo — toque pra escolher)'}. Vale mesmo em dia de folga.${ek.predictedKeys.length ? ' 🔮 = previsto pelo histórico do ciclo; o 🔄 acerta quando o Reinício for registrado.' : ''}`
+      : (platformNow.cycleEnded ? 'Ciclo encerrado e sem volta prevista — nenhum dia de emissão no período.' : 'Nenhum dia de emissão no período.');
+  } else if (skipHint) {
     let txt = '';
     if (!platformNow) txt = 'Escolha a plataforma.';
     else if (platformNow.cycleEnded) txt = 'Ciclo encerrado (🏁 Fim) — sem emissões previstas.';
@@ -1429,6 +1561,7 @@ function syncInputs() {
     } else txt = 'Toque nos dias do ciclo em que o plano não deve apostar.';
     skipHint.textContent = txt;
   }
+  syncZeroInputs(); // (44)
   const speedInfo = $('planSpeedInfo');
   const speedBtn = $('planSpeedEdit');
   if (speedInfo) {
@@ -1454,6 +1587,33 @@ function syncInputs() {
   if (ps && document.activeElement !== ps) ps.value = palette.stakes.map(fmtStake).join('; ');
   const pm = $('planPaletteMult');
   if (pm && document.activeElement !== pm) pm.value = palette.buyMultipliers.join('; ');
+}
+
+// (44) 🏧 campos do Zerar o Rollover.
+function syncZeroInputs() {
+  const z = form.zero;
+  const dw = $('planZeroDatesWrap');
+  if (dw) dw.classList.toggle('app-hidden', z.mode !== 'dates');
+  const di = $('planZeroDate');
+  if (di) {
+    const tomorrow = addDaysKey(todayKey(), 1);
+    di.min = form.startKey && form.startKey > tomorrow ? form.startKey : tomorrow;
+    di.max = form.endKey || '';
+  }
+  const ci = $('planZeroCount');
+  if (ci) {
+    ci.classList.toggle('app-hidden', z.mode !== 'count');
+    if (document.activeElement !== ci) ci.value = String(z.count || 2);
+  }
+  const h = $('planZeroHint');
+  if (h) {
+    let t = 'O Rollover zera só no último dia do plano.';
+    if (z.mode === 'dates') t = z.dates.length
+      ? `Zera em ${z.dates.map(fmtShort).join(', ')} e no fim do plano: até cada data o plano aposta todo o caixa (Rollover + entradas até o dia). Data sem aposta → zera no dia de aposta anterior.`
+      : 'Escolha as datas em que o Rollover deve chegar a zero (pra sacar).';
+    else if (z.mode === 'count') t = `Zera ${z.count || 2} vezes, espalhadas por igual entre os dias de aposta (a última é o fim do plano).${isGroupMode() ? ' Os mesmos dias pra todas as plataformas.' : ''}`;
+    h.textContent = t;
+  }
 }
 
 // (19) Campos do modo grupo / Intercalar.
@@ -1533,7 +1693,8 @@ function syncGroupInputs() {
   const fh = $('planFloorHint');
   if (fh && group) fh.textContent = form.groupFloorMode === 'manual' ? 'Mesmo piso diário pra todas as plataformas do grupo.' : 'Sem piso: os dias baixos ficam livres pra curva.';
   const sk = $('planSkipHint');
-  if (sk && group) sk.textContent = form.skipEmissions.length ? 'Vale pra cada plataforma do grupo, pelo ciclo de cada uma.' : 'Toque nos dias do ciclo em que o plano não deve apostar (vale pra todas, pelo ciclo de cada uma).';
+  if (sk && group) sk.textContent = (form.skipEmissions.length ? 'Não apostar: vale pra cada plataforma do grupo, pelo ciclo de cada uma.' : 'Toque nos dias do ciclo em que o plano não deve apostar (vale pra todas, pelo ciclo de cada uma).')
+    + (Object.keys(form.groupEmissionOnly).length ? ` 🎯 ${Object.keys(form.groupEmissionOnly).length} plataforma(s) apostam SÓ nos dias de emissão (marque na linha dela, na Prévia) — os dias marcados aqui valem pra elas também (nenhum = os 5).` : ' Pra uma plataforma apostar SÓ no dia da emissão, toque na linha dela na Prévia.');
   // Sempre assim / Intercalar
   const wh = $('planWeekModeHint');
   if (wh) {
@@ -1966,6 +2127,8 @@ function selectPlatform(id) {
   const saved = platform ? getSavedPlan(platform.id) : null;
   form.followRoutineId = null;
   form.skipEmissions = [];
+  form.zero = { mode: 'end', dates: [], count: 2 }; // (44)
+  form.emissionMode = 'skip';
   form.reserve = { mode: 'none', valueText: '' };
   form.reservedC = 0;
   // (24) origem da meta
@@ -2020,7 +2183,14 @@ function selectGroup(routineId) {
   } else {
     form.followGroup = true;
     form.groupBase = 'rollover';
+    form.zero = { mode: 'end', dates: [], count: 2 }; // (44)
   }
+  form.emissionMode = 'skip'; // (44) no grupo o 🎯 é por plataforma
+  form.groupEmissionOnly = {};
+  g.ids.forEach(id => {
+    const sp = getSavedPlan(id);
+    if (sp && sp.params && sp.params.group && sp.params.group.routineId === routineId && sp.params.emissionMode === 'only') form.groupEmissionOnly[id] = true;
+  });
   // (20) Guardar rollover de cada plataforma (do plano salvo dela, se for deste grupo).
   form.groupReserve = {};
   g.ids.forEach(id => {
@@ -2109,6 +2279,26 @@ function bindControls() {
   on('planReseed', 'click', () => { form.seed = newSeed(); syncInputs(); schedulePreview(0); });
   on('planFloor', 'input', (e) => { form.floor = e.target.value; schedulePreview(); });
   on('planCap', 'input', (e) => { form.cap = e.target.value; schedulePreview(); });
+  // (44) 🏧
+  on('planZeroAdd', 'click', () => {
+    const di = $('planZeroDate');
+    const v = di ? di.value : '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) { showAppAlert('Escolha a data.'); return; }
+    if ((form.startKey && v < form.startKey) || (form.endKey && v > form.endKey)) { showAppAlert('A data precisa estar dentro do período do plano.'); return; }
+    if (form.zero.dates.includes(v)) return;
+    if (form.zero.dates.length >= ZERO_MAX_COUNT) { showAppAlert(`No máximo ${ZERO_MAX_COUNT} datas.`); return; }
+    form.zero = { ...form.zero, dates: [...form.zero.dates, v].sort() };
+    if (di) di.value = '';
+    renderChips();
+    syncInputs();
+    schedulePreview(0);
+  });
+  on('planZeroCount', 'input', (e) => {
+    const n = Math.round(Number(e.target.value));
+    form.zero = { ...form.zero, count: Number.isFinite(n) ? Math.max(2, Math.min(ZERO_MAX_COUNT, n)) : 2 };
+    syncZeroInputs();
+    schedulePreview();
+  });
   on('planBuy', 'change', (e) => { form.buy.enabled = e.target.checked; renderChips(); schedulePreview(0); });
   on('planFollow', 'change', (e) => { form.followRoutineId = e.target.value || null; syncInputs(); schedulePreview(0); });
   on('planGoalValue', 'input', (e) => { form.goal.valueText = e.target.value; syncInputs(); schedulePreview(); });
@@ -2320,6 +2510,7 @@ function renderPreview() {
     kpis.appendChild(kpi('Maior / menor dia', `${formatCurrency(fromCents(t.maxDayC))}`, `menor ${formatCurrency(fromCents(t.minDayC))}`));
     kpis.appendChild(kpi('Giros', String(t.spins), t.buys ? `+ ${t.buys} compra(s) de bônus` : ''));
     if (proj.inflowInPlanC > 0) kpis.appendChild(kpi('Entradas previstas', formatCurrency(fromCents(proj.inflowInPlanC)), 'rotinas + VIP + Misterioso, somadas ao Rollover'));
+    if (t.zeroKeys && t.zeroKeys.length) kpis.appendChild(kpi('🏧 Zerar o Rollover', t.zeroKeys.map(fmtShort).join(' · '), 'dias pra sacar, se o plano for cumprido', 'plan-kpi-vip')); // (44)
     if (proj.rolloverZeroKey) kpis.appendChild(kpi('Rollover zerado', fmtDay(proj.rolloverZeroKey), 'se o plano for cumprido'));
     else if (world && world.rolloverC !== null) kpis.appendChild(kpi('Rollover ao fim', formatCurrency(fromCents(proj.rollover[proj.rollover.length - 1] || 0)), 'ainda restante'));
     proj.vipReach.forEach(r => kpis.appendChild(kpi(`V${r.level} atingido`, fmtDay(r.key), 'pelo total apostado', 'plan-kpi-vip')));
@@ -2361,6 +2552,8 @@ function renderPreview() {
       head.appendChild(el('span', 'plan-day-date', fmtDay(d.key)));
       head.appendChild(el('span', `plan-tier plan-tier-${d.tier}`, TIER_LABEL[d.tier]));
       if (vipByDay.has(d.key)) head.appendChild(el('span', 'plan-tier plan-tier-vip', `V${vipByDay.get(d.key)}`));
+      if (d.zeroPoint) head.appendChild(el('span', 'plan-tier plan-tier-zero', '🏧 zera')); // (44)
+      if (d.predicted) head.appendChild(el('span', 'plan-tier plan-tier-pred', '🔮 previsto'));
       head.appendChild(el('span', 'plan-day-amount', formatCurrency(fromCents(d.plannedC))));
       head.appendChild(rButton(row, platform, rPath, d, speedBase(), plan.days)); // (35)
       row.appendChild(head);
@@ -2390,7 +2583,7 @@ function renderChart(plan, proj) {
   const sv = form.platformId ? savedTodayDay(form.platformId, t) : null;
   const pre = sv && Number(sv.plannedC) > 0 && plan.days.length && plan.days[0].key > t ? 1 : 0;
   chartOffset = pre;
-  const labels = [...(pre ? ['Hoje'] : []), ...plan.days.map(d => fmtShort(d.key))];
+  const labels = [...(pre ? ['Hoje'] : []), ...plan.days.map(d => `${fmtShort(d.key)}${d.zeroPoint ? ' 🏧' : ''}`)]; // (44)
   const bars = [...(pre ? [fromCents(Math.round(Number(sv.plannedC)))] : []), ...plan.days.map(d => fromCents(d.plannedC))];
   const colors = [...(pre ? [TODAY_BAR_COLOR] : []), ...plan.days.map(d => TIER_COLOR[d.tier])];
   const vipKeys = new Set(proj.vipReach.map(r => r.key));
@@ -2487,7 +2680,8 @@ function groupBaseParams() {
     stakes,
     buy: { enabled: form.buy.enabled, multiplier: form.buy.multiplier },
     skipEmissions: form.skipEmissions.slice(),
-    targetBase: form.groupBase
+    targetBase: form.groupBase,
+    zero: zeroParams() // (44) iguais pra todas
   };
 }
 
@@ -2522,6 +2716,7 @@ function formGroupCfg() {
     skipEmissions: form.skipEmissions,
     groupBase: form.groupBase,
     groupReserve: form.groupReserve,
+    groupEmissionOnly: form.groupEmissionOnly, // (44)
     followGroup: form.followGroup,
     deductToday: form.groupDeductToday,
     onlyIds: null,
@@ -2574,7 +2769,8 @@ function groupMembers(g, cfg = formGroupCfg()) {
       cashCap: cfg.noCap || !valid ? null : cashCapFor(p, rolloverC, cfg.startKey, inflows, base, !closing), // (28) (29b)
       excludeKeys: valid ? forbiddenBetDays(routines, p, cfg.startKey, cfg.endKey) : [],
       skipEmissions: cfg.skipEmissions.slice(),
-      skipKeys: valid ? emissionKeysInRange(p, cfg.startKey, cfg.endKey, cfg.skipEmissions) : [],
+      // (44) 🎯 só emissão desta plataforma × 🚫 não apostar (grupo)
+      ...(valid ? emissionPlanKeys(p, cfg.startKey, cfg.endKey, cfg.skipEmissions, cfg.groupEmissionOnly && cfg.groupEmissionOnly[p.id] ? 'only' : 'skip') : { emissionMode: 'skip', skipKeys: [], emissionOnlyKeys: [], predictedKeys: [] }),
       pauseKeys: valid ? betPauseKeys(p, cfg.startKey, cfg.endKey, t) : [],
       dayBoost: valid ? dayBoostsFor(speedCfg, p.id, cfg.startKey, cfg.endKey) : {}
     };
@@ -2641,6 +2837,9 @@ function renderGroupPreview() {
       if (res.days.length) {
         const vals = res.days.map(d => d.plannedC);
         kpis.appendChild(kpi('Dias com aposta', String(res.days.length), `${fmtShort(res.days[0].key)} a ${fmtShort(res.days[res.days.length - 1].key)}`));
+        // (44) 🏧 dias de zerar (iguais pra todas)
+        const zk = [...new Set(res.members.flatMap(m => (m.plan && m.plan.totals.zeroKeys) || []))].sort();
+        if (zk.length) kpis.appendChild(kpi('🏧 Zerar o Rollover', zk.map(fmtShort).join(' · '), 'dias pra sacar (cada plataforma zera no seu último dia de aposta até a data)', 'plan-kpi-vip'));
         const maxV = Math.max(...vals);
         const maxDay = res.days.find(d => d.plannedC === maxV);
         kpis.appendChild(kpi('🔝 Dia mais alto (grupo)', formatCurrency(fromCents(maxV)), `${fmtDay(maxDay.key)} · ${maxDay.platforms} plataforma(s) · menor dia ${formatCurrency(fromCents(Math.min(...vals)))}`, 'plan-kpi-main'));
@@ -2696,6 +2895,8 @@ function renderGroupPreview() {
           const dh = el('div', 'plan-day-head');
           dh.appendChild(el('span', 'plan-day-date', fmtDay(d.key)));
           dh.appendChild(el('span', `plan-tier plan-tier-${d.tier}`, TIER_LABEL[d.tier]));
+          if (d.zeroPoint) dh.appendChild(el('span', 'plan-tier plan-tier-zero', '🏧')); // (44)
+          if (d.predicted) dh.appendChild(el('span', 'plan-tier plan-tier-pred', '🔮'));
           dh.appendChild(el('span', 'plan-day-amount', formatCurrency(fromCents(d.plannedC))));
           if (mp) dh.appendChild(rButton(dr, mp, rPath, d, members[i].speed, m.plan.days)); // (35)
           dr.appendChild(dh);
@@ -2744,6 +2945,23 @@ function renderMemberReserve(pid, member) {
         ? `Guarda o Rollover inteiro (${formatCurrency(fromCents(member.reservedC))}); a meta cobre só os depósitos de ativação previstos: ${formatCurrency(member.target)}.`
         : `Guarda ${formatCurrency(fromCents(member.reservedC))} de ${formatCurrency(fromCents(roll))}; meta ${formatCurrency(member.target)}.`))));
   if (member.todayLeftC > 0) box.appendChild(el('p', 'plan-hint', `↻ Descontou ${formatCurrency(fromCents(member.todayLeftC))} que ainda falta apostar hoje.`)); // (24)
+  // (44) 🎯 Só no dia da emissão (só esta plataforma do grupo).
+  const emOn = !!form.groupEmissionOnly[pid];
+  const emRow = el('div', 'plan-chips plan-group-em');
+  emRow.appendChild(chip(emOn ? '🎯 Só no dia da emissão ✓' : '🎯 Só no dia da emissão', emOn, () => {
+    if (emOn) delete form.groupEmissionOnly[pid]; else form.groupEmissionOnly[pid] = true;
+    syncInputs();
+    renderGroupPreview();
+  }));
+  box.appendChild(emRow);
+  if (emOn) {
+    const pf = findPlatform(pid);
+    const ek = pf ? emissionPlanKeys(pf, form.startKey, form.endKey, form.skipEmissions, 'only') : null;
+    const all = ek ? [...ek.emissionOnlyKeys.map(k => fmtShort(k)), ...ek.predictedKeys.map(k => `${fmtShort(k)} 🔮`)] : [];
+    box.appendChild(el('p', 'plan-hint', all.length
+      ? `Aposta só em: ${all.join(', ')} — mesmo em dia de folga do grupo.`
+      : 'Sem dia de emissão no período (ciclo encerrado sem volta prevista, ou sem ciclo) — fica sem plano.'));
+  }
   // (42) ⚡ Peso desta plataforma — visível e editável também no grupo.
   const spRow = el('div', 'plan-row plan-group-speed');
   spRow.appendChild(el('span', 'plan-hint plan-speed-info', `⚡ Peso ${formatMult(member.speed)}${member.speed === 1 ? ' (normal — aposta o Rollover)' : ' — meta = Rollover × peso'}`));
@@ -2776,7 +2994,9 @@ function renderGroupChart(res) {
   const canvas = $('planChart');
   if (!canvas || !window.Chart) return;
   const keys = res.days.map(d => d.key);
-  const labels = keys.map(fmtShort);
+  const zeroAt = new Set(); // (44) 🏧 (mesmos dias pra todas)
+  res.members.forEach(m => { if (m.plan) m.plan.days.forEach(d => { if (d.zeroPoint) zeroAt.add(d.key); }); });
+  const labels = keys.map(k => `${fmtShort(k)}${zeroAt.has(k) ? ' 🏧' : ''}`);
   const PALETTE = ['#2563eb', '#15803d', '#f59e0b', '#7c3aed', '#dc2626', '#0891b2', '#db2777', '#475569', '#65a30d', '#ea580c'];
   const maxV = res.days.length ? Math.max(...res.days.map(d => d.plannedC)) : 0;
   const maxIdx = res.days.findIndex(d => d.plannedC === maxV);
@@ -3308,7 +3528,7 @@ function platformDayKeys(platform, sp, startKey, endKey) {
     excludeKeys: forbiddenBetDays(routines, platform, startKey, endKey),
     onlyKeys: [],
     followRoutineId: null,
-    skipKeys: emissionKeysInRange(platform, startKey, endKey, sp.skipEmissions),
+    ...emissionPlanKeys(platform, startKey, endKey, sp.skipEmissions, sp.emissionMode), // (44)
     pauseKeys: betPauseKeys(platform, startKey, endKey, todayKey()),
     dayBoost: dayBoostsFor(getSpeedConfig(), platform.id, startKey, endKey)
   };
@@ -3545,12 +3765,15 @@ function buildGroupRow(g, opts, t, tomorrow) {
     const r = reserveToForm(x.params && x.params.reserve);
     if (r.mode !== 'none') groupReserve[x.platformId] = r;
   });
+  const groupEmissionOnly = {}; // (44)
+  saved.forEach(x => { if (x.params && x.params.emissionMode === 'only') groupEmissionOnly[x.platformId] = true; });
   const cfg = {
     startKey: tomorrow,
     endKey: sp.endKey,
     skipEmissions: sp.skipEmissions,
     groupBase: sp.targetBase,
     groupReserve,
+    groupEmissionOnly,
     followGroup: g.routine.action === 'bet' ? sp.followRoutineId === g.routine.id : true,
     deductToday: true,
     onlyIds: new Set(ids),
@@ -3573,7 +3796,8 @@ function buildGroupRow(g, opts, t, tomorrow) {
     stakes: sp.stakes.slice(),
     buy: { enabled: sp.buy.enabled, multiplier: sp.buy.multiplier },
     skipEmissions: sp.skipEmissions.slice(),
-    targetBase: sp.targetBase
+    targetBase: sp.targetBase,
+    zero: sp.zero // (44)
   };
   const res = buildGroupPlan(base, members, { routineId: g.routine.id, name: g.routine.name }, t);
   row.todayLeftC = members.reduce((s2, m) => s2 + (m.todayRawC || 0), 0);
@@ -4272,6 +4496,7 @@ function overviewRows() {
       lastBetKey: res ? res.lastBetKey : null,
       residualC: res ? res.residualC : null, // (36) sobra no fim do plano
       minEnd: res ? res.minEndUntil(until) : null, // (36) pior fim de dia até a data
+      zeroPlanKeys: futureDays.filter(d => d.zeroPoint).map(d => d.key).sort(), // (44) 🏧 do plano salvo
       betC
     };
   }).filter(r => (r.rollNow !== null && r.rollNow > 0) || r.hasPlan || r.betC > 0);
@@ -4390,6 +4615,9 @@ function renderOverview() {
   k.appendChild(kpi(`Rollover em ${fmtShort(until)}`, moneyC(projC), over.length ? `⚠ ${over.length} com plano acima do Rollover` : (ov.inflows ? 'com as entradas previstas' : 'sem entradas previstas'), over.length ? 'cal-kpi-bad' : ''));
   k.appendChild(kpi('Aposta projetada', moneyC(betC), ov.bet === 'today' ? `hoje (${fmtShort(t)})` : (ov.bet === 'all' ? 'hoje até o fim dos planos' : `${fmtShort(addDaysKey(t, 1))} a ${fmtShort(until)}`)));
   k.appendChild(kpi('Previsão de saque', lastZero ? fmtShort(lastZero) : '—', withPlan.length ? `${zeroing.length} de ${withPlan.length} zeram no fim do plano${leftover.length ? ` · ${leftover.length} com sobra` : ''}` : 'nenhuma com plano à frente', 'plan-kpi-vip'));
+  // (44) 🏧 próximos dias de zerar marcados nos planos (meio do plano)
+  const zAll = [...new Set(rows.flatMap(r => r.zeroPlanKeys || []))].sort();
+  if (zAll.length) k.appendChild(kpi('🏧 Saques no meio do plano', zAll.slice(0, 4).map(fmtShort).join(' · ') + (zAll.length > 4 ? ' …' : ''), `${rows.filter(r => (r.zeroPlanKeys || []).length).length} plataforma(s) com 🏧 marcado`, 'plan-kpi-vip'));
   box.appendChild(k);
 
   // Por plataforma
@@ -4408,8 +4636,9 @@ function renderOverview() {
     else if (r.zeroKey) fim = `zera ${fmtShort(r.zeroKey)}${r.residualC !== null && r.residualC < 0 ? ` · plano passa ${moneyC(-r.residualC)}` : ''}`;
     else if (r.residualC !== null && r.residualC < 0) fim = `falta ${moneyC(-r.residualC)} em ${fmtShort(r.lastBetKey)}`;
     else if (r.residualC !== null) fim = `sobra ${moneyC(r.residualC)} em ${fmtShort(r.lastBetKey)}`;
+    const zTxt = r.zeroPlanKeys && r.zeroPlanKeys.length ? ` · 🏧 ${r.zeroPlanKeys.map(fmtShort).join(', ')}` : ''; // (44)
     line.appendChild(el('span', 'plan-ov-val', r.rollNow === null ? '—'
-      : `${moneyC(r.rollNow)} → ${r.projC === null ? '—' : moneyC(r.projC)} · ${fim}`));
+      : `${moneyC(r.rollNow)} → ${r.projC === null ? '—' : moneyC(r.projC)} · ${fim}${zTxt}`));
     det.appendChild(line);
   });
   det.appendChild(el('p', 'plan-hint', `A seta é hoje → ${fmtShort(until)}. "Zera / sobra / falta" é no fim do plano de cada uma.`));
