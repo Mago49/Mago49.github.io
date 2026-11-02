@@ -205,6 +205,13 @@
 //    (predictCycle: volta prevista do ciclo encerrado / próximo Reinício
 //    previsto, repetindo pelo intervalo aprendido). O 🔄 / ⚠️ refaz quando
 //    o Reinício real é registrado.
+//
+// === (Sub-entrega 45) ===
+// a) Intercalar com N dias por semana (form.weekCount → params.weekCount):
+//    chips "1 · 2 · …" abaixo de Sempre/Intercalar (até dias marcados − 1).
+// b) "Seguir os dias desta rotina" do grupo mostra o nome e os dias da
+//    rotina ("Apostar só nos dias da rotina … (Seg, Qua, Sex)").
+// c) Piso × caixa: ver plan-logic.js (dia cortado abaixo do piso = R$ 0).
 
 import { state } from './state.js';
 import { formatCurrency, showAppAlert, showAppConfirm } from './utils.js';
@@ -301,6 +308,7 @@ const form = {
   skipEmissions: [],
   // (19)
   weekMode: 'all',
+  weekCount: 1,           // (45) Intercalar: dias por semana
   groupId: null,          // rotina do plano de grupo (modo grupo)
   followGroup: true,      // grupo de rotina de aposta: seguir os dias dela
   groupFloorMode: 'none', // 'manual' | 'none'
@@ -586,6 +594,7 @@ function currentParams() {
     ...speedAndEmissionKeys(form.startKey, form.endKey),
     // (19)
     weekMode: form.weekMode,
+    weekCount: form.weekCount, // (45)
     phase: form.phase,
     phaseCount: form.phaseCount,
     group: form.groupRef,
@@ -787,6 +796,7 @@ function applyParamsToForm(params) {
   form.zero = p.zero.mode === 'end' ? { mode: 'end', dates: [], count: 2 } : { mode: p.zero.mode, dates: p.zero.dates.slice(), count: p.zero.count || 2 }; // (44)
   form.emissionMode = p.emissionMode; // (44)
   form.weekMode = p.weekMode;
+  form.weekCount = p.weekCount || 1; // (45)
   form.phase = p.phase;
   form.phaseCount = p.phaseCount;
   form.groupRef = p.group;
@@ -922,7 +932,7 @@ function renderSkeleton() {
         </div>
 
         <div class="plan-field app-hidden" id="planGroupFollowField" data-ptab="restricoes">
-          <label class="plan-toggle"><input type="checkbox" id="planGroupFollow" /> Seguir os dias desta rotina</label>
+          <label class="plan-toggle"><input type="checkbox" id="planGroupFollow" /> <span id="planGroupFollowLabel">Seguir os dias desta rotina</span></label>
           <p id="planGroupFollowHint" class="plan-hint"></p>
         </div>
 
@@ -1026,7 +1036,7 @@ function renderSkeleton() {
 // Campos do formulário de cada aba (● alteração não salva).
 const TAB_FORM_KEYS = {
   caixa: ['target', 'reserve', 'goal', 'groupBase', 'groupReserve', 'zero'],
-  restricoes: ['startKey', 'endKey', 'weekdaysOff', 'weekMode', 'followRoutineId', 'followGroup', 'skipEmissions', 'emissionMode', 'groupEmissionOnly', 'floorMode', 'floor', 'groupFloorMode', 'groupFloor', 'cap', 'stakes', 'buy'],
+  restricoes: ['startKey', 'endKey', 'weekdaysOff', 'weekMode', 'weekCount', 'followRoutineId', 'followGroup', 'skipEmissions', 'emissionMode', 'groupEmissionOnly', 'floorMode', 'floor', 'groupFloorMode', 'groupFloor', 'cap', 'stakes', 'buy'],
   modulador: ['curve', 'intensity', 'rhythm', 'seed']
 };
 
@@ -1322,6 +1332,23 @@ function renderChips() {
       syncInputs();
       schedulePreview(0);
     })));
+    // (45) Intercalar: quantos dias por semana (até dias marcados − 1)
+    if (form.weekMode === 'alternate') {
+      const markedN = Math.max(1, 7 - form.weekdaysOff.length);
+      const maxN = Math.max(1, markedN - 1);
+      if (form.weekCount > maxN) form.weekCount = maxN;
+      const row = el('div', 'plan-chips plan-weekcount');
+      row.appendChild(el('span', 'plan-hint', 'Por semana:'));
+      for (let n = 1; n <= maxN; n++) {
+        row.appendChild(chip(`${n} dia${n > 1 ? 's' : ''}`, form.weekCount === n, () => {
+          form.weekCount = n;
+          renderChips();
+          syncInputs();
+          schedulePreview(0);
+        }));
+      }
+      wm.appendChild(row);
+    }
   }
   // (44) 🚫 Não apostar × 🎯 Só nesses dias (individual)
   const emm = $('planEmMode');
@@ -1589,6 +1616,17 @@ function syncInputs() {
   if (pm && document.activeElement !== pm) pm.value = palette.buyMultipliers.join('; ');
 }
 
+// (45) Dias da rotina em texto (mesmo formato da aba Rotinas).
+function routineDaysText(r) {
+  const sch = (r && r.schedule) || {};
+  if (sch.type === 'daily') return 'todo dia';
+  if (sch.type === 'weekdays') return WEEK_ORDER.filter(d => (sch.weekdays || []).includes(d)).map(d => WEEKDAY_LABELS[d]).join(', ') || '—';
+  if (sch.type === 'every') return `a cada ${sch.everyDays} dia(s)`;
+  if (sch.type === 'since-last') return `a cada ${sch.everyDays} dia(s) desde a última aposta`;
+  if (sch.type === 'dates') return `${(sch.dates || []).length} data(s) escolhida(s)`;
+  return '—';
+}
+
 // (44) 🏧 campos do Zerar o Rollover.
 function syncZeroInputs() {
   const z = form.zero;
@@ -1672,8 +1710,10 @@ function syncGroupInputs() {
   hide('planGroupFollowField', !(group && isBetGroup));
   const gf = $('planGroupFollow');
   if (gf) gf.checked = form.followGroup;
+  const gfl = $('planGroupFollowLabel'); // (45) nome e dias da rotina
+  if (gfl) gfl.textContent = isBetGroup ? `Apostar só nos dias da rotina "${g.routine.name}" (${routineDaysText(g.routine)})` : 'Seguir os dias desta rotina';
   const gfh = $('planGroupFollowHint');
-  if (gfh) gfh.textContent = isBetGroup ? (form.followGroup ? 'O plano usa só os dias em que a rotina vale (pra cada plataforma).' : 'Usa o período e os dias marcados.') : '';
+  if (gfh) gfh.textContent = isBetGroup ? (form.followGroup ? 'Marcado: o plano só aposta nos dias da rotina (cruzados com os dias da semana marcados aqui), pra cada plataforma.' : 'Desmarcado: ignora os dias da rotina — usa só o período e os dias da semana marcados aqui.') : '';
   const info = $('planGroupInfo');
   if (info) {
     info.classList.toggle('app-hidden', !group);
@@ -1699,7 +1739,9 @@ function syncGroupInputs() {
   const wh = $('planWeekModeHint');
   if (wh) {
     wh.textContent = form.weekMode === 'alternate'
-      ? 'Intercalar: 1 dia por semana, revezando entre os dias marcados (o valor da semana fica concentrado nele).'
+      ? (form.weekCount > 1
+        ? `Intercalar: ${form.weekCount} dias por semana, revezando entre os ${Math.max(1, 7 - form.weekdaysOff.length)} dias marcados (cada semana começa num dia diferente — todos são usados por igual).`
+        : 'Intercalar: 1 dia por semana, revezando entre os dias marcados (o valor da semana fica concentrado nele).')
       : 'Sempre assim: aposta em todos os dias marcados, toda semana — os valores variam pela curva.';
   }
 }
@@ -2671,6 +2713,7 @@ function groupBaseParams() {
     endKey: form.endKey,
     weekdaysOff: form.weekdaysOff.slice(),
     weekMode: form.weekMode,
+    weekCount: form.weekCount, // (45)
     curve: form.curve,
     intensity: form.intensity,
     rhythm: form.rhythm,
@@ -3787,6 +3830,7 @@ function buildGroupRow(g, opts, t, tomorrow) {
     endKey: sp.endKey,
     weekdaysOff: sp.weekdaysOff.slice(),
     weekMode: sp.weekMode,
+    weekCount: sp.weekCount, // (45)
     curve: sp.curve,
     intensity: sp.intensity,
     rhythm: sp.rhythm,

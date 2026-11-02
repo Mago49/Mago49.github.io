@@ -136,6 +136,18 @@
 //    respeitando dias proibidos (excludeKeys) e pausa do ciclo (pauseKeys).
 //    Dia 🔮 que ainda não é emissão real leva predicted:true.
 // Planos antigos (sem os campos) = 'end' e 'skip': sameParams igual.
+//
+// === (Sub-entrega 45) PISO × CAIXA + INTERCALAR COM N DIAS ===
+// a) Dia que o caixa limita (🔒) abaixo do PISO vira R$ 0 (aguardando
+//    entrada) e o valor segue pro próximo dia de aposta. Exceção: dia 🏧 e
+//    o último dia do plano apostam o que couber, mesmo abaixo do piso (pra
+//    o Rollover zerar). Antes o corte do caixa ignorava o piso.
+// b) params.weekCount (Intercalar): quantos dias por semana (1 = como
+//    sempre). Rodízio: semana w começa na posição (w × N + escala) dos dias
+//    marcados e pega N dias seguidos dessa lista (dando a volta) — com
+//    seg/qua/sex e N=2: seg+qua, sex+seg, qua+sex… Dia bloqueado → o
+//    próximo marcado da semana. N ≥ dias marcados = todos (igual "Sempre").
+//    Plano antigo = 1 (sameParams igual).
 
 import { toLocalDateString, getWeekStart } from './finance-logic.js';
 import { getCycleStart } from './cycle-logic.js';
@@ -276,7 +288,7 @@ function weekMondayKey(key) {
  * dias que existiriam sem bloqueios (pra contar semanas bloqueadas).
  * @returns {{ days: Array<{key, weekday}>, weeks: number, blockedWeeks: number }}
  */
-export function pickAlternateDays(startKey, weekdaysOff, candidates, allMarked, phase = 0) {
+export function pickAlternateDays(startKey, weekdaysOff, candidates, allMarked, phase = 0, count = 1) {
   const off = new Set((weekdaysOff || []).map(Number));
   // Dias que de fato podem receber aposta (folgas e "Seguir rotina" já
   // aplicados em allMarked) — o revezamento é entre ELES.
@@ -298,15 +310,20 @@ export function pickAlternateDays(startKey, weekdaysOff, candidates, allMarked, 
     const list = byWeek.get(wk);
     if (!list || !list.length) { out.blockedWeeks++; return; }
     const w = Math.round((dayKeyToDate(wk) - dayKeyToDate(firstMonday)) / (7 * 86400000));
-    const startPos = (w + p) % marked.length;
+    // (45) N dias por semana: começa em (w × N + escala) e pega N seguidos.
+    const n = Math.max(1, Math.min(marked.length, Math.round(Number(count) || 1)));
+    const startPos = (w * n + p) % marked.length;
     const byWd = new Map(list.map(d => [d.weekday, d]));
-    let chosen = null;
-    for (let j = 0; j < marked.length && !chosen; j++) {
+    const chosen = [];
+    for (let j = 0; j < marked.length && chosen.length < n; j++) {
       const wd = marked[(startPos + j) % marked.length];
-      if (byWd.has(wd)) chosen = byWd.get(wd);
+      if (byWd.has(wd)) chosen.push(byWd.get(wd));
     }
-    // Rotina seguida pode cair num dia fora dos marcados: usa o 1º disponível.
-    out.days.push(chosen || list[0]);
+    // Rotina seguida pode cair num dia fora dos marcados: completa com os disponíveis.
+    for (let j = 0; j < list.length && chosen.length < n; j++) {
+      if (!chosen.includes(list[j])) chosen.push(list[j]);
+    }
+    out.days.push(...chosen);
   });
   out.days.sort((a, b) => a.key.localeCompare(b.key));
   return out;
@@ -517,7 +534,7 @@ export function buildPlan(params, todayKey = null) {
   const alternate = p.weekMode === 'alternate' && !emOnly;
   let alt = null;
   if (alternate) {
-    alt = pickAlternateDays(p.startKey, p.weekdaysOff, filtered, listActiveDays(p.startKey, p.endKey, p.weekdaysOff, p.onlyKeys, null), p.phase);
+    alt = pickAlternateDays(p.startKey, p.weekdaysOff, filtered, listActiveDays(p.startKey, p.endKey, p.weekdaysOff, p.onlyKeys, null), p.phase, p.weekCount);
     days = alt.days;
   }
   if (days.length === 0) return { ok: false, error: emOnly ? 'Os dias de emissão do período caem em dias proibidos ou fora do ciclo.' : 'Nenhum dia ativo no período (folgas, dias proibidos, dias de emissão ou rotina sem dias).' };
@@ -609,7 +626,8 @@ export function buildPlan(params, todayKey = null) {
   if (!emOnly && skippedPause > 0) warnings.push(`${skippedPause} dia(s) fora do ciclo (encerrado ou virada do mês instável) pulado(s).`);
   if (boostedDays > 0) warnings.push(`${boostedDays} dia(s) em época de velocidade recebem fatia maior da meta.`);
   if (alt) {
-    warnings.push(`Intercalar: ${days.length} dia(s) de aposta — 1 por semana, revezando entre os dias marcados.`);
+    const perWeek = Math.max(1, Math.round(Number(p.weekCount) || 1)); // (45)
+    warnings.push(`Intercalar: ${days.length} dia(s) de aposta — ${perWeek} por semana, revezando entre os dias marcados.`);
     if (alt.blockedWeeks > 0) warnings.push(`${alt.blockedWeeks} semana(s) sem aposta: todos os dias marcados estavam bloqueados (proibido, emissão ou fora do ciclo).`);
   }
 
@@ -630,6 +648,8 @@ export function buildPlan(params, todayKey = null) {
       capped = true;
       cappedDays++;
       need = room > 0 ? Math.floor(room / stakesC[0]) * stakesC[0] : 0;
+      // (45) abaixo do piso → R$ 0 (vai pro próximo dia); 🏧 e último dia apostam o que couber
+      if (need > 0 && need < floorC && !zeroSet.has(i) && i !== days.length - 1) need = 0;
     }
     const { lines, plannedC } = buildDayLines(need, tier, stakesC, buy && !capped ? buy : null);
     plannedCum += plannedC;
@@ -940,6 +960,7 @@ export function sanitizeParams(p) {
     dayBoost: cleanBoost(p.dayBoost, startKey, endKey),
     // (19)
     weekMode: p.weekMode === 'alternate' ? 'alternate' : 'all',
+    weekCount: p.weekMode === 'alternate' ? Math.max(1, Math.min(6, Math.round(Number(p.weekCount) || 1))) : 1, // (45)
     phase: Math.max(0, Math.min(GROUP_MAX_MEMBERS, Math.round(Number(p.phase) || 0))),
     phaseCount: Math.max(1, Math.min(GROUP_MAX_MEMBERS, Math.round(Number(p.phaseCount) || 1))),
     group: cleanGroupRef(p.group),
