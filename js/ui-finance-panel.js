@@ -167,6 +167,11 @@
 // histórico de R: nada é gravado (continua 1:1, como antes). Só o dia de
 // hoje — o padrão geral (1:1) da lógica não muda, nenhum dia passado muda.
 //
+// === (Sub-entrega 47) ⇅ ORDENAR POR ROLLOVER ===
+// "Maior Rollover" / "Menor Rollover" no ⇅ Ordenar (computeRolloverLive, o
+// mesmo valor do badge). Só exibição; como Maior/Menor Saldo, desliga o
+// ⚙️ Reordenar.
+//
 // === (Sub-entrega 46) 👁 BADGES ===
 // ⬇️ Abatido, ⬆️ Aumentado e ✓ semana fechada também podem ser escondidos no
 // 👁 Badges (preferências financeAbatBadge/financeAumBadge/financeClosedBadge,
@@ -334,6 +339,8 @@ const rowElements = new Map();
 const FINANCE_SORT_MENU_OPTIONS = [
   { value: 'saldo-desc', label: 'Maior Saldo' },
   { value: 'saldo-asc', label: 'Menor Saldo' },
+  { value: 'rollover-desc', label: 'Maior Rollover' }, // (Sub-entrega 47)
+  { value: 'rollover-asc', label: 'Menor Rollover' },
   { value: 'az', label: 'A - Z' },
   { value: 'za', label: 'Z - A' },
   { value: '1-9', label: '1 – 9' },
@@ -467,6 +474,13 @@ function getVisibleList() {
 
   if (currentMode === 'saldo-desc') {
     return [...list].sort((a, b) => computeLiveBalance(b, new Date(), resolveCtxForPlatform(b)) - computeLiveBalance(a, new Date(), resolveCtxForPlatform(a)));
+  }
+  // (Sub-entrega 47) Rollover ao vivo (mesmo valor do badge). Empate: nome.
+  if (currentMode === 'rollover-desc' || currentMode === 'rollover-asc') {
+    const now = new Date();
+    const rv = new Map(list.map(p => [p.id, computeRolloverLive(p, now, resolveCtxForPlatform(p))]));
+    const sign = currentMode === 'rollover-desc' ? -1 : 1;
+    return [...list].sort((a, b) => sign * (rv.get(a.id) - rv.get(b.id)) || String(a.name).localeCompare(String(b.name), 'pt-BR', { numeric: true }));
   }
   if (currentMode === 'saldo-asc') {
     return [...list].sort((a, b) => computeLiveBalance(a, new Date(), resolveCtxForPlatform(a)) - computeLiveBalance(b, new Date(), resolveCtxForPlatform(b)));

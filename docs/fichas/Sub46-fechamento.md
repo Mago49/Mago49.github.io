@@ -28,3 +28,6 @@ users/{uid}/meta/preferences.badgeVisibility ganha 3 chaves (merge — nada apag
 - Pedro confere no celular: reordenar nas duas páginas sem a página subir; caixinhas novas do 👁 Badges.
 - Aparelho com a versão antiga em cache: salvar badges lá volta as 3 novas pra "aparecer" (recarregar resolve).
 - Mapa Técnico: UI-01 (ui-finance-panel), linha do ui-platform-manage, user-preferences-store e CSS-14 (manage-panel.css).
+
+## Complemento — Sub-entrega 47 (05/11/2026)
+- Financeiro → ⇅ Ordenar: "Maior Rollover" / "Menor Rollover" (computeRolloverLive, mesmo valor do badge; empate por nome). Só js/ui-finance-panel.js (raiz e teste/). Banco, imports e regras sem mudança. node --check ok.
