@@ -301,6 +301,32 @@ function getEffectiveOrderIds() {
 // "buracos": trocar com o vizinho que aparece na tela, não com o
 // próximo id fisicamente adjacente no array salvo (que pode estar
 // escondido pela busca e dar a impressão de que o clique não fez nada).
+// (46) Mantém a linha movida no MESMO lugar da tela (não "foge" pro topo):
+// guarda a posição dela antes, refaz a lista e rola só a diferença. Repete
+// no próximo quadro (o navegador pode ajustar o scroll depois do redesenho).
+// Devolve o foco pra mesma seta, sem rolar.
+function keepRowInPlace(platformId, direction, run) {
+  const sel = `.platform-manage-row[data-id="${String(platformId).replace(/["\\]/g, '\\$&')}"]`;
+  const before = manageListEl ? manageListEl.querySelector(sel) : null;
+  const top = before ? before.getBoundingClientRect().top : null;
+  const y = window.scrollY;
+  run();
+  const fix = () => {
+    const after = manageListEl ? manageListEl.querySelector(sel) : null;
+    if (after && top !== null) {
+      const delta = after.getBoundingClientRect().top - top;
+      if (Math.abs(delta) > 0.5) window.scrollTo(0, window.scrollY + delta);
+    } else {
+      window.scrollTo(0, y);
+    }
+    return after;
+  };
+  const after = fix();
+  const btn = after ? after.querySelector(`.reorder-arrow[data-dir="${direction < 0 ? 'up' : 'down'}"]`) : null;
+  if (btn && !btn.disabled) { try { btn.focus({ preventScroll: true }); } catch (_) { /* ignora */ } }
+  requestAnimationFrame(() => { fix(); });
+}
+
 function moveManualOrder(platformId, direction) {
   const visibleIds = lastVisibleList.map(p => p.id);
   const idx = visibleIds.indexOf(platformId);
@@ -315,18 +341,20 @@ function moveManualOrder(platformId, direction) {
 
   [ids[posA], ids[posB]] = [ids[posB], ids[posA]];
   saveManualOrder(state.currentUid, ids);
-  renderManageList();
-  // Corrige o disabled das setas ▲▼: reconcileList() (chamada por
-  // renderManageList) só REPOSICIONA linhas já existentes no DOM, nunca
-  // reconstrói o conteúdo delas — sem isso, uma linha que nasceu no topo
-  // (▲ desabilitada) carregaria esse estado pra sempre, mesmo depois de
-  // deixar de ser a primeira (e o mesmo, na ponta oposta, pra ▼). Bug
-  // real confirmado em teste: A73/11TT ficavam presas nos extremos
-  // mesmo depois de outras plataformas serem reordenadas ao redor delas.
-  // refreshAllRows() reconstrói TODAS as linhas visíveis, recalculando
-  // cada seta com a posição REAL e atual (lastVisibleList já atualizado
-  // por renderManageList() logo acima).
-  refreshAllRows();
+  keepRowInPlace(platformId, direction, () => { // (46)
+    renderManageList();
+    // Corrige o disabled das setas ▲▼: reconcileList() (chamada por
+    // renderManageList) só REPOSICIONA linhas já existentes no DOM, nunca
+    // reconstrói o conteúdo delas — sem isso, uma linha que nasceu no topo
+    // (▲ desabilitada) carregaria esse estado pra sempre, mesmo depois de
+    // deixar de ser a primeira (e o mesmo, na ponta oposta, pra ▼). Bug
+    // real confirmado em teste: A73/11TT ficavam presas nos extremos
+    // mesmo depois de outras plataformas serem reordenadas ao redor delas.
+    // refreshAllRows() reconstrói TODAS as linhas visíveis, recalculando
+    // cada seta com a posição REAL e atual (lastVisibleList já atualizado
+    // por renderManageList() logo acima).
+    refreshAllRows();
+  });
 }
 
 
@@ -523,15 +551,15 @@ function buildRow(p) {
   let reorderControls = null;
   if (reorderModeActive && currentMode === null) {
     reorderControls = document.createElement('div');
-    reorderControls.className = 'platform-manage-row-badges';
-    reorderControls.style.gap = '0.25rem';
+    reorderControls.className = 'reorder-arrows'; // (46) mesmo visual na Edição e no Financeiro
 
     const visibleIds = lastVisibleList.map(pp => pp.id);
     const idx = visibleIds.indexOf(p.id);
 
     const upBtn = document.createElement('button');
     upBtn.type = 'button';
-    upBtn.className = 'bet-manage-btn';
+    upBtn.className = 'reorder-arrow';
+    upBtn.dataset.dir = 'up';
     upBtn.textContent = '▲';
     upBtn.disabled = idx <= 0;
     upBtn.setAttribute('aria-label', `Mover ${p.name} pra cima`);
@@ -542,7 +570,8 @@ function buildRow(p) {
 
     const downBtn = document.createElement('button');
     downBtn.type = 'button';
-    downBtn.className = 'bet-manage-btn';
+    downBtn.className = 'reorder-arrow';
+    downBtn.dataset.dir = 'down';
     downBtn.textContent = '▼';
     downBtn.disabled = idx === -1 || idx >= visibleIds.length - 1;
     downBtn.setAttribute('aria-label', `Mover ${p.name} pra baixo`);

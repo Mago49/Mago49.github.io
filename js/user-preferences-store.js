@@ -34,7 +34,9 @@ const DEFAULT_PREFERENCES = {
   // documento (users/{uid}/meta/preferences). Ver correção em
   // saveBadgeVisibility abaixo: sem ela, salvar um par apagaria o outro.
   // (Sub-entrega 15) betDaysBadge: "🎲 X dia(s)" da Edição.
-  badgeVisibility: { totalBadge: true, cycleDayBadge: true, depositDayBadge: true, betDaysBadge: true, financeBalanceBadge: true, financeRolloverBadge: true }
+  // (Sub-entrega 46) financeAbatBadge / financeAumBadge / financeClosedBadge:
+  // ⬇️ Abatido, ⬆️ Aumentado e ✓ semana fechada do Financeiro (padrão: aparecem).
+  badgeVisibility: { totalBadge: true, cycleDayBadge: true, depositDayBadge: true, betDaysBadge: true, financeBalanceBadge: true, financeRolloverBadge: true, financeAbatBadge: true, financeAumBadge: true, financeClosedBadge: true }
 };
 
 let cachedPreferences = null;
@@ -53,7 +55,11 @@ function normalizePreferences(data) {
       betDaysBadge: data?.badgeVisibility?.betDaysBadge !== false, // (Sub-entrega 15)
       // Etapa 7, sub-entrega 5 — ver nota em DEFAULT_PREFERENCES.
       financeBalanceBadge: data?.badgeVisibility?.financeBalanceBadge !== false,
-      financeRolloverBadge: data?.badgeVisibility?.financeRolloverBadge !== false
+      financeRolloverBadge: data?.badgeVisibility?.financeRolloverBadge !== false,
+      // (Sub-entrega 46)
+      financeAbatBadge: data?.badgeVisibility?.financeAbatBadge !== false,
+      financeAumBadge: data?.badgeVisibility?.financeAumBadge !== false,
+      financeClosedBadge: data?.badgeVisibility?.financeClosedBadge !== false
     }
   };
 }

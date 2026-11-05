@@ -200,6 +200,16 @@ export async function mount(container) {
             <label style="display:flex; align-items:center; gap:0.4rem; padding:0.5rem 0.7rem; cursor:pointer;">
               <input type="checkbox" id="financeBadgeVisibilityRollover" style="width:auto;" /> Rollover
             </label>
+            <!-- (Sub-entrega 46) -->
+            <label style="display:flex; align-items:center; gap:0.4rem; padding:0.5rem 0.7rem; cursor:pointer;">
+              <input type="checkbox" id="financeBadgeVisibilityAbat" style="width:auto;" /> ⬇️ Abatido
+            </label>
+            <label style="display:flex; align-items:center; gap:0.4rem; padding:0.5rem 0.7rem; cursor:pointer;">
+              <input type="checkbox" id="financeBadgeVisibilityAum" style="width:auto;" /> ⬆️ Aumentado
+            </label>
+            <label style="display:flex; align-items:center; gap:0.4rem; padding:0.5rem 0.7rem; cursor:pointer;">
+              <input type="checkbox" id="financeBadgeVisibilityClosed" style="width:auto;" /> ✓ Semana fechada
+            </label>
           </div>
         </div>
         <div class="sort-menu">

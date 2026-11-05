@@ -167,6 +167,12 @@
 // histórico de R: nada é gravado (continua 1:1, como antes). Só o dia de
 // hoje — o padrão geral (1:1) da lógica não muda, nenhum dia passado muda.
 //
+// === (Sub-entrega 46) 👁 BADGES ===
+// ⬇️ Abatido, ⬆️ Aumentado e ✓ semana fechada também podem ser escondidos no
+// 👁 Badges (preferências financeAbatBadge/financeAumBadge/financeClosedBadge,
+// mesmo documento users/{uid}/meta/preferences, padrão = aparecem). Esconder
+// o ✓ no domingo deixa à vista quem ainda não fechou a semana. Só exibição.
+//
 // === CUIDADO SPA (Adendo K12) ===
 // `financeListEl`/`financeSearchEl` NÃO são resolvidos no topo do
 // módulo (isso quebraria, já que o router injeta o HTML da view DEPOIS
@@ -397,6 +403,32 @@ function getEffectiveOrderIds() {
 // Troca a posição de `platformId` com seu vizinho VISÍVEL (direction -1
 // = sobe, +1 = desce) — mesma lógica já validada em
 // ui-platform-manage.js.
+// (46) Mantém a linha movida no MESMO lugar da tela (não "foge" pro topo):
+// guarda a posição dela antes, refaz a lista e rola só a diferença. Repete
+// no próximo quadro (o navegador pode ajustar o scroll depois do redesenho).
+// Devolve o foco pra mesma seta, sem rolar.
+function keepRowInPlace(platformId, direction, run) {
+  const sel = `.platform-manage-row[data-id="${String(platformId).replace(/["\\]/g, '\\$&')}"]`;
+  const before = financeListEl ? financeListEl.querySelector(sel) : null;
+  const top = before ? before.getBoundingClientRect().top : null;
+  const y = window.scrollY;
+  run();
+  const fix = () => {
+    const after = financeListEl ? financeListEl.querySelector(sel) : null;
+    if (after && top !== null) {
+      const delta = after.getBoundingClientRect().top - top;
+      if (Math.abs(delta) > 0.5) window.scrollTo(0, window.scrollY + delta);
+    } else {
+      window.scrollTo(0, y);
+    }
+    return after;
+  };
+  const after = fix();
+  const btn = after ? after.querySelector(`.reorder-arrow[data-dir="${direction < 0 ? 'up' : 'down'}"]`) : null;
+  if (btn && !btn.disabled) { try { btn.focus({ preventScroll: true }); } catch (_) { /* ignora */ } }
+  requestAnimationFrame(() => { fix(); });
+}
+
 function moveManualOrder(platformId, direction) {
   const visibleIds = lastVisibleList.map(p => p.id);
   const idx = visibleIds.indexOf(platformId);
@@ -411,11 +443,13 @@ function moveManualOrder(platformId, direction) {
 
   [ids[posA], ids[posB]] = [ids[posB], ids[posA]];
   saveManualOrder(state.currentUid, ids);
-  renderFinanceList();
-  // Corrige o disabled das setas ▲▼ de TODAS as linhas visíveis — mesmo
-  // motivo já documentado na Edição (sem isso, uma linha que nasceu no
-  // topo/fim ficaria com a seta desabilitada errada pra sempre).
-  refreshAllRows();
+  keepRowInPlace(platformId, direction, () => { // (46)
+    renderFinanceList();
+    // Corrige o disabled das setas ▲▼ de TODAS as linhas visíveis — mesmo
+    // motivo já documentado na Edição (sem isso, uma linha que nasceu no
+    // topo/fim ficaria com a seta desabilitada errada pra sempre).
+    refreshAllRows();
+  });
 }
 
 function getOverviewPlatformQuery() {
@@ -852,7 +886,7 @@ function buildRow(p) {
 
   // (Sub-entrega 20) ⬇️ Abatimento da semana — só aparece quando houve.
   const abatWeekBadge = sumRolloverAdjustments(p, toLocalDateString(live.weekStart), toLocalDateString(new Date()));
-  if (abatWeekBadge > 0) {
+  if (abatWeekBadge > 0 && badgeVisibility.financeAbatBadge !== false) { // (46)
     const abBadge = document.createElement('span');
     abBadge.className = 'platform-total-badge';
     abBadge.style.background = '#fef3c7';
@@ -864,7 +898,7 @@ function buildRow(p) {
 
   // (Sub-entrega 38) ⬆️ Aumento da semana — só aparece quando houve.
   const aumWeekBadge = sumRolloverIncreases(p, toLocalDateString(live.weekStart), toLocalDateString(new Date()));
-  if (aumWeekBadge > 0) {
+  if (aumWeekBadge > 0 && badgeVisibility.financeAumBadge !== false) { // (46)
     const auBadge = document.createElement('span');
     auBadge.className = 'platform-total-badge';
     auBadge.style.background = '#dcfce7';
@@ -874,7 +908,7 @@ function buildRow(p) {
     badges.appendChild(auBadge);
   }
 
-  if (closed) {
+  if (closed && badgeVisibility.financeClosedBadge !== false) { // (46)
     const doneBadge = document.createElement('span');
     doneBadge.className = 'finance-closed-badge';
     doneBadge.textContent = '✓ semana fechada';
@@ -895,15 +929,15 @@ function buildRow(p) {
   let reorderControls = null;
   if (reorderModeActive && currentMode === null) {
     reorderControls = document.createElement('div');
-    reorderControls.className = 'platform-manage-row-badges';
-    reorderControls.style.gap = '0.25rem';
+    reorderControls.className = 'reorder-arrows'; // (46) mesmo visual na Edição e no Financeiro
 
     const visibleIds = lastVisibleList.map(pp => pp.id);
     const idx = visibleIds.indexOf(p.id);
 
     const upBtn = document.createElement('button');
     upBtn.type = 'button';
-    upBtn.className = 'bet-manage-btn';
+    upBtn.className = 'reorder-arrow';
+    upBtn.dataset.dir = 'up';
     upBtn.textContent = '▲';
     upBtn.disabled = idx <= 0;
     upBtn.setAttribute('aria-label', `Mover ${p.name} pra cima`);
@@ -914,7 +948,8 @@ function buildRow(p) {
 
     const downBtn = document.createElement('button');
     downBtn.type = 'button';
-    downBtn.className = 'bet-manage-btn';
+    downBtn.className = 'reorder-arrow';
+    downBtn.dataset.dir = 'down';
     downBtn.textContent = '▼';
     downBtn.disabled = idx === -1 || idx >= visibleIds.length - 1;
     downBtn.setAttribute('aria-label', `Mover ${p.name} pra baixo`);
@@ -3258,6 +3293,10 @@ export function initFinanceControls() {
   const financeBadgeVisibilityDropdown = document.getElementById('financeBadgeVisibilityDropdown');
   const badgeVisibilityBalanceCheckbox = document.getElementById('financeBadgeVisibilityBalance');
   const badgeVisibilityRolloverCheckbox = document.getElementById('financeBadgeVisibilityRollover');
+  // (46)
+  const badgeVisibilityAbatCheckbox = document.getElementById('financeBadgeVisibilityAbat');
+  const badgeVisibilityAumCheckbox = document.getElementById('financeBadgeVisibilityAum');
+  const badgeVisibilityClosedCheckbox = document.getElementById('financeBadgeVisibilityClosed');
 
   if (financeSearchEl) {
     let searchFrame = null;
@@ -3314,6 +3353,9 @@ export function initFinanceControls() {
     const visibility = getCachedPreferences().badgeVisibility;
     if (badgeVisibilityBalanceCheckbox) badgeVisibilityBalanceCheckbox.checked = visibility.financeBalanceBadge;
     if (badgeVisibilityRolloverCheckbox) badgeVisibilityRolloverCheckbox.checked = visibility.financeRolloverBadge;
+    if (badgeVisibilityAbatCheckbox) badgeVisibilityAbatCheckbox.checked = visibility.financeAbatBadge !== false; // (46)
+    if (badgeVisibilityAumCheckbox) badgeVisibilityAumCheckbox.checked = visibility.financeAumBadge !== false;
+    if (badgeVisibilityClosedCheckbox) badgeVisibilityClosedCheckbox.checked = visibility.financeClosedBadge !== false;
 
     function toggleDropdown() {
       const willOpen = !financeBadgeVisibilityDropdown.classList.contains('open');
@@ -3336,7 +3378,11 @@ export function initFinanceControls() {
     function onVisibilityChange() {
       saveBadgeVisibility(state.currentUid, {
         financeBalanceBadge: badgeVisibilityBalanceCheckbox ? badgeVisibilityBalanceCheckbox.checked : true,
-        financeRolloverBadge: badgeVisibilityRolloverCheckbox ? badgeVisibilityRolloverCheckbox.checked : true
+        financeRolloverBadge: badgeVisibilityRolloverCheckbox ? badgeVisibilityRolloverCheckbox.checked : true,
+        // (46)
+        financeAbatBadge: badgeVisibilityAbatCheckbox ? badgeVisibilityAbatCheckbox.checked : true,
+        financeAumBadge: badgeVisibilityAumCheckbox ? badgeVisibilityAumCheckbox.checked : true,
+        financeClosedBadge: badgeVisibilityClosedCheckbox ? badgeVisibilityClosedCheckbox.checked : true
       });
       refreshAllRows();
     }
@@ -3348,6 +3394,7 @@ export function initFinanceControls() {
     document.addEventListener('click', onDocumentClick);
     if (badgeVisibilityBalanceCheckbox) badgeVisibilityBalanceCheckbox.addEventListener('change', onVisibilityChange);
     if (badgeVisibilityRolloverCheckbox) badgeVisibilityRolloverCheckbox.addEventListener('change', onVisibilityChange);
+    [badgeVisibilityAbatCheckbox, badgeVisibilityAumCheckbox, badgeVisibilityClosedCheckbox].forEach(cb => { if (cb) cb.addEventListener('change', onVisibilityChange); }); // (46)
 
     closeBadgeDropdown = () => document.removeEventListener('click', onDocumentClick);
   }
