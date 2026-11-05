@@ -109,15 +109,15 @@ _View mais simples: calibra o padrão visual novo._
 
 | Arquivo | Papel | Importa | Banco | Usado também por |
 |---|---|---|---|---|
-| `js/view-calendario.js` ⚠️ | Calendário do Bônus Misterioso (FullCalendar 6.1.15 por CDN, lazy) | state.js, cycle-logic.js, ui-hero.js, ui-calendar.js, ui-platform-cards.js, card-customization-store.js, ui-card-customization.js | lê meta/cardCustomization | P0 |
-| `js/ui-calendar.js` | Eventos do FullCalendar | state.js, cycle-logic.js | — | só este pacote |
+| `js/view-calendario.js` ⚠️ | Calendário do Bônus Misterioso (grade própria, sem CDN — Sub 49) | state.js, cycle-logic.js, ui-hero.js, ui-calendar.js, ui-platform-cards.js, card-customization-store.js, ui-card-customization.js | lê meta/cardCustomization | P0 |
+| `js/ui-calendar.js` | Calendário próprio (mês/semana/dia, 👁 depósito + bônus esperado) — Sub 49 | state.js, cycle-logic.js, misterioso-logic.js, bonus-context-store.js, utils.js | — | só este pacote |
 | `js/ui-platform-cards.js` | Grade de cards-filtro | state.js, cycle-logic.js, platform-sort.js, ui-calendar.js, ui-sort.js, card-customization-store.js, color-palette.js, utils.js | — | só este pacote |
 | `js/ui-card-customization.js` | Painel 🎯 Personalização | state.js, card-customization-store.js, color-palette.js | grava via store | só este pacote |
 | `js/card-customization-store.js` | Cor/marcador dos cards | firebase-init.js | meta/cardCustomization R/W | só este pacote |
 | `js/color-palette.js` | 30 tons + darkenColor | — | — | só este pacote |
 | `js/platform-sort.js` ⚠️ | sortPlatforms, filterAndSortForManage, SORT_MENU_OPTIONS | cycle-logic.js | — (puro) | P4, P6 |
 | `js/ui-sort.js` ⚠️ | Menu ⇅ Ordenar genérico (devolve cleanup) | platform-sort.js | — | P4, P6 |
-| `css/calendar.css` | FullCalendar | — | — | — |
+| `css/calendar.css` | Calendário próprio (.mcal) | — | — | — |
 | `css/platform-cards.css` | .pcard | — | — | — |
 | `css/card-customization.css` | Personalização | — | — | — |
 | `css/sort-menu.css` | Menu Ordenar (também Edição/Financeiro) | — | — | — |

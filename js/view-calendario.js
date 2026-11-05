@@ -7,7 +7,7 @@
 //
 // TRÊS CUIDADOS NOVOS, exclusivos da SPA:
 //
-// 1) Instância do FullCalendar (state.calendar): sem destroy() no
+// 1) Instância do calendário (state.calendar): sem destroy() no
 //    unmount(), sair e voltar a esta rota várias vezes acumularia
 //    instâncias fantasmas rodando em paralelo.
 //
@@ -22,7 +22,7 @@
 //    unmount().
 //
 // 4) (6.3) mountToken: o mount() é assíncrono (espera a personalização e
-//    o script do FullCalendar). Se o usuário sair da rota ENQUANTO ele
+//    a personalização). Se o usuário sair da rota ENQUANTO ele
 //    ainda espera, o unmount() roda antes do mount() terminar — e, sem
 //    esta checagem, o mount "atrasado" continuaria depois, criando
 //    calendário, timer e listeners numa tela que já não existe (ou,
@@ -30,16 +30,11 @@
 //    view-perfil.js: cada mount() tira um número; depois de cada await,
 //    se o número mudou, o mount desiste em silêncio.
 //
-// FULLCALENDAR VIA CDN: o JS é carregado SOB DEMANDA (lazy), só quando
-// esta view monta pela primeira vez — não fica no <head> global do
-// shell. O CSS do FullCalendar é leve e fica global (ver index.html),
-// mas o JS é pesado e as outras 4 views nunca usam — carregar globalmente
-// contrariaria o próprio cuidado já documentado no Sistema 1
-// (main-inicio.js: "não carrega a biblioteca FullCalendar, economizando
-// peso à toa"). Cacheado via fullCalendarLoadPromise — baixa uma única
-// vez por sessão, mesmo entrando e saindo da rota repetidas vezes. Se o
-// download falhar, o cache é limpo (6.3) pra a próxima visita tentar de
-// novo em vez de ficar presa na falha até recarregar o app.
+// (Sub-entrega 49) SEM FULLCALENDAR: o calendário agora é uma grade
+// própria e leve (ui-calendar.js + css/calendar.css). Acabou o download
+// de ~280 KB por CDN na primeira visita — a página abre na hora, inclusive
+// fora do Wi-Fi e sem depender de servidor de terceiros (requisito do app
+// de loja). Mesma disposição visual de antes.
 //
 // FOOTER/LEGENDA (#appFooter): só esta página tem legenda fixa. Criada
 // dinamicamente aqui no mount() e removida no unmount() (Opção A). A
@@ -81,30 +76,9 @@ import { initCardCustomizationPanel } from './ui-card-customization.js';
 
 let dailyTimer = null;
 let footerEl = null;
-let fullCalendarLoadPromise = null;
 let sortMenuCleanup = null;
 let cardCustomizationCleanup = null;
 let mountToken = 0;
-
-function loadFullCalendarScript() {
-  if (window.FullCalendar) return Promise.resolve();
-  if (fullCalendarLoadPromise) return fullCalendarLoadPromise;
-
-  fullCalendarLoadPromise = new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js';
-    script.onload = () => resolve();
-    script.onerror = () => {
-      // Libera o cache e remove a tag falha — a próxima visita tenta de novo.
-      fullCalendarLoadPromise = null;
-      script.remove();
-      reject(new Error('Falha ao carregar FullCalendar'));
-    };
-    document.head.appendChild(script);
-  });
-
-  return fullCalendarLoadPromise;
-}
 
 function refreshPage() {
   updateCalendarEvents(() => renderLegend(computeHeroStats(state.platforms)));
@@ -189,9 +163,6 @@ export async function mount(container) {
     document.getElementById('cardCustomizationMount'),
     () => renderPlatformCards()
   );
-
-  await loadFullCalendarScript();
-  if (token !== mountToken) return; // saiu da rota durante o download
 
   createCalendar();
   sortMenuCleanup = initPlatformCardsControls();

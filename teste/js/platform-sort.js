@@ -176,6 +176,22 @@ export function sortPlatforms(list, mode) {
       // por engano, o que anulava o efeito pretendido. Agora segue o
       // MESMO padrão já validado em 'ativas' (f(b) - f(a)).
       return copy.sort((a, b) => !isPlatformActiveNow(b) - !isPlatformActiveNow(a));
+    case 'deposito-desc':
+    case 'deposito-asc': {
+      // (Sub-entrega 49) "± Dias Depósito" não fazia nada aqui (caía no
+      // default). Ordena pelos dias desde o último depósito; quem nunca
+      // depositou vai pro fim. Aqui NÃO filtra (>= 7 é só do Gerenciar).
+      const dir = mode === 'deposito-desc' ? 1 : -1;
+      return copy.sort((a, b) => {
+        const da = getDaysSinceLastDeposit(a);
+        const db = getDaysSinceLastDeposit(b);
+        if (da === null && db === null) return compareNames(a, b);
+        if (da === null) return 1;
+        if (db === null) return -1;
+        if (da !== db) return dir * (db - da);
+        return compareNames(a, b);
+      });
+    }
     default:
       return copy;
   }

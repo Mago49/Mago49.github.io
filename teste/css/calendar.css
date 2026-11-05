@@ -8,65 +8,124 @@
   flex-shrink: 0;
 }
 
-.fc .fc-toolbar-title {
+/* === (Sub-entrega 49) Calendário próprio (sem FullCalendar) ===
+   Mesma disposição de antes: barra (‹ › · today · 👁), título, month/week/
+   day, grade de 6 semanas começando no domingo, pílulas por emissão. */
+.mcal { display: flex; flex-direction: column; gap: 0.75rem; }
+
+.mcal-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+}
+.mcal-nav { display: inline-flex; border-radius: 999px; overflow: hidden; }
+.mcal-btn {
+  min-height: 44px;
+  border: none;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  padding: 0.55rem 1rem;
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  box-shadow: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.mcal-nav .mcal-btn { border-radius: 0; min-width: 52px; font-size: 1.2rem; line-height: 1; }
+.mcal-nav .mcal-btn:first-child { border-radius: 999px 0 0 999px; }
+.mcal-nav .mcal-btn:last-child { border-radius: 0 999px 999px 0; }
+.mcal-btn:hover:not(:disabled), .mcal-btn.active { background: #1e293b; }
+.mcal-btn:disabled { background: #64748b; opacity: 0.75; cursor: default; }
+.mcal-eye { background: #fff; color: var(--text-dark); border: 1px solid #cbd5e1; }
+.mcal-eye:hover:not(:disabled) { background: #f1f5f9; }
+.mcal-eye.active { background: #eff6ff; border-color: #93c5fd; color: #1d4ed8; }
+
+.mcal-title {
+  margin: 0;
+  text-align: center;
   font-size: clamp(1.1rem, 2vw, 1.45rem);
   font-weight: 800;
   color: var(--text-dark);
 }
 
-.fc .fc-button {
-  border-radius: 999px;
-  border: none;
-  background: var(--primary);
-  padding: 0.55rem 0.9rem;
+.mcal-views { display: flex; justify-content: center; }
+.mcal-views .mcal-btn { border-radius: 0; background: var(--primary); }
+.mcal-views .mcal-btn:first-child { border-radius: 999px 0 0 999px; }
+.mcal-views .mcal-btn:last-child { border-radius: 0 999px 999px 0; }
+.mcal-views .mcal-btn.active { background: #334155; }
+
+.mcal-body {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 4px;
+  overflow: hidden;
+  background: #fff;
+}
+.mcal-head, .mcal-week-row { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.mcal-head-cell {
+  padding: 0.45rem 0.2rem;
+  text-align: center;
   font-weight: 700;
-  box-shadow: none;
-}
-
-.fc .fc-button-primary:not(:disabled).fc-button-active,
-.fc .fc-button-primary:not(:disabled):active,
-.fc .fc-button-primary:hover {
-  background: #1e293b;
-}
-
-.fc-theme-standard td,
-.fc-theme-standard th,
-.fc-theme-standard .fc-scrollgrid {
-  border-color: rgba(148, 163, 184, 0.28);
-}
-
-.fc .fc-col-header-cell-cushion,
-.fc .fc-daygrid-day-number {
   color: var(--text-dark);
+  border-right: 1px solid rgba(148, 163, 184, 0.28);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+  font-size: 0.9rem;
+}
+.mcal-head-cell:last-child { border-right: none; }
+.mcal-cell {
+  min-height: 92px;
+  padding: 2px 2px 4px;
+  border-right: 1px solid rgba(148, 163, 184, 0.28);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+  min-width: 0;
+}
+.mcal-week-row .mcal-cell:last-child { border-right: none; }
+.mcal-week-row:last-child .mcal-cell { border-bottom: none; }
+.mcal-week-tall .mcal-cell { min-height: 220px; }
+.mcal-other .mcal-daynum { opacity: 0.35; }
+.mcal-other .mcal-events { opacity: 0.55; }
+.mcal-is-today { background: rgba(37, 99, 235, 0.08); }
+.mcal-daynum {
+  text-align: right;
+  padding: 2px 4px;
   font-weight: 700;
-  text-decoration: none;
+  color: var(--text-dark);
+  font-size: 0.95rem;
 }
+.mcal-events { display: flex; flex-direction: column; gap: 2px; }
 
-.fc .fc-day-today {
-  background: rgba(37, 99, 235, 0.08) !important;
-}
-
-.fc .fc-daygrid-day-frame {
-  transition: background 0.2s ease;
-}
-
-.fc .fc-daygrid-day:hover .fc-daygrid-day-frame {
-  background: rgba(255,255,255,0.35);
-}
-
-.fc-event {
+.mcal-ev {
   border-radius: 10px;
-  padding: 3px 7px;
+  padding: 3px 5px;
   font-weight: 700;
-  color: #000000;
-  border: 1px solid rgba(0,0,0,0.06);
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
-}
-
-.fc-event-title {
   font-size: 0.75rem;
+  line-height: 1.25;
+  color: #000000;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
   white-space: normal;
   word-break: break-word;
-  padding: 2px;
-  color: #000000;
+  min-width: 0;
 }
+.mcal-ev-30 { border: 1px solid #ff0000; }
+.mcal-ev-name { display: block; }
+.mcal-ev-vals {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.66rem;
+  font-weight: 700;
+  opacity: 0.85;
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mcal-ev-vals > span { overflow: hidden; text-overflow: ellipsis; }
+
+.mcal-head-day { display: block; text-transform: capitalize; padding: 0.5rem; text-align: center; font-weight: 700; border-bottom: 1px solid rgba(148, 163, 184, 0.28); }
+.mcal-day-list { display: flex; flex-direction: column; gap: 4px; padding: 0.6rem; min-height: 160px; }
+.mcal-day-list .mcal-ev { font-size: 0.9rem; padding: 6px 10px; }
+.mcal-day-list .mcal-ev-vals { flex-direction: row; gap: 0.8rem; font-size: 0.78rem; }
+.mcal-empty { margin: 0; color: #64748b; font-size: 0.9rem; text-align: center; padding: 1rem 0; }
