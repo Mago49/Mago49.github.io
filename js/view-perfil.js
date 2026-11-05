@@ -39,7 +39,7 @@
 import { auth, signOut } from './firebase-init.js';
 import { state } from './state.js';
 import { showAppAlert, showAppConfirm, formatCurrency, escapeHtml } from './utils.js';
-import { loadBonusContextStrict } from './bonus-context-store.js';
+import { loadBonusContextStrict, getCachedBonusContext, refreshBonusContext } from './bonus-context-store.js'; // (48)
 import { buildDayFeed, toLocalDayKey, shiftDayKey } from './history-feed-logic.js';
 import { loadBackupInfo } from './backup-store.js';
 import { openBackupPanel } from './ui-backup.js';
@@ -360,7 +360,13 @@ export async function mount(container) {
   let loadedValue = 0;
   let loadedTemplates = [];
   let contextConfirmed = false;
-  try {
+  // (Sub-entrega 48) Já confirmado nesta sessão: desenha na hora e confere depois.
+  const cachedCtx = getCachedBonusContext(state.currentUid);
+  if (cachedCtx) {
+    loadedValue = cachedCtx.obrigadoValuePerAppearance;
+    loadedTemplates = cachedCtx.misteriosoTemplates;
+    contextConfirmed = true;
+  } else try {
     const bonusContext = await loadBonusContextStrict(state.currentUid);
     loadedValue = bonusContext.obrigadoValuePerAppearance;
     loadedTemplates = bonusContext.misteriosoTemplates;
@@ -383,6 +389,16 @@ export async function mount(container) {
 
   renderFeed();
   scheduleDailyUpdate();
+
+  // (Sub-entrega 48) Conferência em segundo plano (só leitura).
+  if (cachedCtx) {
+    refreshBonusContext(state.currentUid).then(({ context, changed }) => {
+      if (token !== mountToken || !changed) return;
+      obrigadoValuePerAppearance = context.obrigadoValuePerAppearance;
+      misteriosoTemplates = context.misteriosoTemplates;
+      renderFeed();
+    }).catch(err => console.warn('Perfil: conferência do Obrigado/Misterioso falhou — segue com o valor já confirmado nesta sessão.', err));
+  }
 }
 
 export function unmount() {

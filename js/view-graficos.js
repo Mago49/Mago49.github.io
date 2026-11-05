@@ -107,7 +107,7 @@ import {
   computePlatformRankings, computeWeeklyResultBetting,
   computeWeeklyWagered, computeBonusRoiByPlatform, computeHeatmapMatrix
 } from './analytics-logic.js';
-import { loadBonusContextStrict } from './bonus-context-store.js';
+import { loadBonusContextStrict, getCachedBonusContext, refreshBonusContext } from './bonus-context-store.js'; // (48)
 import { scheduleDailySnapshot } from './daily-snapshot-store.js';
 import { mountAnalise, refreshAnalise, resizeAnaliseCharts, unmountAnalise } from './ui-graficos-analise.js';
 import { mountTotalApostado, refreshTotalApostado, unmountTotalApostado } from './ui-total-apostado.js';
@@ -1024,7 +1024,14 @@ export async function mount(container) {
 
   // (Sub-entrega E) Leitura estrita do contexto de bônus. Falha não impede
   // a tela (só leitura), mas fica explícita e bloqueia o snapshot.
-  try {
+  // (Sub-entrega 48) Já confirmado nesta sessão: usa na hora e confere
+  // depois (o snapshot diário — grava — só depois da conferência).
+  const cachedCtx = getCachedBonusContext(state.currentUid);
+  if (cachedCtx) {
+    obrigadoValuePerAppearance = cachedCtx.obrigadoValuePerAppearance;
+    misteriosoTemplates = cachedCtx.misteriosoTemplates;
+    bonusContextConfirmed = true;
+  } else try {
     const bonusContext = await loadBonusContextStrict(state.currentUid);
     if (token !== mountToken) return; // saiu da rota durante o await
     obrigadoValuePerAppearance = bonusContext.obrigadoValuePerAppearance;
@@ -1043,9 +1050,10 @@ export async function mount(container) {
     }
   }
 
-  if (bonusContextConfirmed) {
+  if (bonusContextConfirmed && !cachedCtx) {
     scheduleDailySnapshot(state.currentUid, state.platforms, resolveCtxForPlatform);
   }
+  if (cachedCtx) verifyContextInBackground(token); // (48)
 
   // (Análises) Abas — depois do contexto de bônus, pra a aba Análises
   // receber bonusContextConfirmed já resolvido. Se a aba lembrada for
@@ -1064,6 +1072,23 @@ export async function mount(container) {
   initRankingControls();
   refreshPage();
   scheduleDailyUpdate();
+}
+
+// (Sub-entrega 48) Confere o Obrigado/Misterioso depois que a tela abriu.
+// Mudou: redesenha. Confirmado: agenda o snapshot diário (grava).
+async function verifyContextInBackground(token) {
+  try {
+    const { context, changed } = await refreshBonusContext(state.currentUid);
+    if (token !== mountToken) return;
+    if (changed) {
+      obrigadoValuePerAppearance = context.obrigadoValuePerAppearance;
+      misteriosoTemplates = context.misteriosoTemplates;
+      if (window.Chart) refreshPage(); else { renderKpis(); renderHeatmapCanvas(); }
+    }
+    scheduleDailySnapshot(state.currentUid, state.platforms, resolveCtxForPlatform);
+  } catch (err) {
+    console.warn('Gráficos: conferência do Obrigado/Misterioso falhou — segue com o valor já confirmado nesta sessão; snapshot não agendado.', err);
+  }
 }
 
 export function unmount() {

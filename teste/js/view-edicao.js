@@ -72,7 +72,7 @@ import {
   refreshAllRows, resetManageListCache
 } from './ui-platform-manage.js';
 import { loadAnnouncementStrict, saveAnnouncement } from './announcement-store.js';
-import { loadPreferences } from './user-preferences-store.js';
+import { loadPreferences, arePreferencesLoaded, refreshPreferences } from './user-preferences-store.js'; // (48)
 import { showAppAlert } from './utils.js';
 
 // Bug 4 (achado em teste, Etapa 5): o editor do aviso interno (Bloco G)
@@ -313,7 +313,9 @@ export async function mount(container) {
   // (painel e modais) -> primeira renderização -> timer de virada de dia.
   resetManageListCache();
   createModals();
-  await loadPreferences(state.currentUid);
+  // (Sub-entrega 48) Já lidas nesta sessão: desenha na hora e confere depois.
+  const prefsCached = arePreferencesLoaded(state.currentUid);
+  if (!prefsCached) await loadPreferences(state.currentUid);
   // (Sub-entrega D) Saiu da rota durante o await: o unmount() já removeu os
   // modais — não liga nada.
   if (isStale()) return;
@@ -323,6 +325,15 @@ export async function mount(container) {
 
   renderManageList();
   scheduleDailyUpdate();
+
+  // (Sub-entrega 48) Conferência das preferências em segundo plano.
+  if (prefsCached) {
+    refreshPreferences(state.currentUid).then(r => {
+      if (isStale() || !r.changed) return;
+      renderManageList();
+      refreshAllRows();
+    });
+  }
 
   // Carregamento assíncrono do aviso interno vem por último — não
   // bloqueia a renderização do acordeão de plataformas, que já está

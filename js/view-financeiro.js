@@ -42,8 +42,8 @@ import {
 import { autoCloseOverdueWeeks } from './finance-logic.js';
 import { savePlatform } from './platforms-store.js';
 import { showAppAlert } from './utils.js';
-import { loadBonusContextStrict } from './bonus-context-store.js';
-import { loadPreferences } from './user-preferences-store.js';
+import { loadBonusContextStrict, getCachedBonusContext, refreshBonusContext } from './bonus-context-store.js'; // (48)
+import { loadPreferences, arePreferencesLoaded, refreshPreferences } from './user-preferences-store.js'; // (48)
 
 let dailyTimer = null;
 let sortMenuCleanup = null;
@@ -229,15 +229,23 @@ export async function mount(container) {
   // users/{uid}/meta/preferences) — precisa estar no cache ANTES do
   // primeiro renderFinanceList(), senão a lista abriria na ordem
   // arbitrária de chegada do Firestore por um instante.
-  await loadPreferences(state.currentUid);
-  if (isStale()) return;
+  // (Sub-entrega 48) Já lidas nesta sessão: desenha na hora e confere depois.
+  const prefsCached = arePreferencesLoaded(state.currentUid);
+  if (!prefsCached) {
+    await loadPreferences(state.currentUid);
+    if (isStale()) return;
+  }
 
   // Etapa 7, sub-entrega 3: Obrigado/Misterioso alimentam Saldo/Rollover ao
   // vivo (via bonus-ledger-logic.js) — carregados UMA vez aqui, ANTES do
   // primeiro render. (Sub-entrega E) Leitura ESTRITA: sem confirmação dos
   // dois, a tela não abre (ver nota no topo).
-  let bonusContext;
-  try {
+  // (Sub-entrega 48) Contexto já confirmado nesta sessão: desenha com ele e
+  // confere em segundo plano; o fechamento automático (grava) só roda
+  // depois da conferência.
+  let bonusContext = getCachedBonusContext(state.currentUid);
+  const ctxCached = !!bonusContext;
+  if (!bonusContext) try {
     bonusContext = await loadBonusContextStrict(state.currentUid);
   } catch (err) {
     console.error('Financeiro: contexto de bônus não confirmado — tela não aberta, nada gravado:', err);
@@ -256,13 +264,8 @@ export async function mount(container) {
   // sem fechamento são fechadas aqui, ANTES do primeiro render, com o que
   // o sistema já contabilizou (ver autoCloseOverdueWeeks em finance-logic).
   // try/catch: um erro aqui nunca pode impedir o Financeiro de abrir.
-  let autoClose = { touched: [], summary: [], weeksClosed: 0 };
-  try {
-    autoClose = autoCloseOverdueWeeks(state.platforms, resolveCtx, new Date());
-    autoClose.touched.forEach(platform => savePlatform(state.currentUid, platform));
-  } catch (err) {
-    console.error('Erro no fechamento automático de semanas:', err);
-  }
+  // (48) Contexto vindo do cache: o fechamento (grava) espera a conferência.
+  const autoClose = ctxCached ? { touched: [], summary: [], weeksClosed: 0 } : runAutoClose(resolveCtx);
 
   sortMenuCleanup = initFinanceControls();
   initFinanceOverview();
@@ -272,14 +275,64 @@ export async function mount(container) {
   renderFinanceList(); // já chama renderFinanceOverview() internamente
   scheduleDailyUpdate();
 
-  if (autoClose.weeksClosed > 0) {
-    const names = autoClose.summary.slice(0, 8).map(item => `${item.platformName} (${item.weeks.length})`).join(', ');
-    const more = autoClose.summary.length > 8 ? ` e mais ${autoClose.summary.length - 8}` : '';
-    await showAppAlert(
-      `Fechei automaticamente ${autoClose.weeksClosed} semana(s) em ${autoClose.summary.length} plataforma(s) que ficaram sem fechamento: ${names}${more}. ` +
-      `O bônus gravado é o que o sistema já contabilizou. Onde houve bônus, aparece o painel "Bônus real" na plataforma pra você confirmar o valor — ou use "Editar" na semana.`
-    );
+  if (ctxCached || prefsCached) verifyInBackground(isStale, ctxCached, prefsCached); // (48)
+  await alertAutoClose(autoClose);
+}
+
+// (Sub-entrega 3 item 5) Fecha semanas passadas sem fechamento. Grava.
+function runAutoClose(resolveCtx) {
+  let autoClose = { touched: [], summary: [], weeksClosed: 0 };
+  try {
+    autoClose = autoCloseOverdueWeeks(state.platforms, resolveCtx, new Date());
+    autoClose.touched.forEach(platform => savePlatform(state.currentUid, platform));
+  } catch (err) {
+    console.error('Erro no fechamento automático de semanas:', err);
   }
+  return autoClose;
+}
+
+async function alertAutoClose(autoClose) {
+  if (!(autoClose.weeksClosed > 0)) return;
+  const names = autoClose.summary.slice(0, 8).map(item => `${item.platformName} (${item.weeks.length})`).join(', ');
+  const more = autoClose.summary.length > 8 ? ` e mais ${autoClose.summary.length - 8}` : '';
+  await showAppAlert(
+    `Fechei automaticamente ${autoClose.weeksClosed} semana(s) em ${autoClose.summary.length} plataforma(s) que ficaram sem fechamento: ${names}${more}. ` +
+    `O bônus gravado é o que o sistema já contabilizou. Onde houve bônus, aparece o painel "Bônus real" na plataforma pra você confirmar o valor — ou use "Editar" na semana.`
+  );
+}
+
+// (Sub-entrega 48) Confere preferências e contexto no Firebase depois que a
+// tela já apareceu. Mudou: redesenha. Contexto confirmado: roda o
+// fechamento automático (que grava) com o valor CONFIRMADO. Falha na
+// conferência do contexto: mantém o já confirmado nesta sessão, sem gravar.
+async function verifyInBackground(isStale, ctxCached, prefsCached) {
+  let redraw = false;
+  if (prefsCached) {
+    const r = await refreshPreferences(state.currentUid);
+    if (isStale()) return;
+    if (r.changed) redraw = true;
+  }
+  let autoClose = null;
+  if (ctxCached) {
+    try {
+      const { context, changed } = await refreshBonusContext(state.currentUid);
+      if (isStale()) return;
+      if (changed) {
+        setBonusContextResolver(context.resolveCtx);
+        redraw = true;
+      }
+      autoClose = runAutoClose(context.resolveCtx);
+      if (autoClose.touched.length) redraw = true;
+    } catch (err) {
+      console.warn('Financeiro: conferência do Obrigado/Misterioso falhou — segue com o valor já confirmado nesta sessão; fechamento automático fica pra próxima abertura.', err);
+    }
+  }
+  if (isStale()) return;
+  if (redraw) {
+    refreshAllRows();
+    renderFinanceList();
+  }
+  if (autoClose) await alertAutoClose(autoClose);
 }
 
 export function unmount() {

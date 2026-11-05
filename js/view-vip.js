@@ -58,7 +58,7 @@ import {
 } from './ui-vip-panel.js';
 import { state } from './state.js';
 import { showAppAlert } from './utils.js';
-import { loadBonusContextStrict } from './bonus-context-store.js';
+import { loadBonusContextStrict, clearBonusContextCache } from './bonus-context-store.js'; // (48)
 import { openBonusManager } from './ui-bonus-manager.js';
 
 let dailyTimer = null;
@@ -220,6 +220,9 @@ function initWeekBonusButton(isStale) {
 
 export function unmount() {
   mountToken++; // invalida qualquer mount() ainda esperando um await
+  // (Sub-entrega 48) Obrigado e templates do Misterioso são editados aqui:
+  // ao sair, o cache é descartado e a próxima tela lê do Firebase.
+  clearBonusContextCache();
   if (dailyTimer) {
     clearTimeout(dailyTimer);
     dailyTimer = null;

@@ -15,6 +15,17 @@
 // configurado" -> padrão), igual às versões estritas da Sub-entrega B.
 // Somente leitura — este módulo nunca grava nada.
 
+// === (Sub-entrega 48) CACHE EM MEMÓRIA + CONFERÊNCIA EM SEGUNDO PLANO ===
+// Cada leitura estrita bem-sucedida fica guardada (por uid). As telas que
+// só EXIBEM (Financeiro, Gráficos, Perfil) desenham na hora com o que está
+// guardado (getCachedBonusContext) e conferem o Firebase em seguida
+// (refreshBonusContext → { context, changed }); se mudou, redesenham.
+// Tudo que GRAVA valor calculado com o contexto (fechamento automático de
+// semanas, snapshot diário) só roda DEPOIS da conferência — nunca com o
+// valor guardado. Sair do VIP (onde Obrigado/templates são editados) limpa
+// o cache (clearBonusContextCache): a próxima tela lê do Firebase.
+// Sem cache (1ª tela da sessão, outro usuário) = leitura estrita de sempre.
+
 import { loadObrigadoValuePerAppearanceStrict } from './vip-obrigado-store.js';
 import { loadMisteriosoTemplatesStrict } from './vip-misterioso-store.js';
 
@@ -40,9 +51,37 @@ export async function loadBonusContextStrict(uid) {
   if (typeof obrigadoValuePerAppearance !== 'number' || !Number.isFinite(obrigadoValuePerAppearance)) {
     throw new Error('Valor do Bônus Obrigado inválido.');
   }
-  return {
+  const result = {
     obrigadoValuePerAppearance,
     misteriosoTemplates,
     resolveCtx: buildResolveCtx(obrigadoValuePerAppearance, misteriosoTemplates)
   };
+  cache = { uid, result, sig: contextSig(obrigadoValuePerAppearance, misteriosoTemplates) }; // (48)
+  return result;
+}
+
+// ---------- (Sub-entrega 48) cache ----------
+let cache = null; // { uid, result, sig }
+
+function contextSig(value, templates) {
+  try { return JSON.stringify([value, templates]); } catch (err) { return String(Math.random()); }
+}
+
+/** Contexto já confirmado nesta sessão (ou null). */
+export function getCachedBonusContext(uid) {
+  return cache && uid && cache.uid === uid ? cache.result : null;
+}
+
+/**
+ * Lê de novo (estrito) e diz se mudou em relação ao que estava guardado.
+ * @returns {Promise<{context, changed:boolean}>}  @throws como a estrita
+ */
+export async function refreshBonusContext(uid) {
+  const prev = cache && cache.uid === uid ? cache.sig : null;
+  const context = await loadBonusContextStrict(uid);
+  return { context, changed: prev === null || cache.sig !== prev };
+}
+
+export function clearBonusContextCache() {
+  cache = null;
 }

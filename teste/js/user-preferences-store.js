@@ -40,6 +40,10 @@ const DEFAULT_PREFERENCES = {
 };
 
 let cachedPreferences = null;
+// (Sub-entrega 48) uid cujas preferências foram LIDAS do banco nesta sessão
+// (falha de leitura não conta). Com isso, Financeiro/Edição desenham na
+// hora e conferem em segundo plano (refreshPreferences).
+let loadedFor = null;
 
 function getPreferencesRef(uid) {
   return doc(db, 'users', uid, 'meta', 'preferences');
@@ -76,6 +80,7 @@ export async function loadPreferences(uid) {
   try {
     const snap = await getDoc(getPreferencesRef(uid));
     cachedPreferences = snap.exists() ? normalizePreferences(snap.data()) : normalizePreferences(null);
+    loadedFor = uid; // (48)
   } catch (err) {
     console.error('Erro ao carregar preferências de exibição:', err);
     cachedPreferences = normalizePreferences(null);
@@ -95,6 +100,30 @@ export function getCachedPreferences() {
 // graças ao merge:true. Atualiza o cache ANTES do commit assíncrono
 // terminar, mesmo padrão "otimista" já usado em savePlatform/
 // saveCardCustomization: a tela reflete a mudança na hora.
+// (Sub-entrega 48) Já lidas do banco nesta sessão pra este uid?
+export function arePreferencesLoaded(uid) {
+  return !!uid && loadedFor === uid && !!cachedPreferences;
+}
+
+// (Sub-entrega 48) Confere o banco em segundo plano. Falha de leitura NÃO
+// troca o cache (antes viraria o padrão — e um Reordenar depois gravaria a
+// ordem errada). @returns {Promise<{changed:boolean, error?:any}>}
+export async function refreshPreferences(uid) {
+  if (!uid) return { changed: false };
+  let fresh;
+  try {
+    const snap = await getDoc(getPreferencesRef(uid));
+    fresh = normalizePreferences(snap.exists() ? snap.data() : null);
+  } catch (err) {
+    console.warn('Preferências: conferência em segundo plano falhou — mantém as já carregadas.', err);
+    return { changed: false, error: err };
+  }
+  const before = JSON.stringify(cachedPreferences);
+  cachedPreferences = fresh;
+  loadedFor = uid;
+  return { changed: JSON.stringify(fresh) !== before };
+}
+
 export function saveManualOrder(uid, orderedIds) {
   if (!uid) return;
   cachedPreferences = {
