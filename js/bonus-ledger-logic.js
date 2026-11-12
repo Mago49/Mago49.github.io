@@ -253,8 +253,8 @@ export function highBonusRollover(e) {
   return (Number(e && e.value) || 0) * normalizeRolloverScale(e && e.scale);
 }
 
-// (14) Escala do R: inteiro de 0 (sem rollover) a 100. Ausente/inválida = 1.
-export const ROLLOVER_SCALE_MAX = 100;
+// (14) Escala do R: inteiro de 0 (sem rollover) a 800. Ausente/inválida = 1.
+export const ROLLOVER_SCALE_MAX = 800;
 export function normalizeRolloverScale(value, fallback = 1) {
   const n = Number(value);
   if (value === null || value === undefined || value === '' || !Number.isFinite(n)) return fallback;
