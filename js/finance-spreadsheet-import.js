@@ -1,8 +1,9 @@
 // === IMPORTADOR DE DADOS DA PLANILHA (Financeiro) ===
 // Parser puro: não acessa DOM, state, Firebase ou finance-logic.
-// Recebe texto tabular copiado da planilha e devolve os dados normalizados
-// por plataforma. A gravação continua sendo responsabilidade do
-// ui-finance-panel.js, usando addHistoricalWeek() como regra financeira única.
+// Recebe texto tabular copiado da planilha (ou texto compactado sem tabulações)
+// e devolve os dados normalizados por plataforma. A gravação continua sendo
+// responsabilidade do ui-finance-panel.js, usando addHistoricalWeek() como
+// regra financeira única.
 
 const FIELD_ALIASES = new Map([
   ['deposit', 'deposit'],
@@ -51,12 +52,50 @@ const FIELD_ALIASES = new Map([
   ['rb + bônus', 'rbPlusBonus']
 ]);
 
+// Rótulos conhecidos ordenados do mais longo para o mais curto para evitar
+// correspondência parcial (ex.: "R.B. + Bonus" antes de "R.B." ou "Bonus").
+const COMPACT_FIELD_PATTERNS = [
+  'r\.b\.\s*\+\s*b[oô]nus',
+  'r\.b\.\s*\+\s*bonus',
+  'rb\s*\+\s*b[oô]nus',
+  'rb\s*\+\s*bonus',
+  'result\s*betting\s*\(r\.b\.\)',
+  'result\s*betting\s*\(rb\)',
+  'result\s*betting',
+  'r\.b\.',
+  'r\.b',
+  'rb',
+  'amount\s*wagered',
+  'wagered',
+  'apostado',
+  'aposta',
+  'n[°º]?\s*de\s*apostas',
+  'n[°º]?\s*apostas',
+  'n[°º]?\s*betting',
+  'n[úu]mero\s*de\s*apostas',
+  'betting\s*count',
+  'dep[oó]sito',
+  'deposit',
+  'withdrawal',
+  'saque',
+  'diferen[cç]a',
+  'difference',
+  'b[oô]nus',
+  'bonus',
+  'balance',
+  'saldo'
+];
+
 function normalizeText(value) {
   return String(value ?? '')
     .replace(/\u00a0/g, ' ')
     .trim()
     .replace(/\s+/g, ' ')
     .toLowerCase();
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function normalizeFieldLabel(value) {
@@ -103,6 +142,180 @@ function parseLocaleNumber(value) {
   return Number(text);
 }
 
+/**
+ * Divide uma sequência numérica colada sem separadores (ex.: "12585" ou "11,489,74")
+ * em `count` colunas de plataformas quando possível.
+ *
+ * Estratégia:
+ * 1. Tenta extrair tokens numéricos explícitos (com sinais, decimais ou milhares).
+ * 2. Quando os números vieram totalmente grudados (ex.: "12585" para 2 colunas ou
+ *    "11,489,74" para 2 colunas), testa partições possíveis e escolhe a mais plausível.
+ */
+function splitCompactNumericCells(rawSegment, expectedCount) {
+  const cleaned = String(rawSegment ?? '').trim();
+  if (!cleaned) return Array(expectedCount).fill('');
+
+  // Caso 1: já existe separação por espaço/tabulação/ponto-e-vírgula
+  const whitespaceParts = cleaned.split(/[\s;|]+/).filter(Boolean);
+  if (whitespaceParts.length === expectedCount) {
+    return whitespaceParts;
+  }
+
+  // Caso 2: números com sinal explícito ou decimais completos separados (ex.: "-1632" -> ["-16", "32"] ou "11,489,74" -> ["11,48", "9,74"])
+  if (expectedCount === 2) {
+    // Se houver um sinal no meio (ex.: "109-117" ou "-16-32")
+    const signedSplit = cleaned.match(/^([+-]?[\d.,]+)([+-][\d.,]+)$/);
+    if (signedSplit) {
+      return [signedSplit[1], signedSplit[2]];
+    }
+
+    // Se houver duas vírgulas decimais no estilo BR (ex.: "11,489,74" -> "11,48" e "9,74")
+    const twoBrDecimals = cleaned.match(/^([+-]?\d+,\d{2})([+-]?\d+,\d{2})$/);
+    if (twoBrDecimals) {
+      return [twoBrDecimals[1], twoBrDecimals[2]];
+    }
+
+    // Se houver dois pontos decimais (ex.: "11.489.74" -> "11.48" e "9.74")
+    const twoDotDecimals = cleaned.match(/^([+-]?\d+\.\d{2})([+-]?\d+\.\d{2})$/);
+    if (twoDotDecimals) {
+      return [twoDotDecimals[1], twoDotDecimals[2]];
+    }
+  }
+
+  // Caso 3: backtracking genérico para dividir string compacta em `expectedCount` números válidos
+  const tokenRegex = /^[+-]?(?:\d{1,3}(?:\.\d{3})+,\d{1,2}|\d{1,3}(?:,\d{3})+\.\d{1,2}|\d+[.,]\d{1,2}|\d+)$/;
+  const candidates = [];
+
+  function backtrack(startIdx, parts) {
+    if (parts.length === expectedCount) {
+      if (startIdx === cleaned.length) {
+        candidates.push([...parts]);
+      }
+      return;
+    }
+
+    const remainingParts = expectedCount - parts.length;
+    const maxEnd = cleaned.length - (remainingParts - 1);
+
+    for (let endIdx = startIdx + 1; endIdx <= maxEnd; endIdx++) {
+      const slice = cleaned.slice(startIdx, endIdx);
+      // Evita zeros à esquerda inválidos como "05" (mas permite "0" ou "0,50")
+      if (/^[+-]?0\d/.test(slice)) continue;
+      if (tokenRegex.test(slice)) {
+        parts.push(slice);
+        backtrack(endIdx, parts);
+        parts.pop();
+      }
+    }
+  }
+
+  backtrack(0, []);
+
+  if (candidates.length === 1) {
+    return candidates[0];
+  }
+
+  if (candidates.length > 1) {
+    // Prefere divisões com tamanhos de dígitos mais equilibrados (ex.: "12585" -> ["125", "85"] em vez de ["1", "2585"])
+    candidates.sort((a, b) => {
+      const score = arr => {
+        const lengths = arr.map(s => s.replace(/[^\d]/g, '').length);
+        const maxLen = Math.max(...lengths);
+        const minLen = Math.min(...lengths);
+        const hasDecimalBonus = arr.filter(s => /[.,]/.test(s)).length * -2;
+        return (maxLen - minLen) + hasDecimalBonus;
+      };
+      return score(a) - score(b);
+    });
+    return candidates[0];
+  }
+
+  // Fallback: retorna o bloco inteiro na primeira coluna para que o validador aponte o campo ausente/inválido
+  return [cleaned, ...Array(expectedCount - 1).fill('')];
+}
+
+/**
+ * Pré-processa textos colados de forma compacta/achatada (ex.: copiados de PDF,
+ * mobile ou webview onde \n e \t foram perdidos):
+ *   "17/08/2025 (Last 7 days)PP11DDUUDeposit12585Withdrawal109117..."
+ *
+ * Se o texto já estiver tabulado em múltiplas linhas, retorna sem alterações.
+ */
+function preprocessCompactClipboard(text, platformNames = []) {
+  const raw = String(text ?? '').trim();
+  if (!raw) return raw;
+
+  const hasMultipleLines = raw.includes('\n') || raw.includes('\r');
+  const hasTabs = raw.includes('\t');
+  if (hasMultipleLines && hasTabs) {
+    return raw;
+  }
+
+  const knownNames = platformNames
+    .map(String)
+    .map(s => s.trim())
+    .filter(Boolean)
+    // Ordena do maior para o menor para evitar match parcial
+    .sort((a, b) => b.length - a.length);
+
+  if (knownNames.length === 0) return raw;
+
+  const fieldUnionPattern = COMPACT_FIELD_PATTERNS.join('|');
+  const firstFieldRegex = new RegExp(`(${fieldUnionPattern})`, 'i');
+  const firstFieldMatch = raw.match(firstFieldRegex);
+
+  // Se não encontrar nenhum rótulo de campo conhecido, devolve original
+  if (!firstFieldMatch || firstFieldMatch.index === undefined) {
+    return raw;
+  }
+
+  const headerZone = raw.slice(0, firstFieldMatch.index);
+  const bodyZone = raw.slice(firstFieldMatch.index);
+
+  // Extrai todas as plataformas conhecidas presentes na zona do cabeçalho na ordem em que aparecem
+  const platformPattern = new RegExp(
+    `(${knownNames.map(escapeRegExp).join('|')})`,
+    'gi'
+  );
+
+  const detectedPlatforms = [];
+  let pMatch;
+  while ((pMatch = platformPattern.exec(headerZone)) !== null) {
+    const matchedText = pMatch[1];
+    const canonical = knownNames.find(n => normalizeText(n) === normalizeText(matchedText));
+    if (canonical && !detectedPlatforms.includes(canonical)) {
+      detectedPlatforms.push(canonical);
+    }
+  }
+
+  if (detectedPlatforms.length === 0) {
+    return raw;
+  }
+
+  // Separa os blocos de cada campo dentro do corpo (ex.: "Deposit12585", "Withdrawal109117")
+  const fieldSplitRegex = new RegExp(`(${fieldUnionPattern})`, 'gi');
+  const tokens = bodyZone.split(fieldSplitRegex).filter(part => part !== '');
+
+  const lines = [['Plataforma', ...detectedPlatforms].join('\t')];
+
+  for (let i = 0; i < tokens.length; i++) {
+    const labelCandidate = tokens[i];
+    const normalizedField = normalizeFieldLabel(labelCandidate);
+    if (!normalizedField) continue;
+
+    const valueChunk = (i + 1 < tokens.length) ? tokens[i + 1] : '';
+    // Consome o próximo token se ele não for outro rótulo de campo
+    if (i + 1 < tokens.length && !normalizeFieldLabel(tokens[i + 1])) {
+      i++;
+    }
+
+    const cells = splitCompactNumericCells(valueChunk, detectedPlatforms.length);
+    lines.push([labelCandidate.trim(), ...cells].join('\t'));
+  }
+
+  return lines.length > 1 ? lines.join('\n') : raw;
+}
+
 function splitClipboardRows(text) {
   return String(text ?? '')
     .replace(/\r\n/g, '\n')
@@ -119,7 +332,7 @@ function isLikelyPlatformHeader(value, platformNames) {
 }
 
 /**
- * Interpreta uma seleção tabular copiada da planilha.
+ * Interpreta uma seleção tabular copiada da planilha (ou texto compactado).
  *
  * Espera a estrutura da planilha mostrada pelo usuário:
  *   [vazio] | PP11 | DDUU | NNZZ | 83H
@@ -137,7 +350,8 @@ function isLikelyPlatformHeader(value, platformNames) {
  * apenas para validação/diagnóstico e nunca são enviados à lógica financeira.
  */
 export function parseFinanceSpreadsheet(text, platformNames = []) {
-  const rows = splitClipboardRows(text);
+  const preprocessedText = preprocessCompactClipboard(text, platformNames);
+  const rows = splitClipboardRows(preprocessedText);
   const result = {
     ok: false,
     platforms: [],
